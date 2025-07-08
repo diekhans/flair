@@ -2,9 +2,9 @@
 """TSV reading classes"""
 import sys
 import csv
-from pycbio.sys import fileOps
-from pycbio.tsv.tsvRow import TsvRow
-from pycbio.tsv import TsvError
+flair.pycbio.sys import fileOps
+flair.pycbio.tsv.tsvRow import TsvRow
+flair.pycbio.tsv import TsvError
 
 csv.field_size_limit(sys.maxsize)
 

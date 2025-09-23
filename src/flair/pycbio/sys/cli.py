@@ -1,63 +1,79 @@
 # Copyright 2006-2025 Mark Diekhans
 """Support for command line parsing"""
-import argparse
 import logging
 import traceback
-from io import StringIO
+import io
+import argparse
 from flair.pycbio import NoStackError
-from flair.pycbio.sys.objDict import ObjDict
 from flair.pycbio.sys import loggingOps
+from flair.pycbio.sys.objDict import ObjDict
 
-def splitOptionsArgs(parser, inargs):
+def _find_subparser_action(parser):
+    """Find subparser action in a parser"""
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return action
+    return None
+
+def _findParserUsed(parser, parsed_args):
+    """Find the parser object used to parse the arguments; required for subparsers.
+    """
+    # Traverse through the subparser hierarchy using parsed argument values
+    while parser:
+        subparsers_action = _find_subparser_action(parser)
+        if subparsers_action is None:
+            break
+
+        # Find the next command in parsed args
+        cmd_name = getattr(parsed_args, subparsers_action.dest, None)
+        if (cmd_name is None) or (cmd_name not in subparsers_action.choices):
+            break
+        parser = subparsers_action.choices[cmd_name]
+    return parser
+
+def _findOptNames(parser, parsed_args):
+    "Find option names"
+    parser = _findParserUsed(parser, parsed_args)
+    return {a.dest for a in parser._actions if a.option_strings}
+
+def splitOptionsArgs(parser, parsed_args):
     """Split command line arguments into two objects one of option arguments
     (-- or - options) and one of positional arguments.  Useful for packaging up
-    a large number of options to pass around."""
+    a large number of options to pass around.  This does not handle subparsers
+    unless the subparsers is the supplied parser, not the top-level one used
+    in parsing"""
 
     opts = ObjDict()
     args = ObjDict()
-    optnames = set([a.dest for a in parser._actions if a.option_strings])
-
-    for name, value in vars(inargs).items():
+    optnames = _findOptNames(parser, parsed_args)
+    for name, value in vars(parsed_args).items():
         if name in optnames:
             opts[name] = value
         else:
             args[name] = value
     return opts, args
 
-class ArgumentParserExtras(argparse.ArgumentParser):
-    """Wrapper around ArgumentParser that adds logging
-    related options.  Also can parse splitting options and positional
-    arguments into separate objects.
+def parseOptsArgs(parser, args=None, namespace=None):
+    """Call argparse parse_args and return (opts, args)"""
+    return splitOptionsArgs(parser, parser.parse_args(args, namespace))
+
+def parseArgsWithLogging(parser, args=None, namespace=None):
+    """Call argparse.parse_args and return args. Add logging command options
+    if they are not already there and configuring logging after parsing.  This
+    handles common cases.
     """
-    def __init__(self, *args, incl_syslog=False, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.incl_syslog = incl_syslog
+    if not loggingOps.haveCmdOptions(parser):
+        loggingOps.addCmdOptions(parser)
+    args = parser.parse_args(args, namespace)
+    loggingOps.setupFromCmd(args)
+    return args
 
-    def add_extras(self):
-        """Add extra options to parser, done just before parse
-        so they are last in the help list.  Override to add other options.
-        """
-        loggingOps.addCmdOptions(self, inclSyslog=self.incl_syslog)
+def parseOptsArgsWithLogging(parser, args=None, namespace=None):
+    """Call argparse.parse_args and return (opts, args). Add logging command options
+    if they are not already there and configuring logging after parsing.  This
+    handles common cases."""
+    return splitOptionsArgs(parser, parseArgsWithLogging(parser, args, namespace))
 
-    def process_extras(self, args):
-        """Process extras after argments have been parsed"""
-        loggingOps.setupFromCmd(args, prog=self.prog)
-
-    def parse_known_args(self, *args, **kwargs):
-        # parse args goes through parse_known_args
-        self.add_extras()
-        cmdargs, cmdargv = super().parse_known_args(*args, **kwargs)
-        self.process_extras(cmdargs)
-        return cmdargs, cmdargv
-
-    def parse_opts_args(self):
-        """Get the parse command line option arguments (-- or - arguments) as an
-        object where the options are fields in the object.  Useful for packaging up
-        a large number of options to pass around without the temptation to pass
-        the positional args as well. Returns (opts, args).
-        """
-        args = self.parse_args()
-        return splitOptionsArgs(self, args)
 
 def _exceptionPrintNoTraceback(exc, file, indent):
     depth = 0
@@ -78,7 +94,7 @@ def _exceptionPrint(exc, *, file=None, showTraceback=True, indent=True):
 
 def _exceptionFormat(exc, *, showTraceback=True, indent=True):
     """format a chained exception following causal chain"""
-    fh = StringIO()
+    fh = io.StringIO()
     _exceptionPrint(exc, file=fh, showTraceback=showTraceback, indent=indent)
     return fh.getvalue()
 
@@ -106,7 +122,7 @@ class ErrorHandler:
               real_prog(opts, args.one, args.two)
 
     """
-    DEFAULT_NO_STACK_EXCEPTS = (OSError, ImportError)
+    DEFAULT_NO_STACK_EXCEPTS = (OSError, ImportError, KeyboardInterrupt)
 
     def __init__(self, *, noStackExcepts=DEFAULT_NO_STACK_EXCEPTS, printStackFilter=None):
         self.noStackExcepts = tuple(noStackExcepts) if noStackExcepts is not None else None

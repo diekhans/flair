@@ -579,7 +579,7 @@ flair quantify
 
 **Output**
 
-Default: identifes the best isoform assignment based on alignment quality, fraction of read aligned, and fraction of transcript aligned
+Default: identifies the best isoform assignment based on alignment quality, fraction of read aligned, and fraction of transcript aligned
 
 check_splice: adds check for read matching reference transcript at all splice sites
 

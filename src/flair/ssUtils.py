@@ -85,6 +85,7 @@ def addOtherJuncs(juncs, filetype, bedJuncs, minsup, chromosomes, printErrFname,
 
 def gtfToSSBed(gtffile, knownSS, printErr, printErrFname, verbose):
     ''' Convenience function, reformats GTF to bed'''
+    # N.B. doesn't  actually create a BED
 
     # First: get all exons per transcript.
     exons = dict()

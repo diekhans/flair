@@ -3,6 +3,11 @@ from flair.pycbio import NoStackError
 
 VERSION = "3.0.0b1"
 
+# Fixed minimum and maximums size for an intron, set to very
+# conservative values.  This could be configurable at some point.
+MIN_INTRON_SIZE = 20
+MAX_INTRON_SIZE = 2000000
+
 class FlairError(Exception):
     """General error condition in FLAIR"""
     pass

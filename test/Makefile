@@ -101,6 +101,32 @@ test-help: test-main-help test-align-help test-correct-help test-collapse-help \
 
 
 ##
+# options for pytest
+##
+# keep pytest xdist from complaining about the terminal
+export TERM=dumb
+
+# override number of process with nproc=0 to run
+# in main process.
+# stdout not echo with mulitple processes
+# keep small for now due to startup time with only a few tests
+nproc = 0
+
+# logging level
+loglevel = INFO
+
+# override with pytest_extra=-v or what ever
+pytest_extra =
+
+# --tb=native standard traceback, less decoration, but lots pytest internal
+# traceback = --tb=native
+
+# used to find source of ResourceWarning
+export PYTHONTRACEMALLOC = 20
+
+PYTEST_CMD = ${PYTEST} --capture=no ${traceback} --numprocesses=${nproc} --log-cli-level=${loglevel} ${pytest_extra}
+
+##
 # Note: expected and output are sorted in cases where the order is not stable
 ##
 
@@ -171,6 +197,39 @@ define cmp_expect_sort
 	@test -e $O/${1} || (echo Error: output file missing: $O/${1}; exit 1)
 	diff <(sort $E/${1}) <(sort $O/${1})
 endef
+
+default:
+	@echo To run all tests, use: >&2
+	@echo "   " make test >&2
+	@echo To run expression diff tests that depend on R >&2
+	@echo "   " make test-diffexpress >&2
+	@echo To run all tests >&2
+	@echo "   " make test-all >&2
+	@echo To run library tests >&2
+	@echo "   " make test-lib >&2
+	@echo otherwise run individual tests by specifying test target, such as: >&2
+	@echo "   " make align-tests >&2
+	@echo remove output files: >&2
+	@echo "   " make clean >&2
+	@echo remove output and downloaded genomes files: >&2
+	@echo "   " make real-clean >&2
+	@exit 1
+
+test:  align-tests correct-tests collapse-tests quantify-tests \
+	combine-tests predict-productivity-tests diff-iso-usage-tests \
+	plot-usage-tests transcriptome-tests fusion-tests variants-tests \
+	partition-tests lib-tests
+
+test-diffexpress: diffexp-tests diffsplice-tests
+
+test-all: test test-diffexpress
+
+test-help: test-main-help test-align-help test-correct-help test-collapse-help \
+           test-quantify-help test-diffexp-help test-diffsplice-help \
+           test-predict-productivity-help test-diff-iso-usage-help \
+	   test-plot-usage-help test-transcriptome-help test-variants-help test-fusion-help
+
+test_lib: lib-tests
 
 ###
 # MAIN COMMAND
@@ -626,6 +685,11 @@ test-partition-sam: mkdirs
 	$(call cmp_expect,$@.ranges.bed)
 	$(call cmp_expect,$@.out)
 
+##
+# library tests with pytest
+##
+lib-tests:
+	${PYTEST_CMD} .
 
 ##
 # build test input files

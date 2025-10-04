@@ -84,3 +84,10 @@ def test_adjust_end(basic_corrector):
     expt = "chr20	35548508	35557489	HISEQ:1287:HKCG7BCX3:1:1107:10927:56503	60	+	35548508	35557489	27,158,119	7	166,58,32,97,65,83,50,	0,299,6535,7524,7698,8464,8931,"
     got = basic_corrector.correct_read(_mk_bed(read))
     assert str(got) == expt
+
+def test_adjust_both(basic_corrector):
+    # both of intron adjusted
+    read = "chr17	64499205	64504277	HISEQ:1287:HKCG7BCX3:1:1101:17977:51378	60	-	64499205	64504277	217,95,2	11	1121,225,64,62,111,173,161,142,66,134,56,	0,1343,2800,2956,3233,3720,3982,4224,4597,4777,5016,"
+    expt = "chr17	64499205	64504277	HISEQ:1287:HKCG7BCX3:1:1101:17977:51378	60	-	64499205	64504277	217,95,2	11	1121,225,60,62,111,173,161,142,66,134,56,	0,1343,2804,2956,3233,3720,3982,4224,4597,4777,5016,"
+    got = basic_corrector.correct_read(_mk_bed(read))
+    assert str(got) == expt

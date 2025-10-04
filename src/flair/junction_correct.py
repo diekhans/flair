@@ -39,7 +39,7 @@ class JunctionCorrector:
         is no support for an intron."""
         assert len(read_bed.blocks) > 0
         new_introns = _correct_introns(self, read_bed)
-        if len(new_introns) == 0:
+        if new_introns is None:
             return None
         return _build_corrected_read_bed(read_bed, new_introns)
 
@@ -86,7 +86,7 @@ def _correct_intron(corrector, read_bed, start, end, new_introns):
     """add and update an intron. Return False if any are not supported."""
 
     intron_hits = corrector.overlap_introns(read_bed.chrom, start, end, read_bed.strand)
-    if len(intron_hits) == 0:
+    if intron_hits is None:
         logging.debug(f"No intron support for '{read_bed.name}' {read_bed.chrom}:{start}-{end}")
         return False
 

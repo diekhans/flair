@@ -9,8 +9,9 @@ from flair.ssUtils import gtfToSSBed
 from flair.pycbio.hgdata.bed import BedReader
 from flair.pycbio.tsv import TsvReader
 
-class Intron:
-    """Coordinates and support.  Strand maybe None if not available"""
+class SupportIntron:
+    """Coordinates and support.  Strand could None if not available, but currently
+    enforce having strand."""
     __slots__ = ("chrom", "start", "end", "strand",
                  "annot_supported", "read_supported", "read_support_cnt")
 
@@ -23,7 +24,7 @@ class Intron:
         self.read_support_cnt = 0
 
     def __str__(self):
-        return (f"Intron({self.chrom}:{self.start}-{self.end}({self.strand}) "
+        return (f"SupportIntron({self.chrom}:{self.start}-{self.end}({self.strand}) "
                 f"annot={self.annot_supported} read={self.read_supported} read_cnt={self.read_support_cnt}")
 
 class IntronSupport:
@@ -50,9 +51,9 @@ class IntronSupport:
                 return donor  # same intron
         return None
 
-    def _add_intron(self, chrom, start, end, strand, read_count):
+    def _add_intron(self, chrom, start, end, strand):
         assert start < end
-        intron = Intron(chrom, start, end, strand)
+        intron = SupportIntron(chrom, start, end, strand)
         self.coords_maps[chrom].addi(start, start + 1, intron)
         self.coords_maps[chrom].addi(end - 1, end, intron)
         return intron
@@ -60,7 +61,7 @@ class IntronSupport:
     def _add_support(self, chrom, start, end, strand, read_count):
         intron = self._find_intron(chrom, start, end, strand)
         if intron is None:
-            intron = self._add_intron(chrom, start, end, strand, read_count)
+            intron = self._add_intron(chrom, start, end, strand)
         if read_count is None:
             intron.annot_supported = True
         else:
@@ -75,35 +76,54 @@ class IntronSupport:
             return True
         return False
 
-    def overlap(self, chrom, start, end, margin=0):
+    def overlap(self, chrom, start, end, flank_window=0):
         """Get list of overlapping introns where either ends overlaps this range with
-        margin padding."""
-        return [entry.data for entry in self.coords_maps[chrom].overlap(start - margin, end + margin)]
+        a +/-bp window"""
+        return [entry.data for entry in self.coords_maps[chrom].overlap(start - flank_window, end + flank_window)]
 
-    def overlap_introns(self, chrom, start, end, margin=0):
+    def overlap_introns(self, chrom, start, end, flank_window=0):
         """get introns were splice junctions overlap each end of this range,
-        with margin bases on either of ends of the range"""
+        with a +/-bp window on either of ends of the range. Empty list if no hits"""
         # only return introns that hit both ends
-        starts = self.overlap(chrom, start, start + 1, margin)
-        ends = self.overlap(chrom, end - 1, end, margin)
+
+        starts = self.overlap(chrom, start, start + 1, flank_window)
+        ends = self.overlap(chrom, end - 1, end, flank_window)
+
         ends_ids = set([id(e) for e in ends])
         return [intron for intron in starts
                 if id(intron) in ends_ids]
 
+    def chroms(self):
+        "generator for chroms"
+        return self.coords_maps.keys()
+
+    def entries(self, chrom=None):
+        "generator for (chrom, entries), optionally on a chrom (introns have two entries)"
+        chroms = [chrom] if chrom is not None else self.chroms()
+        for chrom in chroms:
+            for entry in self.coords_maps[chrom].items():
+                yield chrom, entry
+
+    def introns(self, chrom=None):
+        "generator for introns, optionally on a chrom"
+        seen = set()  # introns are in twice
+        for _, entry in entries(chrom):
+            if id(entry.data) not in seen:
+                yield entry.data
+                seen.add(id(entry.data))
+
     def dump(self, fh=sys.stderr):
         print("IntronSupport:", file=fh)
-        for chrom, coords_map in self.coords_maps.items():
-            for entry in coords_map.items():
-                print(f"\t{chrom}:{entry.begin}:{entry.end}", entry.data, file=fh)
+        for chrom, entry in self.entries():
+            print(f"{chrom}:{entry.begin}-{entry.end}: {entry.data}", file=fh)
 
 
 def _load_read_bed_intron(intron_support, bed):
     if not (6 <= bed.numStdCols <= 9):
         raise FlairInputDataError(f"intron BED must have 6 to 9 columns, found {bed.numStdCols}")
     if bed.strand not in ('+', '-'):
-        raise FlairInputDataError(f"Invalid strand '{bed.strand}' in intron BED must be '+', '-', or '.'")
-    strand = bed.strand if bed.strand != '.' else None
-    return intron_support.add_support(bed.chrom, bed.chromStart, bed.chromEnd, strand, bed.score)
+        raise FlairInputDataError(f"Invalid strand `{bed.strand}' in intron BED must be `+' or `-'")
+    return intron_support.add_support(bed.chrom, bed.chromStart, bed.chromEnd, bed.strand, bed.score)
 
 def load_read_bed_introns(intron_support, bed_file):
     """load introns from a BED6, with score being the counts of reads.
@@ -119,6 +139,23 @@ def load_read_bed_introns(intron_support, bed_file):
         raise FlairInputDataError(f"parsing intron BED failed: {bed_file} line {line_num}") from exc
     if cnt == 0:
         raise FlairInputDataError(f"No introns loaded from BED: {bed_file}")
+    return cnt
+
+def load_read_star_introns(intron_support, sj_file):
+    """load introns from STAR junction file"""
+    columns = ("chrom", "start", "end", "strand", "motif", "annot", "uniq_map_cnt",
+               "multi_map_cnt", "max_overhang")
+    cnt = 0
+    line_num = 1  # include header
+    try:
+        for rec in TsvReader(sj_file, columns=columns, typeMap={"chrom": str}, defaultColType=int):
+            line_num += 1
+            if _load_star_intron(intron_support, rec):
+                cnt += 1
+    except Exception as exc:
+        raise FlairInputDataError(f"parsing STAR SJ failed: {sj_file} line {line_num}") from exc
+    if cnt == 0:
+        raise FlairInputDataError(f"No introns loaded from STAR SJ file: {sj_file}")
     return cnt
 
 def _load_annot_gtf_introns(intron_support, juncs):
@@ -143,21 +180,7 @@ def load_annot_gtf_introns(intron_support, gtf_file):
 
 def _load_star_intron(intron_support, rec):
     strand = (None, '+', '-')[rec.strand]
-    return intron_support.add_support(rec.chrom, rec.start - 1, rec.end, strand, rec.uniq_map_cnt)
-
-def load_read_star_introns(intron_support, sj_file):
-    """load introns from STAR junction file"""
-    columns = ("chrom", "start", "end", "strand", "motif", "annot", "uniq_map_cnt",
-               "multi_map_cnt", "max_overhang")
-    cnt = 0
-    line_num = 1  # include header
-    try:
-        for rec in TsvReader(sj_file, columns=columns, typeMap={"chrom": str}, defaultColType=int):
-            line_num += 1
-            if _load_star_intron(intron_support, rec):
-                cnt += 1
-    except Exception as exc:
-        raise FlairInputDataError(f"parsing STAR SJ failed: {sj_file} line {line_num}") from exc
-    if cnt == 0:
-        raise FlairInputDataError(f"No introns loaded from STAR SJ file: {sj_file}")
-    return cnt
+    if strand is None:
+        return False
+    else:
+        return intron_support.add_support(rec.chrom, rec.start - 1, rec.end, strand, rec.uniq_map_cnt)

@@ -8,7 +8,7 @@ FLAKE8_SRC = \
         flair_variantmodels.py \
         flair_variantquant.py \
         flair_transcriptome.py \
-	intron_support.py \
+	intron_support.py
 
 FLAKE8_TEST = \
 	test_correct_lib.py

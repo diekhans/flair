@@ -1,4 +1,5 @@
 import os
+from collections import namedtuple
 from flair.pycbio import NoStackError
 
 VERSION = "3.0.0b1"
@@ -23,3 +24,10 @@ def set_unix_path():
     # this should be replaced with converting the exec use an explicit
     # path to make code more obvious.
     os.environ["PATH"] = os.path.dirname(os.path.realpath(__file__)) + ':' + os.environ["PATH"]
+
+
+class Range(namedtuple("Range", ("start", "end"))):
+    "container for a zero-based, half-open genome range"
+
+    def __len(self):
+        return self.end - self.start

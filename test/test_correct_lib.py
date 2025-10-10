@@ -91,3 +91,10 @@ def test_adjust_both(basic_corrector):
     expt = "chr17	64499205	64504277	HISEQ:1287:HKCG7BCX3:1:1101:17977:51378	60	-	64499205	64504277	217,95,2	11	1121,225,60,62,111,173,161,142,66,134,56,	0,1343,2804,2956,3233,3720,3982,4224,4597,4777,5016,"
     got = basic_corrector.correct_read(_mk_bed(read))
     assert str(got) == expt
+
+def test_try_some(basic_corrector):
+    from flair.pycbio.hgdata.bed import BedReader#@
+    for read_bed in BedReader("expected/test-correct_all_inconsistent.bed"):
+        got = basic_corrector.correct_read(read_bed)
+        if (got is not None) and str(got) != str(read_bed):
+            print("changed:", read_bed.name, file=sys.stderr)

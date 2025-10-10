@@ -1,7 +1,6 @@
 """
 Correction of read splice junctions from external evidence.
 """
-import sys
 import logging
 import copy
 from flair import Range

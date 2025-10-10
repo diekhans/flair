@@ -9,6 +9,10 @@ from flair.ssUtils import gtfToSSBed
 from flair.pycbio.hgdata.bed import BedReader
 from flair.pycbio.tsv import TsvReader
 
+# FIXME:
+#  - chrom_filter when no support on chromosome maybe causes errors, fix this with random
+#    indexing
+
 class SupportIntron:
     """Coordinates and support.  Strand could None if not available, but currently
     enforce having strand."""
@@ -107,7 +111,7 @@ class IntronSupport:
     def introns(self, chrom=None):
         "generator for introns, optionally on a chrom"
         seen = set()  # introns are in twice
-        for _, entry in entries(chrom):
+        for _, entry in self.entries(chrom):
             if id(entry.data) not in seen:
                 yield entry.data
                 seen.add(id(entry.data))
@@ -118,14 +122,16 @@ class IntronSupport:
             print(f"{chrom}:{entry.begin}-{entry.end}: {entry.data}", file=fh)
 
 
-def _load_read_bed_intron(intron_support, bed):
+def _load_read_bed_intron(intron_support, bed, chrom_filter):
+    if (chrom_filter is not None) and (bed.chrom != chrom_filter):
+        reeturn False
     if not (6 <= bed.numStdCols <= 9):
         raise FlairInputDataError(f"intron BED must have 6 to 9 columns, found {bed.numStdCols}")
     if bed.strand not in ('+', '-'):
         raise FlairInputDataError(f"Invalid strand `{bed.strand}' in intron BED must be `+' or `-'")
     return intron_support.add_support(bed.chrom, bed.chromStart, bed.chromEnd, bed.strand, bed.score)
 
-def load_read_bed_introns(intron_support, bed_file):
+def load_read_bed_introns(intron_support, bed_file, *, chrom_filter=None):
     """load introns from a BED6, with score being the counts of reads.
     Return number of introns loaded."""
     cnt = 0
@@ -133,7 +139,7 @@ def load_read_bed_introns(intron_support, bed_file):
     try:
         for bed in BedReader(bed_file):
             line_num += 1
-            if _load_read_bed_intron(intron_support, bed):
+            if _load_read_bed_intron(intron_support, bed, chrom_filter):
                 cnt += 1
     except Exception as exc:
         raise FlairInputDataError(f"parsing intron BED failed: {bed_file} line {line_num}") from exc
@@ -141,7 +147,15 @@ def load_read_bed_introns(intron_support, bed_file):
         raise FlairInputDataError(f"No introns loaded from BED: {bed_file}")
     return cnt
 
-def load_read_star_introns(intron_support, sj_file):
+def _load_star_intron(intron_support, rec, chrom_filter):
+    if (chrom_filter is not None) and (rec.chrom !- chrom_filter):
+        return False
+    strand = (None, '+', '-')[rec.strand]
+    if strand is None:
+        return False
+    return intron_support.add_support(rec.chrom, rec.start - 1, rec.end, strand, rec.uniq_map_cnt)
+
+def load_read_star_introns(intron_support, sj_file, *, chrom_filter=None):
     """load introns from STAR junction file"""
     columns = ("chrom", "start", "end", "strand", "motif", "annot", "uniq_map_cnt",
                "multi_map_cnt", "max_overhang")
@@ -150,7 +164,7 @@ def load_read_star_introns(intron_support, sj_file):
     try:
         for rec in TsvReader(sj_file, columns=columns, typeMap={"chrom": str}, defaultColType=int):
             line_num += 1
-            if _load_star_intron(intron_support, rec):
+            if _load_star_intron(intron_support, rec, chrom_filter):
                 cnt += 1
     except Exception as exc:
         raise FlairInputDataError(f"parsing STAR SJ failed: {sj_file} line {line_num}") from exc
@@ -158,29 +172,28 @@ def load_read_star_introns(intron_support, sj_file):
         raise FlairInputDataError(f"No introns loaded from STAR SJ file: {sj_file}")
     return cnt
 
-def _load_annot_gtf_introns(intron_support, juncs):
+def _load_annot_gtf_introns(intron_support, juncs, chrom_filter):
+    # FIXME: this is tmp until can randomly access GTFs
+    chroms = list(juncs.keys())
+    if chrom_filter is not None:
+        if chrom_filter not in chroms:
+            return 0
+        chroms = [chrom_filter]
     cnt = 0
-    for chrom in juncs.keys():
+    for chrom in chroms:
         for start, end, strand in juncs[chrom]:
             if intron_support.add_support(chrom, start, end, strand):
                 cnt += 1
     return cnt
 
-def load_annot_gtf_introns(intron_support, gtf_file):
+def load_annot_gtf_introns(intron_support, gtf_file, *, chrom_filter=None):
     """Load introns from a annotation GTF. Return number of introns loaded."""
     try:
         knownSS = {}  # flotsam
         juncs, _, _ = gtfToSSBed(gtf_file, knownSS, False, None, False)
-        cnt = _load_annot_gtf_introns(intron_support, juncs)
+        cnt = _load_annot_gtf_introns(intron_support, juncs, chrom_filter)
     except Exception as exc:
         raise FlairInputDataError(f"parsing annotation GTF failed: {gtf_file}") from exc
     if cnt == 0:
         raise FlairInputDataError(f"No introns loaded from GTF: {gtf_file}")
     return cnt
-
-def _load_star_intron(intron_support, rec):
-    strand = (None, '+', '-')[rec.strand]
-    if strand is None:
-        return False
-    else:
-        return intron_support.add_support(rec.chrom, rec.start - 1, rec.end, strand, rec.uniq_map_cnt)

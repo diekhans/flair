@@ -124,7 +124,7 @@ class IntronSupport:
 
 def _load_read_bed_intron(intron_support, bed, chrom_filter):
     if (chrom_filter is not None) and (bed.chrom != chrom_filter):
-        reeturn False
+        return False
     if not (6 <= bed.numStdCols <= 9):
         raise FlairInputDataError(f"intron BED must have 6 to 9 columns, found {bed.numStdCols}")
     if bed.strand not in ('+', '-'):
@@ -148,7 +148,7 @@ def load_read_bed_introns(intron_support, bed_file, *, chrom_filter=None):
     return cnt
 
 def _load_star_intron(intron_support, rec, chrom_filter):
-    if (chrom_filter is not None) and (rec.chrom !- chrom_filter):
+    if (chrom_filter is not None) and (rec.chrom != chrom_filter):
         return False
     strand = (None, '+', '-')[rec.strand]
     if strand is None:

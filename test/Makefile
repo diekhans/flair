@@ -708,7 +708,7 @@ mkdirs:
 	@mkdir -p $O
 
 clean:
-	rm -rf $O $D
+	rm -rf $O $D __pycache__
 
 real-clean : clean
 	rm -rf ${TI}

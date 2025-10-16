@@ -77,6 +77,9 @@ BASIC_ANNOTATION_INCOMPLETE = $I/basic.annotation.incomplete.gtf
 BASIC_SHORTREAD_JUNCTIONS = $I/basic.shortread_junctions.tab
 BASIC_PROMOTER_REGIONS = $I/basic.promoter_regions.bed
 BASIC_READS_MANIFEST = $I/basic.reads_manifest.txt
+
+# FIXME: test are based on old test data, however flair quantify
+# does not produce sufficient pvalues to work diffexpr
 BASIC_COUNTS_MATRIX = $I/basic.counts_matrix_diffexp.tsv
 BASIC_DIFFSPLICE_MATRIX = $I/basic.counts_matrix_diffsplice.tsv
 BASIC_DIFFSPLICE_BED = $I/test-collapse-annot.isoforms.bed

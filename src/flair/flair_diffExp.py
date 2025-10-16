@@ -129,17 +129,33 @@ def do_mtc_ttest(filename, genetototcounts):
         if line[0] != 'ids':
             id = line[0]
             gene = id.split('_')[-1]
+
+            # First three columns after ID = WT counts; rest = VAR counts
             wtcounts = [int(x) for x in line[1:4]]
             varcounts = [int(x) for x in line[4:]]
+
+            # Compute median difference between variant and WT
             deltaval = median(varcounts) - median(wtcounts)
             wttot, vartot = mean(genetototcounts[gene][:3]), mean(genetototcounts[gene][3:])
+
+            # Compute normalized usage difference, ignore if totals are zero
             deltausage = (mean(varcounts) / vartot if vartot > 0 else 0) - (mean(wtcounts) / wttot if wttot > 0 else 0)
+
+            # Only test if median difference is large enough (|Δ| > 3)
             if abs(deltaval) > 3:
+                # Two-sample t-test between WT and VAR counts
+                # ranksums() wast too strict for small replicates
                 pval = ttest_ind(wtcounts, varcounts).pvalue
-                # pval = ranksums(wtcounts, varcounts).pvalue ###doesn't work, too stringent
+
                 allids.append(id)
                 allpval.append(pval)
                 alldeltas.append(deltausage)
+
+    if len(allpval) == 0:
+        raise FlairInputDataError(f"no p-values with sufficient delta values from: {filename}")
+
+    # Apply multiple-testing correction (Benjamini–Hochberg FDR by default)
+
     corrpval = list(multipletests(allpval)[1])
     return allids, alldeltas, corrpval
 

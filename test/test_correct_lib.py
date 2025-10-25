@@ -1,6 +1,6 @@
 import pytest
 from flair.pycbio.hgdata.bed import Bed
-from flair.intron_support import IntronSupport, load_read_bed_introns, load_annot_gtf_introns, load_read_star_introns
+from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
 
 # lots of long lines for BEDs
@@ -37,14 +37,14 @@ def _basic_load_reads_annot_support_test(intron_support):
 
 def test_load_bed_annot_support():
     intron_support = IntronSupport()
-    load_read_bed_introns(intron_support, "input/basic.shortread_junctions.bed")
-    load_annot_gtf_introns(intron_support, "input/basic.annotation.gtf")
+    intron_support.load_bed("input/basic.shortread_junctions.bed")
+    intron_support.load_gtf("input/basic.annotation.gtf")
     _basic_load_reads_annot_support_test(intron_support)
 
 def test_load_star_annot_support():
     intron_support = IntronSupport()
-    load_read_star_introns(intron_support, "input/basic.shortread_junctions.tab")
-    load_annot_gtf_introns(intron_support, "input/basic.annotation.gtf")
+    intron_support.load_star("input/basic.shortread_junctions.tab")
+    intron_support.load_gtf("input/basic.annotation.gtf")
     _basic_load_reads_annot_support_test(intron_support)
 
 
@@ -54,8 +54,8 @@ def test_load_star_annot_support():
 @pytest.fixture(scope="session")
 def basic_support():
     intron_support = IntronSupport()
-    load_read_bed_introns(intron_support, "input/basic.shortread_junctions.bed")
-    load_annot_gtf_introns(intron_support, "input/basic.annotation.gtf")
+    intron_support.load_bed("input/basic.shortread_junctions.bed")
+    intron_support.load_gtf("input/basic.annotation.gtf")
     return intron_support
 
 @pytest.fixture(scope="session")
@@ -91,10 +91,3 @@ def test_adjust_both(basic_corrector):
     expt = "chr17	64499205	64504277	HISEQ:1287:HKCG7BCX3:1:1101:17977:51378	60	-	64499205	64504277	217,95,2	11	1121,225,60,62,111,173,161,142,66,134,56,	0,1343,2804,2956,3233,3720,3982,4224,4597,4777,5016,"
     got = basic_corrector.correct_read(_mk_bed(read))
     assert str(got) == expt
-
-def test_try_some(basic_corrector):
-    from flair.pycbio.hgdata.bed import BedReader#@
-    for read_bed in BedReader("expected/test-correct_all_inconsistent.bed"):
-        got = basic_corrector.correct_read(read_bed)
-        if (got is not None) and str(got) != str(read_bed):
-            print("changed:", read_bed.name, file=sys.stderr)

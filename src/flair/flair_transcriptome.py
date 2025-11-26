@@ -750,7 +750,7 @@ def generate_transcriptome_reference(temp_prefix, all_transcripts, annot_transcr
 def identify_good_match_to_annot(args, temp_prefix, chrom, annot_transcript_to_exons, all_transcripts, genome, junc_to_gene):
     good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs = [], set(), {}
     if not args.no_align_to_annot and len(all_transcripts) > 0:
-        logging.info('generating transcriptome reference')
+        # logging.info('generating transcriptome reference')
         if args.end_norm_dist:
             transcript_to_strand, transcript_to_new_exons = \
                 generate_transcriptome_reference(temp_prefix,
@@ -766,13 +766,13 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annot_transcript_to_e
                                                                                         annot_transcript_to_exons,
                                                                                         chrom, genome, junc_to_gene)
         clipping_file = temp_prefix + '.reads.genomicclipping.txt'  # if args.trimmedreads else None
-        logging.info('aligning to transcriptome reference')
+        # logging.info('aligning to transcriptome reference')
         transcriptome_align_and_count(args, temp_prefix + '.reads.fasta',
                                    temp_prefix + '.annotated_transcripts.fa',
                                    temp_prefix + '.annotated_transcripts.bed',
                                    temp_prefix + '.matchannot.counts.tsv',
                                    temp_prefix + '.matchannot.read.map.txt', True, clipping_file, temp_prefix + '.annotated_transcripts_uniquebound.txt')
-        logging.info('processing good matches')
+        # logging.info('processing good matches')
         with open(temp_prefix + '.matchannot.bed', 'w') as annot_bed:
             for line in open(temp_prefix + '.matchannot.read.map.txt'):
                 striso, reads = line.rstrip().split('\t', 1)
@@ -1391,28 +1391,28 @@ def run_collapse_by_chrom(listofargs):
     # then align reads to transcriptome and run count_sam_transcripts
     genome = pysam.FastaFile(args.genome)
     bam_file = pysam.AlignmentFile(args.genome_aligned_bam, 'rb')
-
+    # logging.info(f'{args.output} running on {region_chrom}:{region_start}-{region_end}')
     # if args.trimmedreads:
-    logging.info('generating genomic clipping reference')
+    # logging.info('generating genomic clipping reference')
     generate_genomic_clipping_reference(temp_prefix, bam_file, region_chrom, region_start, region_end)
-    logging.info('identifying good match to annot')
+    # logging.info('identifying good match to annot')
 
     good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs = \
         identify_good_match_to_annot(args, temp_prefix, region_chrom, annot_transcript_to_exons, all_annot_transcripts, genome, junc_to_gene)
     # load splice junctions for chrom
-    logging.info('correcting splice junctions')
+    # logging.info('correcting splice junctions')
     
     intervalTree, junctionBoundaryDict = buildIntervalTree(splice_site_annot_chrom, args.ss_window, region_chrom, False)
 
     sj_to_ends = filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, region_end, bam_file, good_align_to_annot, intervalTree,
                                        junctionBoundaryDict)
     bam_file.close()
-    logging.info('generating isoforms')
+    # logging.info('generating isoforms')
 
     firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE = process_juncs_to_firstpass_isos(args, temp_prefix,
                                                                                                  region_chrom, sj_to_ends,
                                                                                                  firstpass_SE)
-    logging.info('filtering isoforms')
+    # logging.info('filtering isoforms')
 
     firstpass, iso_to_unique_bound = filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE,
                                     junc_to_gene, sup_annot_transcript_to_juncs, annot_transcript_to_exons)
@@ -1420,7 +1420,7 @@ def run_collapse_by_chrom(listofargs):
     if not args.no_align_to_annot and len(all_annot_transcripts) > 0:
         temp_to_remove.extend([temp_prefix + '.annotated_transcripts.bed', temp_prefix + '.annotated_transcripts.fa'])
     if len(firstpass.keys()) > 0:
-        logging.info('getting gene names and writing firstpass')
+        # logging.info('getting gene names and writing firstpass')
         
         if args.end_norm_dist:
             get_gene_names_and_write_firstpass(temp_prefix, region_chrom, firstpass, juncchain_to_transcript, junc_to_gene,
@@ -1430,7 +1430,7 @@ def run_collapse_by_chrom(listofargs):
             get_gene_names_and_write_firstpass(temp_prefix, region_chrom, firstpass, juncchain_to_transcript, junc_to_gene,
                                           all_annot_SE, gene_to_annot_juncs, gene_to_strand, genome, all_spliced_exons, unique_bound=iso_to_unique_bound)
         clipping_file = temp_prefix + '.reads.genomicclipping.txt'  # if args.trimmedreads else None
-        logging.info('identifying good match to firstpass')
+        # logging.info('identifying good match to firstpass')
         
         transcriptome_align_and_count(args, temp_prefix + 'reads.notannotmatch.fasta',
                                    temp_prefix + '.firstpass.fa',
@@ -1508,13 +1508,15 @@ def run_collapse_from_bam():
     child_errs = set()
     c = 1
     for i in p.imap(run_collapse_by_chrom, chunk_cmds):
-        logging.info(f'\rdone running chunk {c} of {len(chunk_cmds)}')
+        logging.info(f'\r {args.output} done running chunk {c} of {len(chunk_cmds)}')
         child_errs.add(i)
         c += 1
     p.close()
     p.join()
     if len(child_errs) > 1:
         raise ValueError(child_errs)
+    
+    logging.info(f'combining chunks and finalizing output')
 
     files_to_combine = ['.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed', '.firstpass.bed',
                       '.novelisos.counts.tsv', '.novelisos.read.map.txt']

@@ -526,6 +526,12 @@ test-fusion-help: mkdirs
 	$(call cmp_expect,$@.out)
 
 
+test-refseq:
+# 	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq --genome genome.refSeq.fa -t 4 -o $O/$@ --filtertype separate --minfragmentsize 40 --maxintronlen 350k
+# 	flair transcriptome  -b $O/$@.bam -g genome.refSeq.fa --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $I/refSeq.test.annotation.gtf -o $O/$@
+	flair fusion -g genome.refSeq.fa -f $I/refSeq.test.annotation.gtf -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq -b $O/$@_chimeric.bam --maxloci 4 -o $O/$@ -s 2
+
+
 ##
 # flair_partition command
 ##

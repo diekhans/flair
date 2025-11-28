@@ -10,6 +10,8 @@ import logging
 from flair.flair_align import inferMM2JuncStrand, intron_chain_to_exon_starts
 from flair.ssUtils import addOtherJuncs, gtfToSSBed
 from flair.ssPrep import buildIntervalTree, ssCorrect
+from flair.intron_support import IntronSupport
+from flair.junction_correct import JunctionCorrector
 import multiprocessing as mp
 from collections import Counter
 from flair import FlairInputDataError
@@ -170,48 +172,20 @@ def binary_search(query, data):
             break
     return i
 
+def setup_junction_corrector(gtf, junction_tab, junction_bed, junction_support, ss_window,
+                             *, chrom_filter=None):
+    """Create corrector with junction support evidence."""
+    # FIXME: currently reloads for every partition.
+    intron_support = IntronSupport()
+    if junction_bed is not None:
+        intron_support.load_bed_introns(junction_bed, chrom_filter=chrom_filter)
+    if junction_tab is not None:
+        intron_support.load_star(junction_tab, chrom_filter=chrom_filter)
+    if gtf is not None:
+        intron_support.load_gtf(gtf, chrom_filter=chrom_filter)
+    return JunctionCorrector(intron_support, ss_window, junction_support):
 
-def generate_known_SS_database(args, temp_dir):
-    # Convert gtf to bed and split by chromosome.
-    # logging.info(f'Building ss database: {temp_dir}')
-    juncs, chromosomes, knownSS = dict(), set(), dict()  # initialize juncs for adding to db
-
-    if args.gtf:
-        juncs, chromosomes, knownSS = gtfToSSBed(args.gtf, knownSS, False, False, False)
-
-    # Do the same for the other juncs file.
-    if args.junction_tab or args.junction_bed:
-        if args.junction_tab:
-            shortread, type = args.junction_tab, 'tab'
-        else:
-            shortread, type = args.junction_bed, 'bed'
-        juncs, chromosomes, addFlag, hasNovelJuncs = addOtherJuncs(juncs, type, shortread, args.junction_support, chromosomes,
-                                                    False, knownSS, False, False)
-        if not addFlag:
-            logging.info(f'WARNING: No junctions found in {shortread} that passed filters')
-        if not hasNovelJuncs:
-            logging.info(f'WARNING: {shortread} did not have any additional junctions that passed filters and were not in {args.gtf}')
-
-    # added to allow annotations not to be used.
-    if len(list(juncs.keys())) < 1:
-        raise FlairInputDataError("No junctions from GTF or junctionsBed to correct with")
-
-    annotation_files = dict()
-    for chrom in chromosomes:
-        annotation_files[chrom] = os.path.join(temp_dir, "%s_known_juncs.bed" % chrom)
-        with open(os.path.join(temp_dir, "%s_known_juncs.bed" % chrom), "w") as out:
-            if chrom in juncs:
-                data = juncs[chrom]
-                sortedData = sorted(list(data.keys()), key=lambda item: item[0])
-                for k in sortedData:
-                    annotation = data[k]
-                    c1, c2, strand = k
-                    print(chrom, c1, c2, annotation, ".", strand, sep="\t", file=out)
-    return chromosomes, annotation_files
-
-
-
-def correct_single_read(bed_read, intervalTree, junctionBoundaryDict):
+def correct_single_read(bed_read, junction_corrector):
     juncs = bed_read.juncs
     strand = bed_read.strand
     c1Type, c2Type = ("donor", "acceptor") if strand == "+" else ("acceptor", "donor")
@@ -530,7 +504,7 @@ def get_best_ends(curr_group, end_window):
             if groupStrands[i][0] != 'ambig':
                 myStrand = groupStrands[i][0]
                 break
-        
+
         for start1, end1, strand1, name1 in curr_group:
             score, weighted_score = 0, 0
             for start2, end2, strand2, name2 in curr_group:
@@ -600,7 +574,7 @@ def collapse_end_groups(end_window, read_ends, do_get_best_ends=True):
 
 
 def filter_spliced_iso(filter_type, support, juncs, exons, name, score, junc_to_gene,
-                       annot_transcript_to_exons, firstpass_junc_to_name, firstpass_unfiltered,  
+                       annot_transcript_to_exons, firstpass_junc_to_name, firstpass_unfiltered,
                        sup_annot_transcript_to_juncs, strand):#, check_term_exons):
     isos_with_similar_juncs = set()
     for j in juncs:
@@ -808,9 +782,9 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annot_transcript_to_e
     return good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs
 
 
-def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, region_end, bam_file, good_align_to_annot, intervalTree,
-                            junctionBoundaryDict, generate_fasta=True, sj_to_ends=None,
-                            return_used_reads=False, allow_secondary=False):
+def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, region_end, bam_file, good_align_to_annot,
+                               junction_corrector, generate_fasta=True, sj_to_ends=None,
+                               return_used_reads=False, allow_secondary=False):
     if not sj_to_ends:
         sj_to_ends = {}
     if generate_fasta:
@@ -835,10 +809,8 @@ def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, re
                                                     read.query_name,
                                                     read.reference_name, read.mapping_quality, read_strand)
                         if len(bed_read.juncs) > 0:
-                            new_strand = inferMM2JuncStrand(read)
-                            if new_strand != 'ambig':
-                                bed_read.strand = new_strand
-                        corrected_read = correct_single_read(bed_read, intervalTree, junctionBoundaryDict)
+                            bed_read.strand = inferMM2JuncStrand(read)
+                        corrected_read = correct_single_read(bed_read, junction_corrector)
                         if corrected_read:
                             junc_key = tuple(sorted(corrected_read.juncs))
                             if junc_key not in sj_to_ends:
@@ -998,9 +970,9 @@ def filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, fi
                     # passesfiltering = filter_spliced_iso(args, this_iso, firstpass_junc_to_name, firstpass_unfiltered,
                     #                                    junc_to_gene, sup_annot_transcript_to_juncs, annot_transcript_to_exons)
                     # if passesfiltering:
-                    is_not_subset, unique_seq = filter_spliced_iso(args.filter, args.sjc_support, this_iso.juncs, this_iso.exons, 
-                                          this_iso.name, this_iso.score, junc_to_gene, annot_transcript_to_exons, 
-                                          firstpass_junc_to_name, firstpass_unfiltered,  
+                    is_not_subset, unique_seq = filter_spliced_iso(args.filter, args.sjc_support, this_iso.juncs, this_iso.exons,
+                                          this_iso.name, this_iso.score, junc_to_gene, annot_transcript_to_exons,
+                                          firstpass_junc_to_name, firstpass_unfiltered,
                                           sup_annot_transcript_to_juncs, this_iso.strand)#, True):
                     if is_not_subset:
                         firstpass[iso_name] = this_iso
@@ -1167,10 +1139,10 @@ def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, juncchain_
                 this_iso.reset_from_exons(exons)
             this_iso.strand = strand
             this_iso.name = this_transcript + '_' + gene
-            
+
             if unique_bound and iso_name in unique_bound:
                 unique_out.write(this_iso.name + '\t' + unique_bound[iso_name] + '\n')
-            
+
             iso_out.write('\t'.join(this_iso.get_bed_line()) + '\n')
             seq_out.write('>' + this_iso.name + '\n')
             seq_out.write(this_iso.get_sequence(genome) + '\n')
@@ -1400,12 +1372,9 @@ def run_collapse_by_chrom(listofargs):
     good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs = \
         identify_good_match_to_annot(args, temp_prefix, region_chrom, annot_transcript_to_exons, all_annot_transcripts, genome, junc_to_gene)
     # load splice junctions for chrom
-    logging.info('correcting splice junctions')
-    
-    intervalTree, junctionBoundaryDict = buildIntervalTree(splice_site_annot_chrom, args.ss_window, region_chrom, False)
-
-    sj_to_ends = filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, region_end, bam_file, good_align_to_annot, intervalTree,
-                                       junctionBoundaryDict)
+    junction_corrector = setup_junction_corrector(args.gtf, args.junction_tab, args.junction_bed, args.junction_support,
+                                                  args.ss_window)
+    sj_to_ends = filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, region_end, bam_file, good_align_to_annot, junction_corrector)
     bam_file.close()
     logging.info('generating isoforms')
 
@@ -1421,7 +1390,7 @@ def run_collapse_by_chrom(listofargs):
         temp_to_remove.extend([temp_prefix + '.annotated_transcripts.bed', temp_prefix + '.annotated_transcripts.fa'])
     if len(firstpass.keys()) > 0:
         logging.info('getting gene names and writing firstpass')
-        
+
         if args.end_norm_dist:
             get_gene_names_and_write_firstpass(temp_prefix, region_chrom, firstpass, juncchain_to_transcript, junc_to_gene,
                                           all_annot_SE, gene_to_annot_juncs, gene_to_strand, genome, all_spliced_exons,
@@ -1431,7 +1400,7 @@ def run_collapse_by_chrom(listofargs):
                                           all_annot_SE, gene_to_annot_juncs, gene_to_strand, genome, all_spliced_exons, unique_bound=iso_to_unique_bound)
         clipping_file = temp_prefix + '.reads.genomicclipping.txt'  # if args.trimmedreads else None
         logging.info('identifying good match to firstpass')
-        
+
         transcriptome_align_and_count(args, temp_prefix + 'reads.notannotmatch.fasta',
                                    temp_prefix + '.firstpass.fa',
                                    temp_prefix + '.firstpass.bed',
@@ -1478,7 +1447,11 @@ def run_collapse_from_bam():
             all_regions.append((chrom, start, end))
     logging.info(f'Number of regions {len(all_regions)}')
     logging.info('Generating splice site database')
-    known_chromosomes, annotation_files = generate_known_SS_database(args, temp_dir)
+
+    #FIXME: load and serialize in some manner, maybe build tabix BED
+    junction_corrector = setup_junction_corrector(args.gtf, args.junction_tab, args.junction_bed, args.junction_support,
+                                                  args.ss_window)
+    known_chromosomes = junction_corrector.chroms
 
     regions_to_annot_data = {}
     if args.gtf:

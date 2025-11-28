@@ -39,6 +39,7 @@ class IntronSupport:
         self.coords_maps = defaultdict(IntervalTree)
         self.min_intron_size = min_intron_size
         self.max_intron_size = max_intron_size
+        self.chroms = set()
 
     def _find_point_strand(self, chrom, point, strand):
         for entry in self.coords_maps[chrom][point]:
@@ -59,6 +60,7 @@ class IntronSupport:
         intron = SupportIntron(chrom, start, end, strand)
         self.coords_maps[chrom].addi(start, start + 1, intron)
         self.coords_maps[chrom].addi(end - 1, end, intron)
+        self.chroms.add(chrom)
         return intron
 
     def _add_support(self, chrom, start, end, strand, read_count):

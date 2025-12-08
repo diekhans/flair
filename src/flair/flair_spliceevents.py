@@ -231,16 +231,16 @@ def determine_juncs_are_subset(juncs, alljuncs):
 def get_start_end_counts(readinfo, subset_info, sample, first_junc, last_junc, t_starts_ends, t_first_last_sj, allsamples):
     for start, end, rstrand, name in readinfo:
         # print(end, subset_info)
-        if subset_info[0] == None or first_junc-start > subset_info[0]:
-            t_starts_ends[0].append((start, sample))
-            if first_junc not in t_first_last_sj[0]:
-                t_first_last_sj[0][first_junc] = {s:0 for s in allsamples}
-            t_first_last_sj[0][first_junc][sample] += 1
-        if subset_info[1] == None or end-last_junc > subset_info[1]:
-            t_starts_ends[1].append((end, sample))
-            if last_junc not in t_first_last_sj[1]:
-                t_first_last_sj[1][last_junc] = {s:0 for s in allsamples}
-            t_first_last_sj[1][last_junc][sample] += 1
+        # if subset_info[0] == None or first_junc-start > subset_info[0]:
+        t_starts_ends[0].append((start, sample))
+        if first_junc not in t_first_last_sj[0]:
+            t_first_last_sj[0][first_junc] = {s:0 for s in allsamples}
+        t_first_last_sj[0][first_junc][sample] += 1
+        # if subset_info[1] == None or end-last_junc > subset_info[1]:
+        t_starts_ends[1].append((end, sample))
+        if last_junc not in t_first_last_sj[1]:
+            t_first_last_sj[1][last_junc] = {s:0 for s in allsamples}
+        t_first_last_sj[1][last_junc][sample] += 1
     return t_starts_ends, t_first_last_sj
 
 
@@ -268,6 +268,7 @@ def group_ends(t_starts_ends, allsamples, window):
         end_to_counts[g] = {s: 0 for s in allsamples}
         for e in curr_group:
             end_to_counts[g][e[1]] += 1
+
         grouped_ends[i] = end_to_counts
     return grouped_ends
 
@@ -284,6 +285,7 @@ def extract_splicing_info(allsamples, allgenetojuncs, gene, strand, thischrom, o
     # process each sample for each gene - only ever storing data for one gene at a time
     for s in range(len(allsamples)):
         sample = allsamples[s]
+        ##TODO: change to genetojuncs being all juncs from all samples!!
         genetojuncs = allgenetojuncs[s]
         if gene in genetojuncs:
             for juncs in genetojuncs[gene]:
@@ -306,29 +308,48 @@ def extract_splicing_info(allsamples, allgenetojuncs, gene, strand, thischrom, o
 
 
 def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gene, mycolor, out, outbed, min_read_support):
-    esjuncs = set()
+    outer_junc_to_skipping = {}
+    outer_junc_to_all_inc = {}
     for prevjunc, nextjunc in exonjpairs:
         outerjunc = (prevjunc[0], nextjunc[1])
-        if outerjunc in alljuncs:  # if there's any reads that skip this exon
+        if outerjunc in alljuncs:
+            if outerjunc not in outer_junc_to_skipping:
+                outer_junc_to_skipping[outerjunc] = set()
+                outer_junc_to_all_inc[outerjunc] = []
+            outer_junc_to_skipping[outerjunc].add((prevjunc, nextjunc))
             increads = [exonjpairs[(prevjunc, nextjunc)][s] for s in allsamples]
-            excreads = [alljuncs[outerjunc][s] for s in allsamples]
-            if any([x >= min_read_support for x in increads]) and any([x >= min_read_support for x in excreads]):
-
-                esname = f'es-of-{thischrom}:{prevjunc[1]}-{nextjunc[0]}' \
-                         f'({strand})-at-{outerjunc[0]}-{outerjunc[1]}-{gene}'
-                incline = [thischrom, prevjunc[1], nextjunc[0], f'inc_{esname}', str(min(sum(increads), 1000)), strand,
-                           prevjunc[1], nextjunc[0], mycolor]
-                outbed.write('\t'.join([str(x) for x in incline]) + '\n')
-                incline = [f'inc_{esname}'] + increads
-                out.write('\t'.join([str(x) for x in incline]) + '\n')
-                excline = [thischrom, outerjunc[0], outerjunc[1], f'exc_{esname}', str(min(sum(excreads), 1000)), strand,
-                           outerjunc[0], outerjunc[1], mycolor]
-                outbed.write('\t'.join([str(x) for x in excline]) + '\n')
-                excline = [f'exc_{esname}'] + excreads
-                out.write('\t'.join([str(x) for x in excline]) + '\n')
-
+            outer_junc_to_all_inc[outerjunc].extend(increads)
+    
+    esjuncs = set()
+    for outerjunc in outer_junc_to_skipping:
+        excreads = [alljuncs[outerjunc][s] for s in allsamples]
+        ename = f'es-at-{thischrom}:{outerjunc[0]}-{outerjunc[1]}({strand})-{gene}'
+        if any([x >= min_read_support for x in excreads]) and any([x >= min_read_support for x in outer_junc_to_all_inc[outerjunc]]):
+            otherreads = [0 for x in range(len(allsamples))]
+            for prevjunc, nextjunc in outer_junc_to_skipping[outerjunc]:
+                increads = [exonjpairs[(prevjunc, nextjunc)][s] for s in allsamples]
+                if any([x >= min_read_support for x in increads]):
+                    incname = f'inc-of-{thischrom}:{prevjunc[1]}-{nextjunc[0]}_{ename}'
+                    incline = [thischrom, prevjunc[1], nextjunc[0], incname, str(min(sum(increads), 1000)), strand,
+                            prevjunc[1], nextjunc[0], mycolor]
+                    outbed.write('\t'.join([str(x) for x in incline]) + '\n')
+                    incline = [incname] + increads
+                    out.write('\t'.join([str(x) for x in incline]) + '\n')
+                else:
+                    otherreads = [otherreads[x] + increads[x] for x in range(len(allsamples))]
+                
                 esjuncs.add(prevjunc)
                 esjuncs.add(nextjunc)
+            if any([x >= min_read_support for x in otherreads]):
+                incname = f'inc-of-other:{prevjunc[1]}-{nextjunc[0]}_{ename}'
+                incline = [incname] + otherreads
+                out.write('\t'.join([str(x) for x in incline]) + '\n')
+            excline = [thischrom, outerjunc[0], outerjunc[1], f'exc_{ename}', str(min(sum(excreads), 1000)), strand,
+                           outerjunc[0], outerjunc[1], mycolor]
+            outbed.write('\t'.join([str(x) for x in excline]) + '\n')
+            excline = [f'exc_{ename}'] + excreads
+            out.write('\t'.join([str(x) for x in excline]) + '\n')
+            
     return esjuncs
 
 
@@ -336,12 +357,14 @@ def process_junction_events(ssAtoB, esjuncs, type, thischrom, strand, gene, alls
     for ssA in ssAtoB:
         if len(ssAtoB[ssA]) > 1:  # don't report when no alternative splicing at all
             goodB = []
+            othercounts = [0 for x in range(len(allsamples))]
             for ssB in ssAtoB[ssA]:
                 junc = (min((ssA, ssB)), max((ssA, ssB)))
-                # TODO should I instead be trying to subtract the exon skipping read support from the alt 5/3 read support?
                 sscounts = [ssAtoB[ssA][ssB][s] for s in allsamples]
                 if junc not in esjuncs and any([x >= min_read_support for x in sscounts]):
                     goodB.append(ssB)
+                else:
+                    othercounts = [othercounts[x] + sscounts[x] for x in range(len(allsamples))]
             if len(goodB) > 1:  # only if alt splicing, not including junctions involved in exon skipping
                 ssAname = f'{type}-relTo-{thischrom}:{ssA}({strand})-{gene}'
                 for ssB in goodB:
@@ -352,6 +375,11 @@ def process_junction_events(ssAtoB, esjuncs, type, thischrom, strand, gene, alls
                     outbed.write('\t'.join([str(x) for x in outline]) + '\n')
                     outline = [ssBname] + sscounts
                     out.write('\t'.join([str(x) for x in outline]) + '\n')
+                if any([x >= min_read_support for x in othercounts]):
+                    ssBname = f'other_{ssAname}'
+                    outline = [ssBname] + othercounts
+                    out.write('\t'.join([str(x) for x in outline]) + '\n')
+
 
 
 def write_intron_retention(alljuncs, allsamples, allblocks, thischrom, strand, gene, mycolor, out, outbed, min_read_support):
@@ -381,10 +409,13 @@ def write_intron_retention(alljuncs, allsamples, allblocks, thischrom, strand, g
 
 def write_ends(grouped_ends, allsamples, thischrom, strand, gene, eventname, mycolor, out, outbed, support):
     good_ends = []
+    othercounts = [0 for x in range(len(allsamples))]
     for e in grouped_ends:
         outcounts = [grouped_ends[e][s] for s in allsamples]
         if any([x>=support for x in outcounts]):
             good_ends.append(e)
+        else:
+            othercounts = [othercounts[x] + outcounts[x] for x in range(len(allsamples))]
     if len(good_ends) > 1:
         for e in good_ends:
             outcounts = [grouped_ends[e][s] for s in allsamples]
@@ -393,6 +424,9 @@ def write_ends(grouped_ends, allsamples, thischrom, strand, gene, eventname, myc
                            e-1, e, mycolor]
             outbed.write('\t'.join([str(x) for x in bedline]) + '\n')
             countsline = [name] + outcounts
+            out.write('\t'.join([str(x) for x in countsline]) + '\n')
+        if any([x>=support for x in othercounts]):
+            countsline = [f'other_{eventname}-{gene}'] + outcounts
             out.write('\t'.join([str(x) for x in countsline]) + '\n')
 
 
@@ -477,61 +511,73 @@ def generate_good_match_to_annot(args, tempprefix, thischrom, annottranscripttoe
         pipettor.run([mm2_cmd, count_cmd])
         pipettor.run([liftovercmd])
         pipettor.run([removefilescmd])
+        return tempprefix + '.matchannot.genomelift.sorted.bam'
     else:
-        out = pysam.AlignmentFile(tempprefix + '.matchannot.genomelift.sorted.bam', 'wb', template=bamfile)
-        out.close()
-    return tempprefix + '.matchannot.genomelift.sorted.bam'
+        return None
+        # with pysam.AlignmentFile(bamfile, 'rb') as samfile:
+        #     out = pysam.AlignmentFile(tempprefix + '.matchannot.genomelift.sorted.bam', 'wb', template=samfile)
+        #     out.close()
+    
 
 
 def runcollapsebychrom(listofargs):
     args, tempprefix, splicesiteannot_chrom, juncstotranscript, junctogene, allannotse, allsplicedexons, \
         genetoannotjuncs, genetostrand, annottranscripttoexons, allannottranscripts = listofargs
-    # first extract reads for chrom as fasta
-    tempsplit = tempprefix.split('/')[-1].split('-')
-    rchrom, rstart, rend = '-'.join(tempsplit[:-2]), tempsplit[-2], tempsplit[-1]
+    if not os.path.exists(tempprefix + '.diffsplice.bed'):
+    
+        # first extract reads for chrom as fasta
+        tempsplit = tempprefix.split('/')[-1].split('-')
+        rchrom, rstart, rend = '-'.join(tempsplit[:-2]), tempsplit[-2], tempsplit[-1]
 
-    # align reads to annot [transcripts +- 1000bp], filter to only good aligns, convert to genomic coords
-    # get reads from that bam file (no need to correct), save junctions - am actually doing correct, could probably remove that
-    # add junctions from other reads that did not match ref transcriptome well after correction
+        # align reads to annot [transcripts +- 1000bp], filter to only good aligns, convert to genomic coords
+        # get reads from that bam file (no need to correct), save junctions - am actually doing correct, could probably remove that
+        # add junctions from other reads that did not match ref transcriptome well after correction
 
-    # load splice junctions for chrom
-    intervalTree, junctionBoundaryDict = buildIntervalTree(splicesiteannot_chrom, args.ss_window, rchrom, False)
-    genome = pysam.FastaFile(args.genome)
+        # load splice junctions for chrom
+        intervalTree, junctionBoundaryDict = buildIntervalTree(splicesiteannot_chrom, args.ss_window, rchrom, False)
+        genome = pysam.FastaFile(args.genome)
 
-    allgenetojuncs, allsamples = [], []
-    for line in open(args.manifest):
-        if line[0] != '#':
-            line = line.rstrip().split('\t')
-            sample, bamfile = line
+        allgenetojuncs, allsamples = [], []
+        for line in open(args.manifest):
+            if line[0] != '#':
+                line = line.rstrip().split('\t')
+                sample, bamfile = line
 
-            pipettor.run([('samtools', 'view', '-h', bamfile, rchrom + ':' + rstart + '-' + rend),
-                          ('samtools', 'fasta', '-')],
-                         stdout=open(tempprefix + '.reads.fasta', 'w'))
+                pipettor.run([('samtools', 'view', '-h', bamfile, rchrom + ':' + rstart + '-' + rend),
+                            ('samtools', 'fasta', '-')],
+                            stdout=open(tempprefix + '.reads.fasta', 'w'))
 
-            samfile = pysam.AlignmentFile(bamfile, 'rb')
-            ft.generate_genomic_clipping_reference(tempprefix, samfile, rchrom, rstart, rend)
-            samfile.close()
+                samfile = pysam.AlignmentFile(bamfile, 'rb')
+                ft.generate_genomic_clipping_reference(tempprefix, samfile, rchrom, rstart, rend)
+                samfile.close()
 
-            goodannotaligns = generate_good_match_to_annot(args, tempprefix, rchrom, annottranscripttoexons,
-                                                           allannottranscripts, genome, bamfile, junctogene)
+                goodannotaligns = generate_good_match_to_annot(args, tempprefix, rchrom, annottranscripttoexons,
+                                                            allannottranscripts, genome, bamfile, junctogene)
+                
+                # goodannotaligns = None
+                # if os.path.exists(tempprefix + '.matchannot.genomelift.sorted.bam'):
+                #     goodannotaligns = tempprefix + '.matchannot.genomelift.sorted.bam'
 
-            samfile = pysam.AlignmentFile(goodannotaligns, 'rb')
-            sjtoends, goodaligntoannot = ft.filter_correct_group_reads(args, tempprefix, rchrom, rstart, rend, samfile,
-                                                                    set(), intervalTree, junctionBoundaryDict,
-                                                                    generate_fasta=False, sj_to_ends={},
-                                                                    return_used_reads=True, allow_secondary=True)
-            samfile.close()
-            samfile = pysam.AlignmentFile(bamfile, 'rb')
-            sjtoends = ft.filter_correct_group_reads(args, tempprefix, rchrom, rstart, rend, samfile, goodaligntoannot,
-                                                  intervalTree, junctionBoundaryDict,
-                                                  generate_fasta=False, sj_to_ends=sjtoends, return_used_reads=False)
-            samfile.close()
-            genetojuncs, nogenejuncs, sereads = group_juncs_by_annot_gene(sjtoends, juncstotranscript, junctogene,
-                                                                          genetoannotjuncs, allsplicedexons)
-            allsamples.append(sample)
-            allgenetojuncs.append(genetojuncs)
+                if goodannotaligns:
+                    samfile = pysam.AlignmentFile(goodannotaligns, 'rb')
+                    sjtoends, goodaligntoannot = ft.filter_correct_group_reads(args, tempprefix, rchrom, rstart, rend, samfile,
+                                                                            set(), intervalTree, junctionBoundaryDict,
+                                                                            generate_fasta=False, sj_to_ends={},
+                                                                            return_used_reads=True, allow_secondary=True)
+                    samfile.close()
+                else:
+                    sjtoends, goodaligntoannot = {}, set()
+                samfile = pysam.AlignmentFile(bamfile, 'rb')
+                sjtoends = ft.filter_correct_group_reads(args, tempprefix, rchrom, rstart, rend, samfile, goodaligntoannot,
+                                                    intervalTree, junctionBoundaryDict,
+                                                    generate_fasta=False, sj_to_ends=sjtoends, return_used_reads=False)
+                samfile.close()
+                genetojuncs, nogenejuncs, sereads = group_juncs_by_annot_gene(sjtoends, juncstotranscript, junctogene,
+                                                                            genetoannotjuncs, allsplicedexons)
+                allsamples.append(sample)
+                allgenetojuncs.append(genetojuncs)
 
-    process_gene_to_events(tempprefix, rchrom, allsamples, allgenetojuncs, allannottranscripts, genetostrand, args.support, args.output_read_ends)
+        process_gene_to_events(tempprefix, rchrom, allsamples, allgenetojuncs, allannottranscripts, genetostrand, args.support, args.output_read_ends)
 
 
 def collapsefrombam():
@@ -542,11 +588,18 @@ def collapsefrombam():
     allchrom = genome.references
     logging.info('making temp dir')
     tempDir = ft.make_correct_temp_dir()
+    # tempDir = '8b787533-f2da-4298-9434-b90d996ece3a/'
 
     allregions = []
     for chrom in allchrom:
         chromsize = genome.get_reference_length(chrom)
         allregions.append((chrom, 0, chromsize))
+
+    # allregions = [allregions[14]]
+    # print(allregions)
+    # allregions = [('chr15', 78871681, 78898928)] ##MORF4L1
+    # allregions = [('chr7', 116499621, 116509151)] ##CAV2
+
     logging.info(f'Running by chroms: {len(allregions)}')
     logging.info('Generating splice site database')
     knownchromosomes, annotationFiles = ft.generate_known_SS_database(args, tempDir)

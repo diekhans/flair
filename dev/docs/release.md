@@ -221,7 +221,7 @@ make publish-testpypi
 make -k -O -j 32 test-testpypi
 ```
 
-If an error occurs, delete can the testpypi release.
+If an error occurs, delete the testpypi release.
 
 
 ## 12. Git commit, tag push
@@ -255,8 +255,9 @@ Select Draft a new release (top right) and follow instructions
 
 Copy CHANGELOG.md entry to release description.
 
-Add the three Conda `misc/*.yaml` files as assets of the release
-to support direct creation of Conda environments via the URLs.
+Add the three Conda `misc/*.yaml` files as assets of the release by drag and
+drop files into the "Attach binaries" section at the bottom.  This support
+direct creation of Conda environments via the URLs.
 
 Set these options:
 - Set as the latest release 
@@ -274,6 +275,7 @@ Full details are here: https://bioconda.github.io/contributor/index.html
    - correct dependencies from pyproject.yaml, these must be explicitly listed in meta.yaml
      - NOTE: check numpy version against conda-forge
    - pypi URL and sha256 of the `.tar.gz` source file found at https://pypi.org/project/flair-brookslab/#files
+   -  entry_points should match pyproject.toml
 4  create a local bioconda environment and test:
 ```
    cd ../bioconda-recipes/
@@ -291,14 +293,15 @@ for inspection.
 
 NOTE: If there are NameResolutionErrors in the file, this is due to needing to 
 `--network=host` with Docker, however there is no way to pass it in.
-Just give up and push and let the bot check it/
+Just give up and push and let the bot check it.
 
   
-5. git commit -am 'FLAIR v2.2.0 release' && git push
-6. submit a pull request via https://github.com/bioconda/bioconda-recipes/pulls
+5. git commit -am 'FLAIR v<version> release'
+6. git push
+7. submit a pull request via https://github.com/bioconda/bioconda-recipes/pulls
    Title of pull request should be "Update FLAIR <version> release"
    This starts a testing process. Once all checks have passed and a green mark appears, 
-   Once tit has passed, add this comment to the pull request:
+   Once the tests have passed, add this comment to the pull request:
 	    @BiocondaBot please add label
    This should take care of the red 'Review Required' and 'Merging is Blocked' notifications
 
@@ -349,7 +352,9 @@ docker push brookslab/flair:latest
 
 The reason that the build takes long is that pysam doesn't have a fast installation method.
 
-## 17. Set the release as the latest in PyPi
+## 17. Check the release is the latest in PyPi
+This happens automatically bases on version numbers.
+An alpha or beta release will not be made the latest.
 
 ## 18. Set the release latest in GitHub
 - Change from pre-release to latest release

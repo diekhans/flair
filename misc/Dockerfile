@@ -13,7 +13,7 @@ ARG FLAIR_INSTALL=yes
 
 # pip specification from where to install FLAIR, which can be a URL
 #    ARG FLAIR_PIP_SPEC=git+https://github.com/BrooksLabUCSC/flair.git
-ARG FLAIR_PIP_SPEC=flair-brookslab==v2.2.0+master
+ARG FLAIR_PIP_SPEC=flair-brookslab==v3.0.0b1
 
 ##
 # safer bash
@@ -37,8 +37,8 @@ RUN apt-get update && apt-get install -y \
         libc-bin libc6-dev \
         file net-tools iproute2 iputils-ping dnsutils \
 	bedtools=2.31.1+dfsg-2 \
-        python3=3.12.3-0ubuntu2 \
-	python3-pip=24.0+dfsg-1ubuntu1 \
+        python3=3.12.3-0ubuntu2.1 \
+	python3-pip \
         libtirpc-dev \
         libcurl4-openssl-dev \
         r-base

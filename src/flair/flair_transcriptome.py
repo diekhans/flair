@@ -1306,10 +1306,11 @@ def combine_annot_w_novel_and_write_files(args, gene_to_juncs_to_ends, genome):
             gtf_lines, t_starts, t_ends = [], [], []
             for chrom, strand, juncs in gene_to_juncs_to_ends[gene]:
                 ends_list = gene_to_juncs_to_ends[gene][(chrom, strand, juncs)]
+                ends_list.sort(key=lambda x:x[-1], reverse=True)
 
                 name_to_used_counts = {}
                 for iso_info in ends_list:
-                    if len(iso_info[-1])/gene_tot >= args.frac_support:
+                    if len(iso_info[-1])/gene_tot >= args.frac_support or len(t_starts) == 0:
                         marker, iso = iso_info[2]
                         iso = iso.split('-endvar')[0]
                         if iso in name_to_used_counts:

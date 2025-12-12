@@ -51,8 +51,8 @@ def flair_module_run(opts, module, module_argv):  # noqa: C901
         from flair.flair_correct import correct
         correct()
     elif module == 'transcriptome':
-        from flair.flair_transcriptome import run_collapse_from_bam
-        run_collapse_from_bam()
+        from flair.flair_transcriptome import flair_transcriptome
+        flair_transcriptome()
     elif module == 'collapse':
         from flair.flair_collapse import collapse
         collapse()

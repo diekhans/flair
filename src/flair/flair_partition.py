@@ -33,7 +33,8 @@ def parse_args():
                         help="Input SAM/BAM file.  Maybe repeated.")
     parser.add_argument("--gtf", dest="gtf_files", action="append", default=[],
                         help="Input GTF file.  Maybe repeated.")
-    parser.add_argument("ranges_bed", help="Output ranges BED file, will be compressed if it ends in .gz")
+    parser.add_argument("ranges_bed",
+                        help="Output ranges BED file, will be compressed if it ends in .gz")
     loggingOps.addCmdOptions(parser, defaultLevel=logging.WARN)
     args = parser.parse_args()
     loggingOps.setupFromCmd(args)

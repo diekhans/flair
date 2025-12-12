@@ -58,8 +58,8 @@ options:
                         Set to 0 for max recall
   --no_stringent        specify if all supporting reads don't need to be full-
                         length (aligned to first and last exons of
-                        transcript). Use this for fragmented libraries, but
-                        understand that it will impact precision.
+                        transcript). Use this for fragmented libraries, with
+                        an understanding that it will impact precision.
   --no_check_splice     don't enforce accurate alignment around splice site.
                         Specify this for libraries with high error rates, but
                         it will reduce precision

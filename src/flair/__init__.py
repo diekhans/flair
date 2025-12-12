@@ -29,5 +29,5 @@ def set_unix_path():
 class Range(namedtuple("Range", ("start", "end"))):
     "container for a zero-based, half-open genome range"
 
-    def __len(self):
+    def __len__(self):
         return self.end - self.start

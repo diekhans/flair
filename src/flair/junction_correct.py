@@ -33,11 +33,18 @@ class JunctionCorrector:
         return list(filter(_filter_intron,
                            self.intron_support.overlap_introns(chrom, start, end, self.flank_window)))
 
-    def correct_read(self, read_bed):
+    def correct_read_junctions(self, read_bed):
         """correct a read based on support from introns.  Return None if there
-        is no support for an intron."""
+        is no support for an intron. Returns junctions."""
         assert len(read_bed.blocks) > 0
-        new_introns = _correct_introns(self, read_bed)
+        return _correct_introns(self, read_bed)
+        if new_introns is None:
+            return None
+
+    def correct_read_bed(self, read_bed):
+        """correct a read based on support from introns.  Return None if there
+        is no support for an intron. Return a new BED"""
+        new_introns = self.correct_read_junctions(read_bed)
         if new_introns is None:
             return None
         return _build_corrected_read_bed(read_bed, new_introns)

@@ -10,7 +10,8 @@ from flair import FlairInputDataError
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 
-compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
+compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N', 
+                'R':'Y', 'Y':'R','K':'M','M':'K','S':'S','W':'W', 'B':'V','V':'B','D':'H','H':'D'}
 
 def getStarts(gtf):
     starts = list()
@@ -344,7 +345,10 @@ def parse_all_bam_files(sampledata, tempdir, vcfvars, mode=None):  # mode is onl
                 tempfilename = gettempfilename(s.reference_name, mode)
                 myvcfvars = get_correct_vcf_vars(vcfvars, s.reference_name, s.reference_start, s.reference_end)
                 if myvcfvars:
+                    # print('vcf regions: ', len(myvcfvars))
                     parse_single_bam_read(s, tempdir, myvcfvars, sindex, tempfilename)
+                # else:
+                #     print('no vcf vars')
         samfile.close()
         print('done parsing reads for', sample)
 

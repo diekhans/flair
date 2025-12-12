@@ -1236,7 +1236,8 @@ def process_detected_isos(args, map_file, bed_file, marker, gene_to_juncs_to_end
 
 
 def get_reverse_complement(seq):
-    compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
+    compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N', 
+                'R':'Y', 'Y':'R','K':'M','M':'K','S':'S','W':'W', 'B':'V','V':'B','D':'H','H':'D'}
     seq = seq.upper()
     new_seq = []
     for base in seq:

@@ -16,6 +16,8 @@ from flair.ssPrep import buildIntervalTree, ssCorrect
 from flair import FlairInputDataError
 from flair.pycbio.hgdata.bed import BedReader
 
+# FIXME: remove C901 too complex from, .flake8
+
 def parse_parallel_mode(parser, parallel_mode):
     "values: auto:10GB, bychrom, or byregion"
 
@@ -851,6 +853,7 @@ def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, re
         return sj_to_ends
 
 
+# FIXME: what is this about?
 # def group_firstpass_single_exon(good_ends_with_sup_reads):
 #     last_end, furthergroups, thisgroup = 0, [], []
 #     good_ends_with_sup_reads.sort(key=lambda x: [x[1], x[2]])
@@ -1010,9 +1013,9 @@ def filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, fi
     return firstpass, iso_to_unique_bound
 
 
-def combine_temp_files_by_suffix(args, temp_prefixes, suffixes):
+def combine_temp_files_by_suffix(output, temp_prefixes, suffixes):
     for filesuffix in suffixes:
-        with open(args.output + filesuffix, 'wb') as combined_file:
+        with open(output + filesuffix, 'wb') as combined_file:
             for temp_prefix in temp_prefixes:
                 with open(temp_prefix + filesuffix, 'rb') as fd:
                     shutil.copyfileobj(fd, combined_file, 1024 * 1024 * 10)
@@ -1232,6 +1235,23 @@ def process_detected_isos(args, map_file, bed_file, marker, gene_to_juncs_to_end
             gene_to_juncs_to_ends[gene][junc_key].append([start, end, iso_id, og_iso_to_reads[iso_id]])
     return gene_to_juncs_to_ends
 
+def isoform_processing(args, output):
+    gene_to_juncs_to_ends = {}
+    if not args.no_align_to_annot:
+        gene_to_juncs_to_ends = process_detected_isos(args,
+                                                      output + '.matchannot.read.map.txt',
+                                                      output + '.matchannot.bed',
+                                                      'a',
+                                                      gene_to_juncs_to_ends,
+                                                      output + '.matchannot.ends.tsv')
+    gene_to_juncs_to_ends = process_detected_isos(args,
+                                                  output + '.novelisos.read.map.txt',
+                                                  output + '.firstpass.bed',
+                                                  'n',
+                                                  gene_to_juncs_to_ends,
+                                                  output + '.novelisos.ends.tsv')
+    return gene_to_juncs_to_ends
+
 
 def get_reverse_complement(seq):
     compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
@@ -1432,6 +1452,9 @@ def run_collapse_by_chrom(listofargs):
         for f in temp_to_remove:
             os.remove(f)
 
+####
+# partition of genome
+####
 
 def decide_parallel_mode(parallel_mode, genome_aligned_bam):
     # parallel_option format already validated in option validation method
@@ -1467,7 +1490,99 @@ def partition_input(parallel_mode, genome, genome_aligned_bam, gtf, threads):
     else:
         return partition_input_by_region(genome_aligned_bam, gtf, threads)
 
+####
+# Splitting input data by partition and running in parallel
+###
+
+def chunk_split_region(args, region_chrom, region_start, region_end, gtf,
+                       regions_to_annot_data, annotation_files,
+                       temp_dir, chunk_cmds, temp_prefixes):
+    # FIXME: turn all the parameters into an object
+    juncchain_to_transcript, junc_to_gene, all_annot_SE, all_spliced_exons, gene_to_annot_juncs, gene_to_strand, \
+        annot_transcript_to_exons, all_annot_transcripts = {}, {}, [], {}, {}, {}, {}, []
+    if gtf:
+        juncchain_to_transcript, junc_to_gene, all_annot_SE, all_spliced_exons, gene_to_annot_juncs, gene_to_strand, \
+            annot_transcript_to_exons, all_annot_transcripts \
+            = regions_to_annot_data[(region_chrom, region_start, region_end)].return_data()
+
+    splice_site_annot_chrom = annotation_files[region_chrom]
+    temp_prefix = temp_dir + '-'.join([region_chrom, str(region_start), str(region_end)])
+    chunk_cmds.append([args, temp_prefix, splice_site_annot_chrom, juncchain_to_transcript,
+                      junc_to_gene, all_annot_SE, all_spliced_exons, gene_to_annot_juncs, gene_to_strand,
+                      annot_transcript_to_exons, all_annot_transcripts])
+    temp_prefixes.append(temp_prefix)
+
+def chunk_split(args, all_regions, known_chromosomes, gtf,
+                regions_to_annot_data, annotation_files,
+                temp_dir):
+    chunk_cmds = []
+    temp_prefixes = []
+    for region_chrom, region_start, region_end in all_regions:
+        if region_chrom in known_chromosomes:
+            chunk_split_region(args, region_chrom, region_start, region_end, gtf,
+                               regions_to_annot_data, annotation_files,
+                               temp_dir, chunk_cmds, temp_prefixes)
+    return chunk_cmds, temp_prefixes
+
+def run_chunks(threads, chunk_cmds):
+    mp.set_start_method('fork')
+    p = mp.Pool(threads)
+    child_errs = set()
+    c = 1
+    for i in p.imap(run_collapse_by_chrom, chunk_cmds):
+        logging.info(f'\rdone running chunk {c} of {len(chunk_cmds)}')
+        child_errs.add(i)
+        c += 1
+    p.close()
+    p.join()
+    if len(child_errs) > 1:
+        # FIXME need validate that this produces reasonable errors
+        raise ValueError('\n'.join(child_errs))
+
+def combine_chunks(args, output, temp_prefixes):
+    files_to_combine = ['.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed', '.firstpass.bed',
+                        '.novelisos.counts.tsv', '.novelisos.read.map.txt']
+    if not args.no_align_to_annot:
+        files_to_combine.extend(['.matchannot.counts.tsv', '.matchannot.read.map.txt', '.matchannot.bed'])
+        if args.end_norm_dist:
+            files_to_combine.append('.matchannot.ends.tsv')
+    if args.end_norm_dist:
+        files_to_combine.append('.novelisos.ends.tsv')
+    combine_temp_files_by_suffix(output, temp_prefixes, files_to_combine)
+
+####
+# main
+####
+def remote_intermediates(output):
+    files_to_remove = ['.firstpass.reallyunfiltered.bed',
+                       '.firstpass.unfiltered.bed',
+                       '.firstpass.bed',
+                       '.novelisos.counts.tsv',
+                       '.novelisos.read.map.txt',
+                       '.matchannot.bed',
+                       '.matchannot.counts.tsv',
+                       '.matchannot.read.map.txt',
+                       '.matchannot.ends.tsv',
+                       '.novelisos.ends.tsv']
+    for f in files_to_remove:
+        p = output + f
+        if os.path.exists(p):
+            os.remove(p)
+
+def predict_productivity(output, genome_fasta, gtf):
+    cmd = ('predictProductivity',
+           '-i', output + '.isoforms.bed',
+           '-o', output + '.isoforms.CDS',
+           '--gtf', gtf,
+           '--genome_fasta', genome_fasta,
+           '--longestORF')
+    pipettor.run(cmd)
+    os.remove(output + '.isoforms.CDS.info.tsv')
+
 def flair_transcriptome():
+    # FIXME: split options out that are flags to indicate what to do
+    # so args doesn't get passes but we don't have to pass so many options
+
     args = get_args()
     logging.info('loading genome')
     genome = pysam.FastaFile(args.genome)
@@ -1486,95 +1601,28 @@ def flair_transcriptome():
     if args.gtf:
         logging.info('Extracting annotation from GTF')
         regions_to_annot_data = get_annot_info(args.gtf, all_regions)
+
     logging.info('splitting by chunk')
-    chunk_cmds = []
-    temp_prefixes = []
-    for region_chrom, region_start, region_end in all_regions:
-        if region_chrom in known_chromosomes:
-            juncchain_to_transcript, junc_to_gene, all_annot_SE, all_spliced_exons, gene_to_annot_juncs, gene_to_strand, \
-                annot_transcript_to_exons, all_annot_transcripts = {}, {}, [], {}, {}, {}, {}, []
-            if args.gtf:
-                juncchain_to_transcript, junc_to_gene, all_annot_SE, all_spliced_exons, gene_to_annot_juncs, gene_to_strand, \
-                    annot_transcript_to_exons, all_annot_transcripts \
-                    = regions_to_annot_data[(region_chrom, region_start, region_end)].return_data()
+    chunk_cmds, temp_prefixes = chunk_split(args, all_regions, known_chromosomes, args.gtf,
+                                            regions_to_annot_data, annotation_files,
+                                            temp_dir)
 
-            splice_site_annot_chrom = annotation_files[region_chrom]
-            temp_prefix = temp_dir + '-'.join([region_chrom, str(region_start), str(region_end)])
-            chunk_cmds.append([args, temp_prefix, splice_site_annot_chrom, juncchain_to_transcript,
-                              junc_to_gene, all_annot_SE, all_spliced_exons, gene_to_annot_juncs, gene_to_strand,
-                              annot_transcript_to_exons, all_annot_transcripts])
-            temp_prefixes.append(temp_prefix)
     logging.info('running by chunk')
-    mp.set_start_method('fork')
-    p = mp.Pool(args.threads)
-    child_errs = set()
-    c = 1
-    for i in p.imap(run_collapse_by_chrom, chunk_cmds):
-        logging.info(f'done running chunk {c} of {len(chunk_cmds)}')
-        child_errs.add(i)
-        c += 1
-    p.close()
-    p.join()
-    if len(child_errs) > 1:
-        raise ValueError(child_errs)
-
-    files_to_combine = ['.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed', '.firstpass.bed',
-                        '.novelisos.counts.tsv', '.novelisos.read.map.txt']
-    if not args.no_align_to_annot:
-        files_to_combine.extend(['.matchannot.counts.tsv', '.matchannot.read.map.txt', '.matchannot.bed'])
-        if args.end_norm_dist:
-            files_to_combine.append('.matchannot.ends.tsv')
-    if args.end_norm_dist:
-        files_to_combine.append('.novelisos.ends.tsv')
-    combine_temp_files_by_suffix(args, temp_prefixes, files_to_combine)
-
+    run_chunks(args.threads, chunk_cmds)
+    combine_chunks(args, args.output, temp_prefixes)
     if not args.keep_intermediate:
         shutil.rmtree(temp_dir)
 
-    if not args.no_align_to_annot:
-        gene_to_juncs_to_ends = process_detected_isos(args,
-                                                      args.output + '.matchannot.read.map.txt',
-                                                      args.output + '.matchannot.bed',
-                                                      'a',
-                                                      {},
-                                                      args.output + '.matchannot.ends.tsv')
-    else:
-        gene_to_juncs_to_ends = {}
-    gene_to_juncs_to_ends = process_detected_isos(args,
-                                                  args.output + '.novelisos.read.map.txt',
-                                                  args.output + '.firstpass.bed',
-                                                  'n',
-                                                  gene_to_juncs_to_ends,
-                                                  args.output + '.novelisos.ends.tsv')
+    gene_to_juncs_to_ends = isoform_processing(args, args.output)
 
     combine_annot_w_novel_and_write_files(args, gene_to_juncs_to_ends, genome)
-    if not args.keep_intermediate:
-        files_to_remove = ['.firstpass.reallyunfiltered.bed',
-                           '.firstpass.unfiltered.bed',
-                           '.firstpass.bed',
-                           '.novelisos.counts.tsv',
-                           '.novelisos.read.map.txt']
-        if not args.no_align_to_annot:
-            files_to_remove += ['.matchannot.bed',
-                                '.matchannot.counts.tsv',
-                                '.matchannot.read.map.txt']
-            if args.end_norm_dist:
-                files_to_remove.append('.matchannot.ends.tsv')
-        if args.end_norm_dist:
-            files_to_remove.append('.novelisos.ends.tsv')
-        for f in files_to_remove:
-            os.remove(args.output + f)
 
     if args.predict_cds:
-        prodcmd = ('predictProductivity',
-                   '-i', args.output + '.isoforms.bed',
-                   '-o', args.output + '.isoforms.CDS',
-                   '--gtf', args.gtf,
-                   '--genome_fasta', args.genome,
-                   '--longestORF')
-        pipettor.run([prodcmd])
-        # os.rename(args.output + '.isoforms.CDS.bed', args.output + '.isoforms.bed')
-        os.remove(args.output + '.isoforms.CDS.info.tsv')
+        predict_productivity(args.output, args.genome, args.gtf)
+
+    if not args.keep_intermediate:
+        remote_intermediates(args.output)
+
     genome.close()
 
 

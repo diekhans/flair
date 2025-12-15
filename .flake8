@@ -14,3 +14,5 @@ per-file-ignores =
     src/flair/ssPrep.py: F401 
     # hard to fix in-loop variable definitions (maybe later)
     src/flair/identify_gene_isoform.py: F821
+    # FIXME: temp
+    src/flair/flair_transcriptome.py: C901

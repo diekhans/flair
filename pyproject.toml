@@ -75,4 +75,3 @@ build-backend = "poetry.core.masonry.api"
 packages = [
     { include = "flair", from = "src"},
 ]
-        

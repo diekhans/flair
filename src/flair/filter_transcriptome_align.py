@@ -12,6 +12,7 @@ import multiprocessing as mp
 from time import sleep
 from flair import FlairInputDataError
 
+# FIXME remove_internal_priming import indirectly via count_sam_transcripts??
 
 def generate_alignment_obj_for_read(args, genome, transcript_to_exons, transcriptaligns, header):
     filteredtranscriptaligns = {}
@@ -27,14 +28,13 @@ def generate_alignment_obj_for_read(args, genome, transcript_to_exons, transcrip
                                                                                args.intprimingfracAs)
         else:
             notinternalpriming = True
-        if transcript == 'HISEQ:1287:HKCG7BCX3:1:1102:8019:82885': print(notinternalpriming)
         if notinternalpriming:
             pos = alignment.reference_start
             try:
                 alignscore = alignment.get_tag('AS')
                 mdtag = alignment.get_tag('MD')
             except KeyError as ex:
-                raise Exception(f"Missing AS or MD tag in alignment of '{alignment.query_name}' in '{args.sam}'") from ex
+                raise FlairInputDataError(f"Missing AS or MD tag in alignment of '{alignment.query_name}' in '{args.sam}'") from ex
             cigar = alignment.cigartuples
             tlen = header.get_reference_length(transcript)
             filteredtranscriptaligns[transcript] = IsoAln(transcript, pos, cigar, tlen, alignscore, mdtag)
@@ -168,7 +168,7 @@ def process_alignments(args, transcript_to_exons, transcript_to_bp_ss_index, tra
     transcripttoreads = {}
     for i in range(len(chunkresults)):
         for read, transcript, gtstart, gtend in chunkresults[i]:
-            if transcript not in transcripttoreads: 
+            if transcript not in transcripttoreads:
                 transcripttoreads[transcript] = []
             transcripttoreads[transcript].append(read)
             if args.output_endpos:

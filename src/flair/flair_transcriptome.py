@@ -164,6 +164,11 @@ def binary_search(query, data):
             break
     return i
 
+def bed_to_junctions(bed):
+    # FIXME: a junctions object might be good
+    return [(bed.blocks[i - 1].end, bed.blocks[i].start)
+            for i in range(1, bed.blockCount)]
+
 ####
 # splice junction correction
 ####
@@ -422,7 +427,6 @@ def get_annot_t_ends(tinfo):
 def save_transcript_annot_to_region(transcript_id, gene_id, region, regions_to_annot_data, t_start, t_end, strand, t_exons):
     # FIXME transcript/gene == are ids, regions is tuple of ('chr20', 0, 64444167)
     # FIXME: t_exons are list of (32186476, 32190360)
-    print("@@@ save_transcript_annot_to_region", transcript_id, gene_id, region, regions_to_annot_data, t_start, t_end, strand, t_exons)
     sorted_exons = sorted(t_exons)
     regions_to_annot_data[region].transcript_to_exons[(transcript_id, gene_id)] = tuple(sorted_exons)
     juncs = []
@@ -1210,10 +1214,10 @@ def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, juncchain_
             seq_out.write(this_iso.get_sequence(genome) + '\n')
 
 
-def decode_name_to_iso_gene(name):
+def decode_name_to_iso_gene(name, marker):
     iso = '_'.join(name.split('_')[:-1])
-    gene = name.split('_')[-1]
-    return iso, gene
+    gene_id = name.split('_')[-1]
+    return (marker, iso), gene_id
 
 
 def read_ends_file(args, ends_file):
@@ -1238,12 +1242,36 @@ def read_map_file(map_file, marker):
         name, reads = line.rstrip().split('\t', 1)
         reads = reads.split(',')
         # support = len(reads)
-        iso, gene = decode_name_to_iso_gene(name)
-        iso_id = (marker, iso)
+        iso_id, gene_id = decode_name_to_iso_gene(name, marker)
         og_iso_to_reads[iso_id] = reads
     return og_iso_to_reads
 
+def have_sufficient_support(args, iso_id, num_exons, og_iso_to_reads):
+    return ((iso_id in og_iso_to_reads) and
+            (((len(og_iso_to_reads[iso_id]) >= args.se_support) and (num_exons == 1)) or
+             ((len(og_iso_to_reads[iso_id]) >= args.sjc_support) and (num_exons > 1))))
+
+def process_detected_iso(args, iso_bed, gene_id, iso_id, og_iso_to_reads, ends_file, iso_to_ends, gene_to_juncs_to_ends):
+    start, end = iso_bed.chromStart, iso_bed.chromEnd
+    juncs = bed_to_junctions(iso_bed)
+    junc_key = (iso_bed.chrom, iso_bed.strand, tuple(juncs))
+
+    if args.end_norm_dist:
+        if ends_file:
+            if iso_bed.name in iso_to_ends:
+                start, end = iso_to_ends[iso_bed.name]
+        elif len(juncs) > 0:
+            start += int(args.end_norm_dist)
+            end -= int(args.end_norm_dist)
+
+    if gene_id not in gene_to_juncs_to_ends:
+        gene_to_juncs_to_ends[gene_id] = {}
+    if junc_key not in gene_to_juncs_to_ends[gene_id]:
+        gene_to_juncs_to_ends[gene_id][junc_key] = []
+    gene_to_juncs_to_ends[gene_id][junc_key].append([start, end, iso_id, og_iso_to_reads[iso_id]])
+
 def process_detected_isos(args, map_file, bed_file, marker, gene_to_juncs_to_ends, ends_file):
+    # FIXME: what is "og" mean? "ogle"?
     og_iso_to_reads = read_map_file(map_file, marker)
 
     if args.end_norm_dist and ends_file:
@@ -1251,33 +1279,10 @@ def process_detected_isos(args, map_file, bed_file, marker, gene_to_juncs_to_end
     else:
         iso_to_ends = {}
 
-    for line in open(bed_file):
-        line = line.rstrip().split('\t')
-        chrom, start, end, name, score, strand = line[:6]
-        iso, gene = decode_name_to_iso_gene(name)
-        iso_id = (marker, iso)
-        start, end = int(start), int(end)
-        exon_starts = [int(x) for x in line[11].rstrip(',').split(',')]
-        exon_sizes = [int(x) for x in line[10].rstrip(',').split(',')]
-        if iso_id in og_iso_to_reads and ((len(og_iso_to_reads[iso_id]) >= args.se_support and len(exon_sizes) == 1) or (len(og_iso_to_reads[iso_id]) >= args.sjc_support and len(exon_sizes) > 1)):
-            juncs = []
-            for i in range(len(exon_starts) - 1):
-                juncs.append((start + exon_starts[i] + exon_sizes[i], start + exon_starts[i + 1]))
-            junc_key = (chrom, strand, tuple(juncs))
-
-            if args.end_norm_dist:
-                if ends_file:
-                    if name in iso_to_ends:
-                        start, end = iso_to_ends[name]
-                elif len(juncs) > 0:
-                    start += int(args.end_norm_dist)
-                    end -= int(args.end_norm_dist)
-
-            if gene not in gene_to_juncs_to_ends:
-                gene_to_juncs_to_ends[gene] = {}
-            if junc_key not in gene_to_juncs_to_ends[gene]:
-                gene_to_juncs_to_ends[gene][junc_key] = []
-            gene_to_juncs_to_ends[gene][junc_key].append([start, end, iso_id, og_iso_to_reads[iso_id]])
+    for iso_bed in BedReader(bed_file):
+        iso_id, gene_id = decode_name_to_iso_gene(iso_bed.name, marker)
+        if have_sufficient_support(args, iso_id, iso_bed.blockCount, og_iso_to_reads):
+            process_detected_iso(args, iso_bed, gene_id, iso_id, og_iso_to_reads, ends_file, iso_to_ends, gene_to_juncs_to_ends)
     return gene_to_juncs_to_ends
 
 def isoform_processing(args, output):
@@ -1306,24 +1311,24 @@ def get_reverse_complement(seq):
         new_seq.append(compbase[base])
     return ''.join(new_seq[::-1])
 
-def get_bed_gtf_out_from_info(end_info, chrom, strand, juncs, gene, genome):
+def get_bed_gtf_out_from_info(end_info, chrom, strand, juncs, gene_id, genome):
     start, end, iso_id, read_names = end_info
     score = min(len(read_names), 1000)
     marker, iso = iso_id
     exon_starts, exon_sizes = get_exons_from_juncs(juncs, start, end)
-    bed_line = [chrom, start, end, iso + '_' + gene, score, strand, start, end,
+    bed_line = [chrom, start, end, iso + '_' + gene_id, score, strand, start, end,
                 get_rgb(iso, strand, juncs), len(exon_starts), ','.join([str(x) for x in exon_sizes]),
                 ','.join([str(x) for x in exon_starts])]
     gtf_lines = []
     gtf_lines.append([chrom, 'FLAIR', 'transcript', start + 1, end, score, strand, '.',
-                     'gene_id "' + gene + '"; transcript_id "' + iso + '";'])
+                     'gene_id "' + gene_id + '"; transcript_id "' + iso + '";'])
     exons = [(start + exon_starts[i], start + exon_starts[i] + exon_sizes[i]) for i in range(len(exon_starts))]
     if strand == '-':
         exons = exons[::-1]
     exon_seq = []
     for i in range(len(exons)):
         gtf_lines.append([chrom, 'FLAIR', 'exon', exons[i][0] + 1, exons[i][1], score, strand, '.',
-                         'gene_id "' + gene + '"; transcript_id "' + iso + '"; exon_number ' + str(i + 1)])
+                         'gene_id "' + gene_id + '"; transcript_id "' + iso + '"; exon_number ' + str(i + 1)])
         this_exon_seq = genome.fetch(chrom, exons[i][0], exons[i][1])
         if strand == '-':
             this_exon_seq = get_reverse_complement(this_exon_seq)
@@ -1339,9 +1344,9 @@ def combine_annot_w_novel_and_write_files(args, gene_to_juncs_to_ends, genome):
             open(args.output + '.isoforms.fa', 'w') as seq_out, \
             open(args.output + '.isoform.counts.txt', 'w') as counts_out:
 
-        for gene in gene_to_juncs_to_ends:
-            for chrom, strand, juncs in gene_to_juncs_to_ends[gene]:
-                ends_list = gene_to_juncs_to_ends[gene][(chrom, strand, juncs)]
+        for gene_id in gene_to_juncs_to_ends:
+            for chrom, strand, juncs in gene_to_juncs_to_ends[gene_id]:
+                ends_list = gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)]
                 ends_list = collapse_end_groups(args.end_window, ends_list, False)
                 # FIXME could try accounting for all reads assigned to isoforms - assign them to closest ends
                 # not sure how much of an issue this is
@@ -1355,17 +1360,17 @@ def combine_annot_w_novel_and_write_files(args, gene_to_juncs_to_ends, genome):
                     else:
                         ends_list.sort(key=lambda x: [len(x[-1]), x[1] - x[0]], reverse=True)
                         ends_list = ends_list[:args.max_ends]
-                gene_to_juncs_to_ends[gene][(chrom, strand, juncs)] = ends_list
+                gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)] = ends_list
 
-        for gene in gene_to_juncs_to_ends:
+        for gene_id in gene_to_juncs_to_ends:
             gene_tot = 0
-            for chrom, strand, juncs in gene_to_juncs_to_ends[gene]:
-                for iso_info in gene_to_juncs_to_ends[gene][(chrom, strand, juncs)]:
+            for chrom, strand, juncs in gene_to_juncs_to_ends[gene_id]:
+                for iso_info in gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)]:
                     gene_tot += len(iso_info[-1])
 
             gtf_lines, t_starts, t_ends = [], [], []
-            for chrom, strand, juncs in gene_to_juncs_to_ends[gene]:
-                ends_list = gene_to_juncs_to_ends[gene][(chrom, strand, juncs)]
+            for chrom, strand, juncs in gene_to_juncs_to_ends[gene_id]:
+                ends_list = gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)]
 
                 name_to_used_counts = {}
                 for iso_info in ends_list:
@@ -1378,19 +1383,19 @@ def combine_annot_w_novel_and_write_files(args, gene_to_juncs_to_ends, genome):
                         else:
                             name_to_used_counts[iso] = 1
                         iso_info[2] = (marker, iso)
-                        bed_line, gtf_for_transcript, tseq = get_bed_gtf_out_from_info(iso_info, chrom, strand, juncs, gene, genome)
+                        bed_line, gtf_for_transcript, tseq = get_bed_gtf_out_from_info(iso_info, chrom, strand, juncs, gene_id, genome)
                         iso_out.write(bed_line)
                         t_starts.append(iso_info[0])
                         t_ends.append(iso_info[1])
                         gtf_lines.extend(gtf_for_transcript)
-                        map_out.write(iso + '_' + gene + '\t' + ','.join(iso_info[3]) + '\n')
+                        map_out.write(iso + '_' + gene_id + '\t' + ','.join(iso_info[3]) + '\n')
                         for r in iso_info[3]:
-                            read_to_final_transcript[r] = (iso + '_' + gene, chrom, strand)
-                        counts_out.write(iso + '_' + gene + '\t' + str(len(iso_info[3])) + '\n')
-                        seq_out.write('>' + iso + '_' + gene + '\n')
+                            read_to_final_transcript[r] = (iso + '_' + gene_id, chrom, strand)
+                        counts_out.write(iso + '_' + gene_id + '\t' + str(len(iso_info[3])) + '\n')
+                        seq_out.write('>' + iso + '_' + gene_id + '\n')
                         seq_out.write(tseq + '\n')
             gtf_lines.insert(0, [chrom, 'FLAIR', 'gene', min(t_starts) + 1, max(t_ends), '.', gtf_lines[0][6], '.',
-                                 'gene_id "' + gene + '";'])
+                                 'gene_id "' + gene_id + '";'])
             for g in gtf_lines:
                 gtf_out.write('\t'.join([str(x) for x in g]) + '\n')
     if args.end_norm_dist:

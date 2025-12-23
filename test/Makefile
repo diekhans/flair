@@ -32,6 +32,9 @@ default:
 	@echo "   " make clean >&2
 	@echo remove output and downloaded genomes files: >&2
 	@echo "   " make real-clean >&2
+	@echo run flake8: >&2
+	@echo "   " make flake8 >&2
+	@echo "   " make lint >&2
 	@exit 1
 
 test: test-base test-with-R
@@ -55,6 +58,9 @@ test-help: test-main-help test-align-help test-correct-help test-collapse-help \
 	   test-plot-usage-help test-transcriptome-help test-variants-help \
 	   test-fusion-help
 
+lint: flake8
+flake8:
+	cd .. && ${MAKE} flake8
 
 ##
 # Note: expected and output are sorted in cases where the order is not stable

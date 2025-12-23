@@ -19,6 +19,7 @@ from flair.pycbio.hgdata.bed import BedReader
 # FIXME: temporarily disabled C901 (too complex) in .flake8
 # FIXME: add object for all file names
 # FIXME: use real TSVs
+# FIXME: need to document all the files
 
 def parse_parallel_mode(parser, parallel_mode):
     "values: auto:10GB, bychrom, or byregion"
@@ -204,14 +205,14 @@ def generate_known_SS_database(args, temp_dir):
     annotation_files = dict()
     for chrom in chromosomes:
         annotation_files[chrom] = os.path.join(temp_dir, "%s_known_juncs.bed" % chrom)
-        with open(os.path.join(temp_dir, "%s_known_juncs.bed" % chrom), "w") as out:
+        with open(os.path.join(temp_dir, "%s_known_juncs.bed" % chrom), "w") as bed_fh:
             if chrom in juncs:
                 data = juncs[chrom]
                 sortedData = sorted(list(data.keys()), key=lambda item: item[0])
                 for k in sortedData:
                     annotation = data[k]
                     c1, c2, strand = k
-                    print(chrom, c1, c2, annotation, ".", strand, sep="\t", file=out)
+                    print(chrom, c1, c2, annotation, ".", strand, sep="\t", file=bed_fh)
     return chromosomes, annotation_files
 
 def correct_single_read(bed_read, intervalTree, junctionBoundaryDict):
@@ -349,7 +350,7 @@ class BedRead(object):
         return ''.join(exon_seq)
 
     def generate_from_vals(self, chrom, start, end, name, score, strand, juncs):
-        # FIXME: confusing function name
+        # FIXME: confusing function name, change to factory
         self.ref_chrom = chrom
         self.start = start
         self.end = end
@@ -735,9 +736,9 @@ def generate_transcriptome_reference(temp_prefix, all_transcripts, annot_transcr
                                      normalize_ends=False, add_length_at_ends=0):
     transcript_to_strand = {}
     transcript_to_new_exons = {}
-    with open(temp_prefix + '.annotated_transcripts.bed', 'w') as annot_bed, \
-         open(temp_prefix + '.annotated_transcripts.fa', 'w') as annot_fa, \
-         open(temp_prefix + '.annotated_transcripts_uniquebound.txt', 'w') as annot_uniqueseq:
+    with (open(temp_prefix + '.annotated_transcripts.bed', 'w') as annot_bed_fh,
+          open(temp_prefix + '.annotated_transcripts.fa', 'w') as annot_fa_fh,
+          open(temp_prefix + '.annotated_transcripts_uniquebound.txt', 'w') as annot_uniqueseq_fh):
         gene_to_terminal_junction_specific_ends = None
         if normalize_ends:
             gene_to_terminal_junction_specific_ends = generate_normalize_ends(all_transcripts, annot_transcript_to_exons)
@@ -771,11 +772,11 @@ def generate_transcriptome_reference(temp_prefix, all_transcripts, annot_transcr
                     if strand == '-':
                         this_exon_seq = get_reverse_complement(this_exon_seq)
                     exon_seq.append(this_exon_seq)
-                annot_bed.write('\t'.join([str(x) for x in bed_line]) + '\n')
-                annot_fa.write('>' + transcript_id + '_' + gene_id + '\n')
-                annot_fa.write(''.join(exon_seq) + '\n')
+                annot_bed_fh.write('\t'.join([str(x) for x in bed_line]) + '\n')
+                annot_fa_fh.write('>' + transcript_id + '_' + gene_id + '\n')
+                annot_fa_fh.write(''.join(exon_seq) + '\n')
                 if len(unique_seq) > 0:
-                    annot_uniqueseq.write(transcript_id + '_' + gene_id + '\t' + ','.join(unique_seq) + '\n')
+                    annot_uniqueseq_fh.write(transcript_id + '_' + gene_id + '\t' + ','.join(unique_seq) + '\n')
     return transcript_to_strand, transcript_to_new_exons
 
 
@@ -805,7 +806,7 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annot_transcript_to_e
                                       temp_prefix + '.matchannot.counts.tsv',
                                       temp_prefix + '.matchannot.read.map.txt', True, clipping_file, temp_prefix + '.annotated_transcripts_uniquebound.txt')
         logging.info('processing good matches')
-        with open(temp_prefix + '.matchannot.bed', 'w') as annot_bed:
+        with open(temp_prefix + '.matchannot.bed', 'w') as annot_bed_fh:
             for line in open(temp_prefix + '.matchannot.read.map.txt'):
                 striso, reads = line.rstrip().split('\t', 1)
                 reads = reads.split(',')
@@ -824,18 +825,17 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annot_transcript_to_e
                         strand = transcript_to_strand[(transcript_id, gene_id)]
                         bed_line = [chrom, start, end, transcript_id + '_' + gene_id, len(reads), strand, start, end, '0',
                                     len(exons), ','.join([str(x) for x in exon_sizes]), ','.join([str(x) for x in exon_starts])]
-                        annot_bed.write('\t'.join([str(x) for x in bed_line]) + '\n')
+                        annot_bed_fh.write('\t'.join([str(x) for x in bed_line]) + '\n')
                         firstpass_SE.update(set(exons))
                         annot_juncs = tuple([(exons[i][1], exons[i + 1][0]) for i in range(len(exons) - 1)])
                         sup_annot_transcript_to_juncs[(transcript_id, gene_id)] = (len(reads), annot_juncs)
     else:
+        # create empty output files
         with open(temp_prefix + '.matchannot.counts.tsv', 'w') as _, \
                 open(temp_prefix + '.matchannot.read.map.txt', 'w') as _, \
                 open(temp_prefix + '.matchannot.bed', 'w') as _:
             pass
         if args.output_endpos:
-            # FIXME: this appears to be clearing the file, but why?
-
             with open(temp_prefix + '.ends.tsv', 'w') as _:
                 pass
     good_align_to_annot = set(good_align_to_annot)
@@ -848,7 +848,7 @@ def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, re
     if not sj_to_ends:
         sj_to_ends = {}
     if generate_fasta:
-        out_fasta = open(temp_prefix + 'reads.notannotmatch.fasta', 'w')
+        fasta_fh = open(temp_prefix + 'reads.notannotmatch.fasta', 'w')
     c = 0
     used_reads = set()
     for read in bam_file.fetch(region_chrom, int(region_start), int(region_end)):
@@ -857,8 +857,8 @@ def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, re
                 if read.query_name not in good_align_to_annot:
                     c += 1
                     if generate_fasta:
-                        out_fasta.write('>' + read.query_name + '\n')
-                        out_fasta.write(read.get_forward_sequence() + '\n')
+                        fasta_fh.write('>' + read.query_name + '\n')
+                        fasta_fh.write(read.get_forward_sequence() + '\n')
                     if read.mapping_quality >= args.quality:  # TODO: test this more rigorously
                         used_reads.add(read.query_name)
                         bed_read = BedRead()
@@ -878,28 +878,11 @@ def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, re
                             sj_to_ends[junc_key].append((corrected_read.start, corrected_read.end,
                                                          corrected_read.strand, corrected_read.name))
     if generate_fasta:
-        out_fasta.close()
+        fasta_fh.close()
     if return_used_reads:
         return sj_to_ends, used_reads
     else:
         return sj_to_ends
-
-
-# FIXME: what is this about?
-# def group_firstpass_single_exon(good_ends_with_sup_reads):
-#     last_end, furthergroups, thisgroup = 0, [], []
-#     good_ends_with_sup_reads.sort(key=lambda x: [x[1], x[2]])
-#     for weighted_score, start, end, strand, name, endsupport in good_ends_with_sup_reads:
-#         if (start >= last_end or (last_end - start) / (end - start) > 0.5) and len(thisgroup) > 0:
-#             furthergroups.append(thisgroup)
-#             thisgroup = []
-#         thisgroup.append([weighted_score, start, end, strand, name, endsupport])
-#         if end > last_end:
-#             last_end = end
-#     if len(thisgroup) > 0:
-#         furthergroups.append(thisgroup)
-#     logging.info(f'single exon groups: {len(furthergroups)}')
-#     return furthergroups
 
 
 def filter_ends_by_subset_and_support(args, good_ends_with_sup_reads):
@@ -933,32 +916,32 @@ def filter_ends_by_subset_and_support(args, good_ends_with_sup_reads):
 
 def process_juncs_to_firstpass_isos(args, temp_prefix, chrom, sj_to_ends, firstpass_SE):
     firstpass_unfiltered, firstpass_junc_to_name = {}, {}
-    with open(temp_prefix + '.firstpass.unfiltered.bed', 'w') as iso_out, \
-            open(temp_prefix + '.firstpass.reallyunfiltered.bed', 'w') as iso_out_unfilt:
+    with open(temp_prefix + '.firstpass.unfiltered.bed', 'w') as iso_fh, \
+            open(temp_prefix + '.firstpass.reallyunfiltered.bed', 'w') as iso_unfilt_fh:
         for juncs in sj_to_ends:
             good_ends_with_sup_reads = collapse_end_groups(args.end_window, sj_to_ends[juncs])
             for best_score, best_start, best_end, best_strand, best_name, sup_reads in good_ends_with_sup_reads:
-                this_score = len(sup_reads)
-                this_iso = BedRead()
-                this_iso.generate_from_vals(chrom, best_start, best_end, best_name, this_score, best_strand, juncs)
-                iso_out_unfilt.write('\t'.join(this_iso.get_bed_line()) + '\n')
+                score = len(sup_reads)
+                iso_bedread = BedRead()
+                iso_bedread.generate_from_vals(chrom, best_start, best_end, best_name, score, best_strand, juncs)
+                iso_unfilt_fh.write('\t'.join(iso_bedread.get_bed_line()) + '\n')
             if juncs == ():
                 best_ends = [x[:-1] + [len(x[-1])] for x in good_ends_with_sup_reads if len(x[-1]) >= args.sjc_support]
             else:
                 best_ends = filter_ends_by_subset_and_support(args, good_ends_with_sup_reads)
-            for best_score, best_start, best_end, best_strand, best_name, this_score in best_ends:
-                this_iso = BedRead()
-                this_iso.generate_from_vals(chrom, best_start, best_end, best_name, this_score, best_strand, juncs)
-                firstpass_unfiltered[best_name] = this_iso
-                iso_out.write('\t'.join(this_iso.get_bed_line()) + '\n')
+            for best_score, best_start, best_end, best_strand, best_name, score in best_ends:
+                iso_bedread = BedRead()
+                iso_bedread.generate_from_vals(chrom, best_start, best_end, best_name, score, best_strand, juncs)
+                firstpass_unfiltered[best_name] = iso_bedread
+                iso_fh.write('\t'.join(iso_bedread.get_bed_line()) + '\n')
                 if juncs == ():
-                    firstpass_SE.add((this_iso.exons[0][0], this_iso.exons[0][1], this_iso.name))
+                    firstpass_SE.add((iso_bedread.exons[0][0], iso_bedread.exons[0][1], iso_bedread.name))
                 else:
                     for j in juncs:
                         if j not in firstpass_junc_to_name:
                             firstpass_junc_to_name[j] = set()
                         firstpass_junc_to_name[j].add(best_name)
-                    firstpass_SE.update(this_iso.exons)
+                    firstpass_SE.update(iso_bedread.exons)
 
     firstpass_SE = sorted(list(firstpass_SE))
     return firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE
@@ -1056,10 +1039,10 @@ def filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, fi
 
 def combine_temp_files_by_suffix(output, temp_prefixes, suffixes):
     for filesuffix in suffixes:
-        with open(output + filesuffix, 'wb') as combined_file:
+        with open(output + filesuffix, 'wb') as combined_fh:
             for temp_prefix in temp_prefixes:
-                with open(temp_prefix + filesuffix, 'rb') as fd:
-                    shutil.copyfileobj(fd, combined_file, 1024 * 1024 * 10)
+                with open(temp_prefix + filesuffix, 'rb') as in_fh:
+                    shutil.copyfileobj(in_fh, combined_fh, 1024 * 1024 * 10)
 
 
 def get_genes_with_shared_juncs(juncs, junc_to_gene, gene_to_annot_juncs):
@@ -1230,10 +1213,12 @@ def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, juncchain_
     else:
         gene_to_terminal_junction_specific_ends = {}
 
-    with open(temp_prefix + '.firstpass.bed', 'w') as iso_out, open(temp_prefix + '.firstpass.fa', 'w') as seq_out, \
-         open(temp_prefix + '.firstpass.uniquebound.txt', 'w') as unique_out:
+    with (open(temp_prefix + '.firstpass.bed', 'w') as iso_fh,
+          open(temp_prefix + '.firstpass.fa', 'w') as seq_fh,
+          open(temp_prefix + '.firstpass.uniquebound.txt', 'w') as unique_fh):
         for iso_name in iso_to_info:
-            write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, firstpass[iso_name], gene_to_terminal_junction_specific_ends, add_length_at_ends, unique_bound, unique_out, iso_out, seq_out, genome)
+            write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, firstpass[iso_name], gene_to_terminal_junction_specific_ends,
+                                      add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome)
 
 def decode_name_to_iso_gene(name, marker):
     iso = '_'.join(name.split('_')[:-1])
@@ -1443,23 +1428,25 @@ def write_transcript_ends_beds(args, read_to_final_transcript, ends_out):
 
 def combine_annot_w_novel_and_write_files(args, gene_to_juncs_to_ends, genome):
     read_to_final_transcript = {}
-    with (open(args.output + '.isoforms.bed', 'w') as iso_out,
-          open(args.output + '.isoform.read.map.txt', 'w') as map_out,
-          open(args.output + '.isoforms.gtf', 'w') as gtf_out,
-          open(args.output + '.isoforms.fa', 'w') as seq_out,
-          open(args.output + '.isoform.counts.txt', 'w') as counts_out):
+    with (open(args.output + '.isoforms.bed', 'w') as iso_fh,
+          open(args.output + '.isoform.read.map.txt', 'w') as map_fh,
+          open(args.output + '.isoforms.gtf', 'w') as gtf_fh,
+          open(args.output + '.isoforms.fa', 'w') as seq_fh,
+          open(args.output + '.isoform.counts.txt', 'w') as counts_fh):
 
         combine_annot_w_novel(args, gene_to_juncs_to_ends)
 
+        # FIXME: one write file at a time, all the data is now bundled up
         for gene_id in gene_to_juncs_to_ends:
-            write_gene_gff(gene_to_juncs_to_ends, gene_id, args, genome, iso_out, map_out, read_to_final_transcript, counts_out, seq_out, gtf_out)
+            write_gene_gff(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh,
+                           read_to_final_transcript, counts_fh, seq_fh, gtf_fh)
 
     if args.end_norm_dist:
-        with open(args.output + '.read_ends.bed', 'w') as ends_out:
-            write_transcript_ends_beds(args, read_to_final_transcript, ends_out)
+        with open(args.output + '.read_ends.bed', 'w') as ends_fh:
+            write_transcript_ends_beds(args, read_to_final_transcript, ends_fh)
 
 def generate_genomic_clipping_reference(temp_prefix, bam_file, region_chrom, region_start, region_end):
-    with open(temp_prefix + '.reads.genomicclipping.txt', 'w') as out:
+    with open(temp_prefix + '.reads.genomicclipping.txt', 'w') as clipping_fh:
         for read in bam_file.fetch(region_chrom, int(region_start), int(region_end)):
             if not read.is_secondary and not read.is_supplementary:
                 name = read.query_name
@@ -1469,7 +1456,7 @@ def generate_genomic_clipping_reference(temp_prefix, bam_file, region_chrom, reg
                     tot_clipped += cigar[0][1]
                 if cigar[-1][0] in {4, 5}:
                     tot_clipped += cigar[-1][1]
-                out.write(name + '\t' + str(tot_clipped) + '\n')
+                clipping_fh.write(name + '\t' + str(tot_clipped) + '\n')
 
 
 def run_collapse_by_chrom(listofargs):
@@ -1483,7 +1470,7 @@ def run_collapse_by_chrom(listofargs):
     # first extract reads for chrom as fasta
     pipettor.run([('samtools', 'view', '-h', args.genome_aligned_bam, region_chrom + ':' + region_start + '-' + region_end),
                   ('samtools', 'fasta', '-')],
-                 stdout=open(temp_prefix + '.reads.fasta', 'w'))
+                 stdout=temp_prefix + '.reads.fasta')
     # then align reads to transcriptome and run count_sam_transcripts
     genome = pysam.FastaFile(args.genome)
     bam_file = pysam.AlignmentFile(args.genome_aligned_bam, 'rb')
@@ -1536,10 +1523,11 @@ def run_collapse_by_chrom(listofargs):
                                       temp_prefix + '.novelisos.read.map.txt', False, clipping_file, temp_prefix + '.firstpass.uniquebound.txt')
         temp_to_remove.extend([temp_prefix + '.firstpass.fa'])
     else:
+        # create empty files
         with open(temp_prefix + '.firstpass.fa', 'w') as _, \
-                open(temp_prefix + '.firstpass.bed', 'w') as _, \
-                open(temp_prefix + '.novelisos.counts.tsv', 'w') as _, \
-                open(temp_prefix + '.novelisos.read.map.txt', 'w') as _:
+             open(temp_prefix + '.firstpass.bed', 'w') as _, \
+             open(temp_prefix + '.novelisos.counts.tsv', 'w') as _, \
+             open(temp_prefix + '.novelisos.read.map.txt', 'w') as _:
             pass
         if args.output_endpos:
             # FIXME: this appears to be clearing the file, but why?

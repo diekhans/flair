@@ -32,6 +32,7 @@ def addOtherJuncs(juncs, filetype, bedJuncs, minsup, chromosomes, printErrFname,
     tempJuncs = list()
     addedFlag = False
     novelJuncs = False
+    # FIXME: use BedReader
     with open(bedJuncs,'r') as bedLines:
         for line in bedLines:
             cols = line.rstrip().split()

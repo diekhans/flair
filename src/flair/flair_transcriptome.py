@@ -3,7 +3,6 @@
 import argparse
 import os
 import pipettor
-import uuid
 import shutil
 import pysam
 import logging
@@ -110,8 +109,8 @@ def get_args():
                              'which is detailed further in the predictProductivity documentation')
     parser.add_argument('--keep_intermediate', default=False, action='store_true',
                         help='''specify if intermediate and temporary files are to be kept for debugging.
-                Intermediate files include: promoter-supported reads file,
-                read assignments to firstpass isoforms''')
+                        Intermediate files include: promoter-supported reads file,
+                        read assignments to firstpass isoforms''')
     parser.add_argument('--keep_sup', default=False, action='store_true',
                         help='''specify if you want to keep supplementary alignments to define isoforms''')
     parser.add_argument('--end_norm_dist', type=int,
@@ -151,15 +150,13 @@ def exons_to_juncs(exons):
 ####
 # misc
 ###
-def make_correct_temp_dir():
+def make_temp_dir(out_prefix):
     # FIXME: use TMPDIR unless directory explicitly specified
-    temp_dir_name = str(uuid.uuid4())
+    temp_dir = out_prefix + ".intermediate"
     try:
-        current_directory = os.getcwd()
-        temp_dir = os.path.join(current_directory, temp_dir_name)
-        os.mkdir(temp_dir)
-    except OSError:
-        raise OSError(f"Creation of the directory {temp_dir_name} failed")
+        os.makedirs(temp_dir, exist_ok=True)
+    except OSError as exc:
+        raise OSError(f"Creation of the directory `{temp_dir}' failed") from exc
     return temp_dir + '/'
 
 
@@ -195,7 +192,6 @@ def bed_to_junctions(bed):
 def generate_known_SS_database(args, temp_dir):
     # FIXME: being replaced with new correct code.
     # Convert gtf to bed and split by chromosome.
-    # logging.info(f'Building ss database: {temp_dir}')
     juncs, chromosomes, knownSS = dict(), set(), dict()  # initialize juncs for adding to db
 
     if args.gtf:
@@ -1672,21 +1668,6 @@ def combine_chunks(args, output, temp_prefixes):
 ####
 # main
 ####
-def remote_intermediates(output):
-    files_to_remove = ['.firstpass.reallyunfiltered.bed',
-                       '.firstpass.unfiltered.bed',
-                       '.firstpass.bed',
-                       '.novelisos.counts.tsv',
-                       '.novelisos.read.map.txt',
-                       '.matchannot.bed',
-                       '.matchannot.counts.tsv',
-                       '.matchannot.read.map.txt',
-                       '.matchannot.ends.tsv',
-                       '.novelisos.ends.tsv']
-    for f in files_to_remove:
-        p = output + f
-        if os.path.exists(p):
-            os.remove(p)
 
 def flair_transcriptome():
     # FIXME: split options out that are flags to indicate what to do
@@ -1697,7 +1678,7 @@ def flair_transcriptome():
     logging.info('loading genome')
     genome = pysam.FastaFile(args.genome)
     logging.info('making temp dir')
-    temp_dir = make_correct_temp_dir()
+    temp_dir = make_temp_dir(args.output)
 
     logging.info('Getting regions')
     all_regions = partition_input(args.parallel_mode, genome, args.genome_aligned_bam,
@@ -1723,8 +1704,6 @@ def flair_transcriptome():
 
     if not args.keep_intermediate:
         shutil.rmtree(temp_dir)
-    if not args.keep_intermediate:
-        remote_intermediates(args.output)
 
     genome.close()
 

@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-import argparse
+# FIXME: this is convoluted, this reuses count_sam_transcripts command line an functions
+# these should be in a libary
+
 import pysam
 import logging
 import shutil
-from flair.count_sam_transcripts import *
-from flair.flair_transcriptome import make_correct_temp_dir
+from flair.count_sam_transcripts import parse_args, check_args, get_annot_info, IsoAln, get_best_transcript, write_output
+from flair.remove_internal_priming import removeinternalpriming
+from flair.pycbio.sys import fileOps
 import multiprocessing as mp
-from time import sleep
 from flair import FlairInputDataError
 
-# FIXME remove_internal_priming import indirectly via count_sam_transcripts??
 
 def generate_alignment_obj_for_read(args, genome, transcript_to_exons, transcriptaligns, header):
     filteredtranscriptaligns = {}
@@ -20,12 +19,12 @@ def generate_alignment_obj_for_read(args, genome, transcript_to_exons, transcrip
         transcript = alignment.reference_name
         if args.remove_internal_priming:
             intprimannot = transcript_to_exons if args.permissive_last_exons else None
-            notinternalpriming = remove_internal_priming.removeinternalpriming(alignment.reference_name,
-                                                                               alignment.reference_start,
-                                                                               alignment.reference_end, False,
-                                                                               genome, None, intprimannot,
-                                                                               args.intprimingthreshold,
-                                                                               args.intprimingfracAs)
+            notinternalpriming = removeinternalpriming(alignment.reference_name,
+                                                       alignment.reference_start,
+                                                       alignment.reference_end, False,
+                                                       genome, None, intprimannot,
+                                                       args.intprimingthreshold,
+                                                       args.intprimingfracAs)
         else:
             notinternalpriming = True
         if notinternalpriming:
@@ -40,17 +39,15 @@ def generate_alignment_obj_for_read(args, genome, transcript_to_exons, transcrip
             filteredtranscriptaligns[transcript] = IsoAln(transcript, pos, cigar, tlen, alignscore, mdtag)
     return filteredtranscriptaligns
 
-
-
 def process_read_chunk(chunkinfo):
-    chunkindex, readstoaligns, tempDir, transcript_to_exons, transcript_to_bp_ss_index, args, headeroutfilename, clippingdata, transcript_to_genomic_ends, transcript_to_unique_bounds = chunkinfo
+    chunkindex, readstoaligns, temp_dir, transcript_to_exons, transcript_to_bp_ss_index, args, headeroutfilename, clippingdata, transcript_to_genomic_ends, transcript_to_unique_bounds = chunkinfo
     genome = None
     if args.remove_internal_priming:
         genome = pysam.FastaFile(args.transcriptomefasta)
 
     headerfile = pysam.AlignmentFile(headeroutfilename, 'rb')
     if args.output_bam:
-        tempOutFile = pysam.AlignmentFile(tempDir + 'readChunk' + str(chunkindex) + '.bam', 'wb', template=headerfile)
+        temp_out_file = pysam.AlignmentFile(temp_dir + 'readChunk' + str(chunkindex) + '.bam', 'wb', template=headerfile)
     results = []
 
     for readname in readstoaligns:
@@ -68,7 +65,7 @@ def process_read_chunk(chunkinfo):
         if args.output_bam and len(finaltnames) > 0:
             readseq, readerr = None, None
             for alignment in transcriptaligns:
-                if not alignment.is_secondary: #supplementary already filtered earlier
+                if not alignment.is_secondary:  # supplementary already filtered earlier
                     readseq = alignment.query_sequence
                     readerr = alignment.query_qualities
 
@@ -83,11 +80,11 @@ def process_read_chunk(chunkinfo):
                         else:
                             alignment.flag = 0
                         alignment.cigarstring = alignment.cigarstring.replace('H', 'S')
-                    tempOutFile.write(alignment)
+                    temp_out_file.write(alignment)
     if genome:
         genome.close()
     if args.output_bam:
-        tempOutFile.close()
+        temp_out_file.close()
     return results
 
 
@@ -95,8 +92,8 @@ def report_thread_error(error):
     raise ValueError(error)
 
 
-def bam_to_read_aligns(samfile, chunksize, tempDir, transcript_to_exons, transcript_to_bp_ss_index,
-                                            args, headeroutfilename, readstoclipping, transcript_to_genomic_ends, transcript_to_unique_bounds):
+def bam_to_read_aligns(samfile, chunksize, temp_dir, transcript_to_exons, transcript_to_bp_ss_index,
+                       args, headeroutfilename, readstoclipping, transcript_to_genomic_ends, transcript_to_unique_bounds):
     lastname = None
     lastaligns = []
     readchunk = {}
@@ -107,7 +104,7 @@ def bam_to_read_aligns(samfile, chunksize, tempDir, transcript_to_exons, transcr
         if readname != lastname:
             if len(readchunk) == chunksize:
                 logging.info(f'\rstarting chunk {chunkindex}')
-                yield (chunkindex, readchunk, tempDir, transcript_to_exons, transcript_to_bp_ss_index, args, headeroutfilename, clippingdata, transcript_to_genomic_ends, transcript_to_unique_bounds)
+                yield (chunkindex, readchunk, temp_dir, transcript_to_exons, transcript_to_bp_ss_index, args, headeroutfilename, clippingdata, transcript_to_genomic_ends, transcript_to_unique_bounds)
                 readchunk = {}
                 clippingdata = {}
                 chunkindex += 1
@@ -126,16 +123,16 @@ def bam_to_read_aligns(samfile, chunksize, tempDir, transcript_to_exons, transcr
             clippingdata[lastname] = readstoclipping[lastname]
     if len(readchunk) > 0:
         logging.info(f'\rstarting chunk {chunkindex}')
-        yield (chunkindex, readchunk, tempDir, transcript_to_exons, transcript_to_bp_ss_index, args, headeroutfilename, clippingdata, transcript_to_genomic_ends, transcript_to_unique_bounds)
+        yield (chunkindex, readchunk, temp_dir, transcript_to_exons, transcript_to_bp_ss_index, args, headeroutfilename, clippingdata, transcript_to_genomic_ends, transcript_to_unique_bounds)
 
 def process_alignments(args, transcript_to_exons, transcript_to_bp_ss_index, transcript_to_genomic_ends, transcript_to_unique_bounds):
     logging.info('processing alignments')
     samfile = pysam.AlignmentFile(args.sam, 'r')
-    tempDir = make_correct_temp_dir()
-    headeroutfilename = tempDir + 'headerfile.bam'
+    temp_dir = fileOps.tmpDirGet()
+    headeroutfilename = temp_dir + 'headerfile.bam'
     hfile = pysam.AlignmentFile(headeroutfilename, 'wb', template=samfile)
     hfile.close()
-    pysam.index(tempDir + 'headerfile.bam')
+    pysam.index(temp_dir + 'headerfile.bam')
 
     readstoclipping = {}
     if args.trimmedreads:
@@ -149,13 +146,13 @@ def process_alignments(args, transcript_to_exons, transcript_to_bp_ss_index, tra
     mp.set_start_method('fork')
     p = mp.Pool(args.threads)
 
-    args.sam = '' # required to pass args to multiprocessing
+    args.sam = ''   # required to pass args to multiprocessing
 
     # write method to yield chunks
     # for chunk in chunkyielder
 
-    for r in p.imap_unordered(process_read_chunk, bam_to_read_aligns(samfile, chunksize, tempDir, transcript_to_exons,
-                                                                transcript_to_bp_ss_index, args, headeroutfilename, readstoclipping, transcript_to_genomic_ends, transcript_to_unique_bounds)):
+    for r in p.imap_unordered(process_read_chunk, bam_to_read_aligns(samfile, chunksize, temp_dir, transcript_to_exons,
+                                                                     transcript_to_bp_ss_index, args, headeroutfilename, readstoclipping, transcript_to_genomic_ends, transcript_to_unique_bounds)):
         chunkresults.append(r)
 
     p.close()
@@ -178,16 +175,17 @@ def process_alignments(args, transcript_to_exons, transcript_to_bp_ss_index, tra
     write_output(args, transcripttoreads)
 
     if args.output_bam:
-        outfile = pysam.AlignmentFile(tempDir + 'combined_unsorted.bam', 'wb', template=samfile)
+        outfile = pysam.AlignmentFile(temp_dir + 'combined_unsorted.bam', 'wb', template=samfile)
         for i in range(len(chunkresults)):
-            tempfile = pysam.AlignmentFile(tempDir + 'readChunk' + str(i+1) + '.bam', 'rb')
+            tempfile = pysam.AlignmentFile(temp_dir + 'readChunk' + str(i + 1) + '.bam', 'rb')
             for read in tempfile:
                 outfile.write(read)
             tempfile.close()
         outfile.close()
-        pysam.sort('-o', args.output_bam, tempDir + 'combined_unsorted.bam')
+        pysam.sort('-o', args.output_bam, temp_dir + 'combined_unsorted.bam')
         pysam.index(args.output_bam)
-    shutil.rmtree(tempDir)
+    shutil.rmtree(temp_dir)
+
 
 if __name__ == '__main__':
     logging.info('processing annotation')

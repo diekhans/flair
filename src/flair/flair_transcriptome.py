@@ -1191,7 +1191,7 @@ def generate_non_gene_iso_groups_strand(novel_gene_isos_to_group, strand, chrom,
         for s, e, t in curr_group:
             iso_to_info[t][0] = group_name
 
-def write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, iso_bedread, gene_to_terminal_junction_specific_ends, add_length_at_ends, unique_bound, unique_out, iso_out, seq_out, genome):
+def write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, iso_bedread, gene_to_terminal_junction_specific_ends, add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome):
     gene_id, transcript_id, strand, exons = iso_to_info[iso_name]
     if normalize_ends and len(iso_bedread.juncs) > 0:
         exons[0] = (gene_to_terminal_junction_specific_ends[(gene_id, strand)]['left'][exons[0][1]] - add_length_at_ends,
@@ -1203,11 +1203,11 @@ def write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, iso_bedread
     iso_bedread.name = transcript_id + '_' + gene_id
 
     if unique_bound and iso_name in unique_bound:
-        unique_out.write(iso_bedread.name + '\t' + unique_bound[iso_name] + '\n')
+        unique_fh.write(iso_bedread.name + '\t' + unique_bound[iso_name] + '\n')
 
-    iso_out.write('\t'.join(iso_bedread.get_bed_line()) + '\n')
-    seq_out.write('>' + iso_bedread.name + '\n')
-    seq_out.write(iso_bedread.get_sequence(genome) + '\n')
+    iso_fh.write('\t'.join(iso_bedread.get_bed_line()) + '\n')
+    seq_fh.write('>' + iso_bedread.name + '\n')
+    seq_fh.write(iso_bedread.get_sequence(genome) + '\n')
 
 def get_gene_to_terminal_junction_specific_ends(iso_to_info):
     gene_to_terminal_junction_specific_ends = {}
@@ -1347,7 +1347,7 @@ def get_reverse_complement(seq):
         new_seq.append(compbase[base])
     return ''.join(new_seq[::-1])
 
-def get_bed_gtf_out_from_info(end_info, chrom, strand, juncs, gene_id, genome):
+def get_bed_gtf_fh_from_info(end_info, chrom, strand, juncs, gene_id, genome):
     start, end, iso_id, read_names = end_info
     score = min(len(read_names), 1000)
     marker, iso = iso_id
@@ -1394,7 +1394,7 @@ def combine_annot_w_novel(args, gene_to_juncs_to_ends):
             gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)] = ends_list
 
 
-def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_out, t_starts, t_ends, gtf_lines, map_out, read_to_final_transcript, counts_out, seq_out):
+def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh, read_to_final_transcript, counts_fh, seq_fh):
     marker, iso = iso_info[2]
     iso = iso.split('-endvar')[0]
     if iso in name_to_used_counts:
@@ -1403,19 +1403,19 @@ def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_
     else:
         name_to_used_counts[iso] = 1
     iso_info[2] = (marker, iso)
-    bed_line, gtf_for_transcript, tseq = get_bed_gtf_out_from_info(iso_info, chrom, strand, juncs, gene_id, genome)
-    iso_out.write(bed_line)
+    bed_line, gtf_for_transcript, tseq = get_bed_gtf_fh_from_info(iso_info, chrom, strand, juncs, gene_id, genome)
+    iso_fh.write(bed_line)
     t_starts.append(iso_info[0])
     t_ends.append(iso_info[1])
     gtf_lines.extend(gtf_for_transcript)
-    map_out.write(iso + '_' + gene_id + '\t' + ','.join(iso_info[3]) + '\n')
+    map_fh.write(iso + '_' + gene_id + '\t' + ','.join(iso_info[3]) + '\n')
     for r in iso_info[3]:
         read_to_final_transcript[r] = (iso + '_' + gene_id, chrom, strand)
-    counts_out.write(iso + '_' + gene_id + '\t' + str(len(iso_info[3])) + '\n')
-    seq_out.write('>' + iso + '_' + gene_id + '\n')
-    seq_out.write(tseq + '\n')
+    counts_fh.write(iso + '_' + gene_id + '\t' + str(len(iso_info[3])) + '\n')
+    seq_fh.write('>' + iso + '_' + gene_id + '\n')
+    seq_fh.write(tseq + '\n')
 
-def write_gene_gff(gene_to_juncs_to_ends, gene_id, args, genome, iso_out, map_out, read_to_final_transcript, counts_out, seq_out, gtf_out):
+def write_gene_gff(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh, read_to_final_transcript, counts_fh, seq_fh, gtf_fh):
     gene_tot = 0
     for chrom, strand, juncs in gene_to_juncs_to_ends[gene_id]:
         for iso_info in gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)]:
@@ -1428,42 +1428,42 @@ def write_gene_gff(gene_to_juncs_to_ends, gene_id, args, genome, iso_out, map_ou
         name_to_used_counts = {}
         for iso_info in ends_list:
             if len(iso_info[-1]) / gene_tot >= args.frac_support:
-                write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_out, t_starts, t_ends, gtf_lines, map_out, read_to_final_transcript, counts_out, seq_out)
+                write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh, read_to_final_transcript, counts_fh, seq_fh)
     gtf_lines.insert(0, [chrom, 'FLAIR', 'gene', min(t_starts) + 1, max(t_ends), '.', gtf_lines[0][6], '.',
                          'gene_id "' + gene_id + '";'])
     for g in gtf_lines:
-        gtf_out.write('\t'.join([str(x) for x in g]) + '\n')
+        gtf_fh.write('\t'.join([str(x) for x in g]) + '\n')
 
-def get_transcirpts_to_reads(output, suffix):
+def get_transcirpts_to_reads(temp_prefix, suffix):
     transcript_to_reads = {}
-    for line in open(output + suffix):
+    for line in open(temp_prefix + suffix):
         read_name, transcript_id, start, end = line.rstrip().split('\t')
         if transcript_id not in transcript_to_reads:
             transcript_to_reads[transcript_id] = []
         transcript_to_reads[transcript_id].append((read_name, start, end))
     return transcript_to_reads
 
-def write_transcript_ends_bed(args, suffix, read_to_final_transcript, ends_out):
-    transcript_to_reads = get_transcirpts_to_reads(args.output, suffix)
+def write_transcript_ends_bed(args, temp_prefix, suffix, read_to_final_transcript, ends_fh):
+    transcript_to_reads = get_transcirpts_to_reads(temp_prefix, suffix)
     for t in transcript_to_reads:
         if len(transcript_to_reads[t]) >= args.sjc_support:  # FIXME this needs to be adjusted to consider single exons vs junction chains, also frac_support
             for r, start, end in transcript_to_reads[t]:
                 if r in read_to_final_transcript:
                     t_name, chrom, strand = read_to_final_transcript[r]
-                    ends_out.write('\t'.join([chrom, start, end, t_name + '|' + r, '.', strand]) + '\n')
+                    ends_fh.write('\t'.join([chrom, start, end, t_name + '|' + r, '.', strand]) + '\n')
 
-def write_transcript_ends_beds(args, read_to_final_transcript, ends_out):
+def write_transcript_ends_beds(args, temp_prefix, read_to_final_transcript, ends_fh):
     # FIXME: these are not real TSVs
     for suffix in ['.matchannot.ends.tsv', '.novelisos.ends.tsv']:
-        write_transcript_ends_bed(args, suffix, read_to_final_transcript, ends_out)
+        write_transcript_ends_bed(args, temp_prefix, suffix, read_to_final_transcript, ends_fh)
 
-def combine_annot_w_novel_and_write_files(args, gene_to_juncs_to_ends, genome):
+def combine_annot_w_novel_and_write_files(args, temp_prefix, gene_to_juncs_to_ends, genome):
     read_to_final_transcript = {}
-    with (open(args.output + '.isoforms.bed', 'w') as iso_fh,
-          open(args.output + '.isoform.read.map.txt', 'w') as map_fh,
-          open(args.output + '.isoforms.gtf', 'w') as gtf_fh,
-          open(args.output + '.isoforms.fa', 'w') as seq_fh,
-          open(args.output + '.isoform.counts.txt', 'w') as counts_fh):
+    with (open(temp_prefix + '.isoforms.bed', 'w') as iso_fh,
+          open(temp_prefix + '.isoform.read.map.txt', 'w') as map_fh,
+          open(temp_prefix + '.isoforms.gtf', 'w') as gtf_fh,
+          open(temp_prefix + '.isoforms.fa', 'w') as seq_fh,
+          open(temp_prefix + '.isoform.counts.txt', 'w') as counts_fh):
 
         combine_annot_w_novel(args, gene_to_juncs_to_ends)
 
@@ -1473,8 +1473,8 @@ def combine_annot_w_novel_and_write_files(args, gene_to_juncs_to_ends, genome):
                            read_to_final_transcript, counts_fh, seq_fh, gtf_fh)
 
     if args.end_norm_dist:
-        with open(args.output + '.read_ends.bed', 'w') as ends_fh:
-            write_transcript_ends_beds(args, read_to_final_transcript, ends_fh)
+        with open(temp_prefix + '.read_ends.bed', 'w') as ends_fh:
+            write_transcript_ends_beds(args, temp_prefix, read_to_final_transcript, ends_fh)
 
 def generate_genomic_clipping_reference(temp_prefix, bam_file, region_chrom, region_start, region_end):
     with open(temp_prefix + '.reads.genomicclipping.txt', 'w') as clipping_fh:
@@ -1490,7 +1490,16 @@ def generate_genomic_clipping_reference(temp_prefix, bam_file, region_chrom, reg
                 clipping_fh.write(name + '\t' + str(tot_clipped) + '\n')
 
 
-def run_collapse_by_chrom(listofargs):
+def predict_productivity(out_prefix, genome_fasta, gtf):
+    cmd = ('predictProductivity',
+           '-i', out_prefix + '.isoforms.bed',
+           '-o', out_prefix + '.isoforms.CDS',
+           '--gtf', gtf,
+           '--genome_fasta', genome_fasta,
+           '--longestORF')
+    pipettor.run(cmd)
+
+def run_for_region(listofargs):
     args, temp_prefix, splice_site_annot_chrom, annots = listofargs
 
     # FIXME: pass in region rather than parse out of file name
@@ -1530,9 +1539,6 @@ def run_collapse_by_chrom(listofargs):
 
     firstpass, iso_to_unique_bound = filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE,
                                                            annots, sup_annot_transcript_to_juncs)
-    temp_to_remove = [temp_prefix + '.reads.fasta', temp_prefix + 'reads.notannotmatch.fasta']
-    if not args.no_align_to_annot and len(annots.transcripts) > 0:
-        temp_to_remove.extend([temp_prefix + '.annotated_transcripts.bed', temp_prefix + '.annotated_transcripts.fa'])
     if len(firstpass.keys()) > 0:
         logging.info('getting gene names and writing firstpass')
 
@@ -1549,7 +1555,6 @@ def run_collapse_by_chrom(listofargs):
                                       temp_prefix + '.firstpass.bed',
                                       temp_prefix + '.novelisos.counts.tsv',
                                       temp_prefix + '.novelisos.read.map.txt', False, clipping_file, temp_prefix + '.firstpass.uniquebound.txt')
-        temp_to_remove.extend([temp_prefix + '.firstpass.fa'])
     else:
         # create empty files
         with open(temp_prefix + '.firstpass.fa', 'w') as _, \
@@ -1561,10 +1566,13 @@ def run_collapse_by_chrom(listofargs):
             # FIXME: this appears to be clearing the file, but why?
             with open(temp_prefix + '.ends.tsv', 'w') as _:
                 pass
+    gene_to_juncs_to_ends = isoform_processing(args, temp_prefix)
+    combine_annot_w_novel_and_write_files(args, temp_prefix, gene_to_juncs_to_ends, genome)
+    if args.predict_cds:
+        logging.info('predicting CDS')
+        predict_productivity(temp_prefix, args.genome, args.gtf)
+
     genome.close()
-    if not args.keep_intermediate:
-        for f in temp_to_remove:
-            os.remove(f)
 
 ####
 # partition of genome
@@ -1633,13 +1641,13 @@ def chunk_split(args, all_regions, known_chromosomes, gtf,
                                temp_dir, chunk_cmds, temp_prefixes)
     return chunk_cmds, temp_prefixes
 
-def run_chunks(threads, chunk_cmds):
+def flair_transcriptome_region(threads, chunk_cmds):
     mp.set_start_method('fork')
     p = mp.Pool(threads)
     child_errs = set()
     c = 1
     # FIXME: switch to starmap_async to get position arguments and pluralism, maybe error_callback
-    for i in p.imap(run_collapse_by_chrom, chunk_cmds):
+    for i in p.imap(run_for_region, chunk_cmds):
         logging.info(f'\rdone running chunk {c} of {len(chunk_cmds)}')
         child_errs.add(i)
         c += 1
@@ -1651,13 +1659,14 @@ def run_chunks(threads, chunk_cmds):
 
 def combine_chunks(args, output, temp_prefixes):
     files_to_combine = ['.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed', '.firstpass.bed',
-                        '.novelisos.counts.tsv', '.novelisos.read.map.txt']
+                        '.novelisos.counts.tsv', '.novelisos.read.map.txt', '.isoforms.bed',
+                        '.isoform.read.map.txt', '.isoforms.gtf', '.isoforms.fa', '.isoform.counts.txt']
+    if args.end_norm_dist:
+        files_to_combine.extend(('.read_ends.bed', '.matchannot.ends.tsv'))
+    if args.predict_cds:
+        files_to_combine.append('.isoforms.CDS.bed')
     if not args.no_align_to_annot:
         files_to_combine.extend(['.matchannot.counts.tsv', '.matchannot.read.map.txt', '.matchannot.bed'])
-        if args.end_norm_dist:
-            files_to_combine.append('.matchannot.ends.tsv')
-    if args.end_norm_dist:
-        files_to_combine.append('.novelisos.ends.tsv')
     combine_temp_files_by_suffix(output, temp_prefixes, files_to_combine)
 
 ####
@@ -1679,21 +1688,12 @@ def remote_intermediates(output):
         if os.path.exists(p):
             os.remove(p)
 
-def predict_productivity(output, genome_fasta, gtf):
-    cmd = ('predictProductivity',
-           '-i', output + '.isoforms.bed',
-           '-o', output + '.isoforms.CDS',
-           '--gtf', gtf,
-           '--genome_fasta', genome_fasta,
-           '--longestORF')
-    pipettor.run(cmd)
-    os.remove(output + '.isoforms.CDS.info.tsv')
-
 def flair_transcriptome():
     # FIXME: split options out that are flags to indicate what to do
     # so args doesn't get passes but we don't have to pass so many options
 
     args = get_args()
+
     logging.info('loading genome')
     genome = pysam.FastaFile(args.genome)
     logging.info('making temp dir')
@@ -1718,18 +1718,11 @@ def flair_transcriptome():
                                             temp_dir)
 
     logging.info('running by chunk')
-    run_chunks(args.threads, chunk_cmds)
+    flair_transcriptome_region(args.threads, chunk_cmds)
     combine_chunks(args, args.output, temp_prefixes)
+
     if not args.keep_intermediate:
         shutil.rmtree(temp_dir)
-
-    gene_to_juncs_to_ends = isoform_processing(args, args.output)
-
-    combine_annot_w_novel_and_write_files(args, gene_to_juncs_to_ends, genome)
-
-    if args.predict_cds:
-        predict_productivity(args.output, args.genome, args.gtf)
-
     if not args.keep_intermediate:
         remote_intermediates(args.output)
 

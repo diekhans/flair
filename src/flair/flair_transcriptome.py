@@ -3,7 +3,6 @@
 import argparse
 import os
 import pipettor
-import uuid
 import shutil
 import pysam
 import logging
@@ -147,22 +146,109 @@ def exons_to_juncs(exons):
     return [Junc(exons[i][1], exons[i + 1][0])
             for i in range(len(exons) - 1)]
 
+####
+# File management
+####
+class OutputFiles:
+    """Management of output files.  These are either final
+    output files or output of a partition.  They can be final output
+    files or intermediates"""
+    def __init__(self, output_prefix, intermediate_prefix):
+        self.output_prefix = output_prefix
+        self.intermediate_prefix = intermediate_prefix
+
+    def get_by_property(self, prop):
+        """Use the class property to get a value:
+             bed = outputs.get_by_property(OutputFiles.isoforms_bed)
+        """
+        return prop.fget(self)
+
+    ####
+    # final outputs
+    ###
+
+    @property
+    def isoforms_bed(self):
+        return self.output_prefix + '.isoforms.bed'
+
+    @property
+    def isoforms_CDS(self):
+        # FIXME: what is the format make this a TSV, or include in GFF
+        return self.output_prefix + '.isoforms.CDS'
+
+    @property
+    def isoform_read_map_txt(self):
+        # FIXME: make this a TSV
+        return self.output_prefix + '.isoform.read.map.txt'
+
+    @property
+    def isoforms_gtf(self):
+        return self.output_prefix + '.isoforms.gtf'
+
+    @property
+    def isoforms_fa(self):
+        return self.output_prefix + '.isoforms.fa'
+
+    @property
+    def isoform_counts_txt(self):
+        return self.output_prefix + '.isoform.counts.txt'
+
+    @property
+    def matchannot_ends_tsv(self):
+        return self.output_prefix + '.matchannot.ends.tsv'
+
+    @property
+    def novelisos_ends_tsv(self):
+        return self.output_prefix + '.novelisos.ends.tsv'
+
+    ####
+    # intermediate files
+    ####
+    @property
+    def firstpass_reallyunfiltered_bed(self):
+        return self.intermediate_prefix + '.firstpass.reallyunfiltered.bed'
+
+    @property
+    def firstpass_unfiltered_bed(self):
+        return self.intermediate_prefix + '.firstpass.unfiltered.bed'
+
+    @property
+    def firstpass_bed(self):
+        return self.intermediate_prefix + '.firstpass.bed'
+
+    @property
+    def novelisos_counts_tsv(self):
+        return self.intermediate_prefix + '.novelisos.counts.tsv'
+
+    @property
+    def novelisos_read_map_txt(self):
+        return self.intermediate_prefix + '.novelisos.read.map.txt'
+
+    @property
+    def matchannot_bed(self):
+        return self.intermediate_prefix + '.matchannot.bed'
+
+    @property
+    def matchannot_counts_tsv(self):
+        return self.intermediate_prefix + '.matchannot.counts.tsv'
+
+    @property
+    def matchannot_read_map_txt(self):
+        return self.intermediate_prefix + '.matchannot.read.map.txt'
+
+    @property
+    def matchannot_ends_tsv(self):
+        return self.intermediate_prefix + '.matchannot.ends.tsv'
+
+    @property
+    def novelisos_ends_tsv(self):
+        return self.intermediate_prefix + '.novelisos.ends.tsv'
+
 
 ####
 # misc
+# FIXME: organize
 ###
-def make_correct_temp_dir():
-    # FIXME: use TMPDIR unless directory explicitly specified
-    temp_dir_name = str(uuid.uuid4())
-    try:
-        current_directory = os.getcwd()
-        temp_dir = os.path.join(current_directory, temp_dir_name)
-        os.mkdir(temp_dir)
-    except OSError:
-        raise OSError(f"Creation of the directory {temp_dir_name} failed")
-    return temp_dir + '/'
-
-
 def binary_search(query, data):
     """ Query is a coordinate interval. Binary search for the query in sorted data,
         which is a list of coordinates. Finishes when an overlapping value of query and
@@ -268,7 +354,6 @@ def correct_single_read(bed_read, intervalTree, junctionBoundaryDict):
     # 0 length exons, remove them.
     if min(sizes) == 0:
         return None
-
     else:
         bed_read.juncs = newJuncs
         bed_read.exon_sizes = sizes
@@ -420,6 +505,7 @@ class AnnotData(object):
 
 
 def generate_region_dict(all_regions):
+    # FIXME: make part of partition code
     chrom_to_regions, regions_to_annot_data = {}, {}
     for chrom, region_start, region_end in all_regions:
         if chrom not in chrom_to_regions:
@@ -766,13 +852,13 @@ def generate_normalize_ends(annots):
                                             gene_to_terminal_junction_specific_ends)
     return gene_to_terminal_junction_specific_ends
 
-def generate_transcriptome_reference(temp_prefix, annots, chrom, genome,
+def generate_transcriptome_reference(outputs, annots, chrom, genome,
                                      normalize_ends=False, add_length_at_ends=0):
     transcript_to_strand = {}
     transcript_to_new_exons = {}
-    with (open(temp_prefix + '.annotated_transcripts.bed', 'w') as annot_bed_fh,
-          open(temp_prefix + '.annotated_transcripts.fa', 'w') as annot_fa_fh,
-          open(temp_prefix + '.annotated_transcripts_uniquebound.txt', 'w') as annot_uniqueseq_fh):
+    with (open(outputs.annotated_transcripts_bed, 'w') as annot_bed_fh,
+          open(outputs.annotated_transcripts_fa, 'w') as annot_fa_fh,
+          open(outputs.annotated_transcripts_uniquebound_txt, 'w') as annot_uniqueseq_fh):
         gene_to_terminal_junction_specific_ends = None
         if normalize_ends:
             gene_to_terminal_junction_specific_ends = generate_normalize_ends(annots)
@@ -833,7 +919,8 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
                                       temp_prefix + '.annotated_transcripts.fa',
                                       temp_prefix + '.annotated_transcripts.bed',
                                       temp_prefix + '.matchannot.counts.tsv',
-                                      temp_prefix + '.matchannot.read.map.txt', True, clipping_file, temp_prefix + '.annotated_transcripts_uniquebound.txt')
+                                      temp_prefix + '.matchannot.read.map.txt', True, clipping_file,
+                                      temp_prefix + '.annotated_transcripts_uniquebound.txt')
         logging.info('processing good matches')
         with open(temp_prefix + '.matchannot.bed', 'w') as annot_bed_fh:
             for line in open(temp_prefix + '.matchannot.read.map.txt'):
@@ -1064,14 +1151,6 @@ def filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, fi
         firstpass = filter_all_single_exon(args, firstpass_SE, firstpass_unfiltered, firstpass)
 
     return firstpass, iso_to_unique_bound
-
-
-def combine_temp_files_by_suffix(output, temp_prefixes, suffixes):
-    for filesuffix in suffixes:
-        with open(output + filesuffix, 'wb') as combined_fh:
-            for temp_prefix in temp_prefixes:
-                with open(temp_prefix + filesuffix, 'rb') as in_fh:
-                    shutil.copyfileobj(in_fh, combined_fh, 1024 * 1024 * 10)
 
 
 def get_genes_with_shared_juncs(juncs, annots):
@@ -1340,6 +1419,7 @@ def isoform_processing(args, output):
 
 
 def get_reverse_complement(seq):
+    # FIXME: move to a module.
     compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
     seq = seq.upper()
     new_seq = []
@@ -1638,7 +1718,8 @@ def run_chunks(threads, chunk_cmds):
     p = mp.Pool(threads)
     child_errs = set()
     c = 1
-    # FIXME: switch to starmap_async to get position arguments and pluralism, maybe error_callback
+    # FIXME: switch to starmap_async to get position arguments, maybe error_callback
+    # FIXME: should we stop on first error?
     for i in p.imap(run_collapse_by_chrom, chunk_cmds):
         logging.info(f'\rdone running chunk {c} of {len(chunk_cmds)}')
         child_errs.add(i)
@@ -1649,40 +1730,46 @@ def run_chunks(threads, chunk_cmds):
         # FIXME need validate that this produces reasonable errors
         raise ValueError('\n'.join(child_errs))
 
-def combine_chunks(args, output, temp_prefixes):
-    files_to_combine = ['.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed', '.firstpass.bed',
-                        '.novelisos.counts.tsv', '.novelisos.read.map.txt']
+def combine_region_files(outputs, temp_prefixes, file_name_method):
+    # FIXME: store OutputFiles with temp_prefixes in a region_definition object
+    with open(outputs.get_by_property(file_name_method), 'wb') as combined_fh:
+        for temp_prefix in temp_prefixes:
+            temp_out = OutputFiles(temp_prefix)
+            with open(temp_out.get_by_property(prop), 'rb') as in_fh:
+                shutil.copyfileobj(in_fh, combined_fh, 1024 * 1024 * 10)
+
+def combine_chunks(output, temp_prefixes):
+    combine_region_files(outputs, temp_prefixes, OutputFiles.firstpass_reallyunfiltered_bed),
+    combine_region_files(outputs, temp_prefixes, OutputFiles.firstpass_unfiltered_bed),
+    combine_region_files(outputs, temp_prefixes, OutputFiles.firstpass_bed),
+    combine_region_files(outputs, temp_prefixes, OutputFiles.novelisos_counts_tsv),
+    combine_region_files(outputs, temp_prefixes, OutputFiles.novelisos_read_map_txt)]
     if not args.no_align_to_annot:
-        files_to_combine.extend(['.matchannot.counts.tsv', '.matchannot.read.map.txt', '.matchannot.bed'])
+        combine_region_files(outputs, temp_prefixes, OutputFiles.matchannot_counts_tsv)
+        combine_region_files(outputs, temp_prefixes, OutputFiles.matchannot_read_map_txt)
+        combine_region_files(outputs, temp_prefixes, OutputFiles.matchannot_bed)
         if args.end_norm_dist:
-            files_to_combine.append('.matchannot.ends.tsv')
+            combine_region_files(outputs, temp_prefixes, OutputFiles.matchannot_ends_tsv)
     if args.end_norm_dist:
-        files_to_combine.append('.novelisos.ends.tsv')
-    combine_temp_files_by_suffix(output, temp_prefixes, files_to_combine)
+        combine_region_files(outputs, temp_prefixes, OutputFiles.novelisos_ends_tsv)
 
 ####
-# main
+# main functions
 ####
-def remote_intermediates(output):
-    files_to_remove = ['.firstpass.reallyunfiltered.bed',
-                       '.firstpass.unfiltered.bed',
-                       '.firstpass.bed',
-                       '.novelisos.counts.tsv',
-                       '.novelisos.read.map.txt',
-                       '.matchannot.bed',
-                       '.matchannot.counts.tsv',
-                       '.matchannot.read.map.txt',
-                       '.matchannot.ends.tsv',
-                       '.novelisos.ends.tsv']
-    for f in files_to_remove:
-        p = output + f
-        if os.path.exists(p):
-            os.remove(p)
+def make_temp_dir(output_prefix):
+    # FIXME: use TMPDIR unless directory explicitly specified
+    temp_dir = os.path.join(output_prefix, '.tmp')
+    try:
+        os.makedirs(temp_dir, exist_ok=True)
+    except OSError as exc:
+        raise OSError(f"Creation of the directory {temp_dir} failed") from exc
+    return temp_dir + '/'
+
 
 def predict_productivity(output, genome_fasta, gtf):
     cmd = ('predictProductivity',
-           '-i', output + '.isoforms.bed',
-           '-o', output + '.isoforms.CDS',
+           '-i', output.isoforms_bed,
+           '-o', output.isoforms_CDS,
            '--gtf', gtf,
            '--genome_fasta', genome_fasta,
            '--longestORF')
@@ -1694,10 +1781,13 @@ def flair_transcriptome():
     # so args doesn't get passes but we don't have to pass so many options
 
     args = get_args()
+    temp_dir = make_temp_dir(args.output, "tmp")
+    intermedite_dir = args.output + ".intermediate"
+    outputs = OutputFiles(args.output, intermediate_dir)
+
     logging.info('loading genome')
     genome = pysam.FastaFile(args.genome)
-    logging.info('making temp dir')
-    temp_dir = make_correct_temp_dir()
+    temp_dir = make_temp_dir(args.output)
 
     logging.info('Getting regions')
     all_regions = partition_input(args.parallel_mode, genome, args.genome_aligned_bam,
@@ -1719,7 +1809,7 @@ def flair_transcriptome():
 
     logging.info('running by chunk')
     run_chunks(args.threads, chunk_cmds)
-    combine_chunks(args, args.output, temp_prefixes)
+    combine_chunks(args, outputs, temp_prefixes)
     if not args.keep_intermediate:
         shutil.rmtree(temp_dir)
 
@@ -1728,10 +1818,11 @@ def flair_transcriptome():
     combine_annot_w_novel_and_write_files(args, gene_to_juncs_to_ends, genome)
 
     if args.predict_cds:
-        predict_productivity(args.output, args.genome, args.gtf)
+        predict_productivity(outputs, args.genome, args.gtf)
 
     if not args.keep_intermediate:
-        remote_intermediates(args.output)
+        shutil.rmtree(intermediate_dir, ignore_errors=True)
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
     genome.close()
 

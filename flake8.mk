@@ -6,7 +6,8 @@ FLAKE8_SRC = \
     flair_partition.py \
     flair_transcriptome.py \
     flair_variantmodels.py \
-    filter_transcriptome_align.py
+    filter_transcriptome_align.py \
+    gtf_io.py
 
 # FIXME: 
 FLAKE8_SRC_BROKEN =  \

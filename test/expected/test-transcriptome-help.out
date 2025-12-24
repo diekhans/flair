@@ -108,7 +108,7 @@ options:
                         specify the number of basepairs to extend transcript
                         ends if you want to normalize them across transcripts
                         in a gene and extend them
-  --output_endpos       specify if you want to ouptut a setparate file with
+  --output_endpos       specify if you want to output a separate file with
                         corrected read end positions. For development purposes
   --output_bam          output intermediate bams aligned to the transcriptome.
                         Only works with --keep_intermediate, for debugging

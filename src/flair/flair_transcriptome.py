@@ -8,7 +8,7 @@ import pysam
 import logging
 import re
 import multiprocessing as mp
-from flair import FlairInputDataError, PosRange
+from flair import FlairInputDataError, SeqRange, PosRange
 from collections import Counter
 from flair.flair_align import inferMM2JuncStrand, intron_chain_to_exon_starts
 from flair.ssUtils import addOtherJuncs, gtfToSSBed
@@ -117,7 +117,7 @@ def get_args():
                         help='specify the number of basepairs to extend transcript ends if you want to '
                              'normalize them across transcripts in a gene and extend them')
     parser.add_argument('--output_endpos', default=False, action='store_true',
-                        help='specify if you want to ouptut a setparate file with corrected read end positions. '
+                        help='specify if you want to output a separate file with corrected read end positions. '
                              'For development purposes')
     parser.add_argument('--output_bam', default=False, action='store_true',
                         help='output intermediate bams aligned to the transcriptome. '
@@ -417,11 +417,12 @@ class AnnotData(object):
 
 def generate_region_dict(all_regions):
     chrom_to_regions, regions_to_annot_data = {}, {}
-    for chrom, region_start, region_end in all_regions:
-        if chrom not in chrom_to_regions:
-            chrom_to_regions[chrom] = []
-        chrom_to_regions[chrom].append((region_start, region_end))
-        regions_to_annot_data[(chrom, region_start, region_end)] = AnnotData()
+    for region in all_regions:
+        print("@@@", region)
+        if region.name not in chrom_to_regions:
+            chrom_to_regions[region.name] = []
+        chrom_to_regions[region.name].append(region)
+        regions_to_annot_data[region] = AnnotData()
     return chrom_to_regions, regions_to_annot_data
 
 def get_t_name_to_exons(gtf):
@@ -479,13 +480,13 @@ def save_transcript_annot_to_region(transcript_id, gene_id, region, regions_to_a
             annots.gene_to_annot_juncs[gene_id].add(j)
     annots.all_annot_SE = sorted(annots.all_annot_SE)  # FIXME: make set?
 
-def get_annot_for_chrom(chromregions, region_chrom, regions_to_annot_data, chrom_transcript_to_exons):
+def get_annot_for_chrom(chrom_regions, region_chrom, regions_to_annot_data, chrom_transcript_to_exons):
     for transcript_id, gene_id in chrom_transcript_to_exons:
         tinfo = chrom_transcript_to_exons[(transcript_id, gene_id)]
         t_start, t_end, strand = get_annot_t_ends(tinfo)
-        for region_start, region_end in chromregions:
-            if region_start < t_start < region_end or region_start < t_end < region_end:
-                region = (region_chrom, region_start, region_end)
+        for region in chrom_regions:
+            # FIXME: this weird way to code comparison
+            if region.start < t_start < region.end or region.start < t_end < region.end:
                 save_transcript_annot_to_region(transcript_id, gene_id, region, regions_to_annot_data,
                                                 t_start, t_end, strand, tinfo[1])
     return regions_to_annot_data
@@ -1587,7 +1588,7 @@ def decide_parallel_mode(parallel_mode, genome_aligned_bam):
             return 'bychrom'
 
 def partition_input_by_chrom(genome, genome_aligned_bam):
-    return [(chrom, 0, genome.get_reference_length(chrom))
+    return [SeqRange(chrom, 0, genome.get_reference_length(chrom))
             for chrom in genome.references]
 
 def partition_input_by_region(genome_aligned_bam, gtf, threads):
@@ -1599,7 +1600,7 @@ def partition_input_by_region(genome_aligned_bam, gtf, threads):
         cmd += [f'--gtf={gtf}']
     cmd += ['/dev/stdout']
     with pipettor.Popen(cmd) as part_fh:
-        return [(bed.chrom, bed.chromStart, bed.chromEnd)
+        return [SeqRange(bed.chrom, bed.chromStart, bed.chromEnd)
                 for bed in BedReader(part_fh)]
 
 def partition_input(parallel_mode, genome, genome_aligned_bam, gtf, threads):
@@ -1611,17 +1612,15 @@ def partition_input(parallel_mode, genome, genome_aligned_bam, gtf, threads):
 ####
 # Splitting input data by partition and running in parallel
 ###
-
-def chunk_split_region(args, region_chrom, region_start, region_end, gtf,
-                       regions_to_annot_data, annotation_files,
+def chunk_split_region(args, region, gtf, regions_to_annot_data, annotation_files,
                        temp_dir, chunk_cmds, temp_prefixes):
     if gtf:
-        annots = regions_to_annot_data[(region_chrom, region_start, region_end)]
+        annots = regions_to_annot_data[region]
     else:
         annots = AnnotData()
 
-    splice_site_annot_chrom = annotation_files[region_chrom]
-    temp_prefix = temp_dir + '-'.join([region_chrom, str(region_start), str(region_end)])
+    splice_site_annot_chrom = annotation_files[region.name]
+    temp_prefix = temp_dir + '-'.join([region.name, str(region.start), str(region.end)])
     chunk_cmds.append([args, temp_prefix, splice_site_annot_chrom, annots])
     temp_prefixes.append(temp_prefix)
 
@@ -1630,10 +1629,9 @@ def chunk_split(args, all_regions, known_chromosomes, gtf,
                 temp_dir):
     chunk_cmds = []
     temp_prefixes = []
-    for region_chrom, region_start, region_end in all_regions:
-        if region_chrom in known_chromosomes:
-            chunk_split_region(args, region_chrom, region_start, region_end, gtf,
-                               regions_to_annot_data, annotation_files,
+    for region in all_regions:
+        if region.name in known_chromosomes:
+            chunk_split_region(args, region, gtf, regions_to_annot_data, annotation_files,
                                temp_dir, chunk_cmds, temp_prefixes)
     return chunk_cmds, temp_prefixes
 

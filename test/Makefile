@@ -11,12 +11,17 @@ ifneq (${use_installed_flair},yes)
     export PYTHONPATH := ${root}/src:${PYTHONPATH}
 endif
 
+ifeq (${PYTHONWARNINGS},)
+   # set to error to find were they are coming from
+   export PYTHONWARNINGS=always
+endif
+
 
 ##
 # all targets
 ##
 default:
-	@echo To run tests, use: >&2
+	@echo To run all tests, use: >&2
 	@echo "   " make test >&2
 	@echo To run tests without R depedencies, use: >&2
 	@echo "   " make test-base >&2
@@ -41,7 +46,7 @@ test: test-base test-with-R
 test-base: align-tests correct-tests collapse-tests quantify-tests \
 	combine-tests predict-productivity-tests diff-iso-usage-tests \
 	plot-usage-tests transcriptome-tests fusion-tests variants-tests \
-	partition-tests
+	partition-tests lib-tests
 
 test-with-R: diffexp-tests diffsplice-tests
 
@@ -597,6 +602,12 @@ test-partition-sam: mkdirs
 	    output/$@.ranges.bed >& output/$@.out
 	$(call cmp_expect,$@.ranges.bed)
 	$(call cmp_expect,$@.out)
+
+##
+# library tests
+##
+lib-tests: mkdirs
+	${PYTEST} --capture=no
 
 
 ##

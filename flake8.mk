@@ -9,9 +9,12 @@ FLAKE8_SRC = \
     filter_transcriptome_align.py \
     gtf_io.py
 
+FLAKE8_TESTS = \
+	test
+
 # FIXME: 
 FLAKE8_SRC_BROKEN =  \
    flair_spliceevents.py \
    flair_variantquant.py \
 
-FLAKE8_CHECK = ${FLAKE8_SRC:%=src/flair/%}
+FLAKE8_CHECK = ${FLAKE8_SRC:%=src/flair/%} ${FLAKE8_TESTS}

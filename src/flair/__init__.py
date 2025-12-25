@@ -32,7 +32,7 @@ class PosRange(namedtuple("PosRange",
 
 class SeqRange(namedtuple("SeqRange",
                           ("name", "start", "end", "strand"))):
-    """Range withing a sequence, including optional strand. Duck-type inheritance
+    """Range within a sequence, including optional strand. Duck-type inheritance
     from PosRange"""
 
     def __new__(cls, name, start, end, strand=None):

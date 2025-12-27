@@ -607,7 +607,7 @@ test-partition-sam: mkdirs
 # library tests
 ##
 lib-tests: mkdirs
-	${PYTEST} --capture=no
+	${PYTEST} --capture=no -vv
 
 
 ##

@@ -4,6 +4,7 @@ Simplistic, non-validating GTF parser.
 import re
 from typing import Optional
 from collections import defaultdict
+from intervaltree import IntervalTree
 from flair.pycbio.sys import fileOps
 from flair import SeqRange
 
@@ -19,7 +20,9 @@ class GtfIdError(KeyError):
     pass
 
 class GtfRecord:
-    """Base GTF record."""
+    """Base GTF record.  Text columns of '.' are set to None.  Repeated attributes
+    are converted to list of values
+    """
     def __init__(self, chrom: str, source: str, feature: str,
                  start: int, end: int, score: str, strand: str, frame: str,
                  attrs: Attrs):
@@ -31,10 +34,19 @@ class GtfRecord:
         self.score = score
         self.strand = strand
         self.frame = frame
-        self.gene_id = attrs.get("gene_id")
-        self.gene_name = attrs.get("gene_name")
-        self.transcript_id = attrs.get("transcript_id")
         self.attrs = attrs
+
+    @property
+    def gene_id(self):
+        return self.attrs.get("gene_id")
+
+    @property
+    def gene_name(self):
+        return self.attrs.get("gene_name")
+
+    @property
+    def transcript_id(self):
+        return self.attrs.get("transcript_id")
 
     def __len__(self) -> int:
         return self.end - self.start
@@ -48,6 +60,11 @@ class GtfRecord:
     def coords_no_strand(self) -> SeqRange:
         """coordinates of sequence, without strand"""
         return SeqRange(self.chrom, self.start, self.end)
+
+    def __str__(self) -> str:
+        """Return GTF format line."""
+        return _format_gtf_columns(self.chrom, self.source, self.feature, self.start, self.end,
+                                   self.score, self.strand, self.frame, self.attrs)
 
 def gtf_record_sort_key(rec):
     return (rec.chrom, rec.start, rec.end)
@@ -64,8 +81,7 @@ class GtfCDS(GtfRecord):
     """GTF CDS (coding sequence)."""
 
     def __init__(self, chrom: str, source: str, feature: str, start: int, end: int,
-                 score: str, strand: str, frame: str,
-                 attrs: Attrs):
+                 score: str, strand: str, frame: str, attrs: Attrs):
         super().__init__(chrom, source, feature, start, end, score, strand, frame, attrs)
 
 class GtfTranscript(GtfRecord):
@@ -90,14 +106,21 @@ class GtfTranscript(GtfRecord):
         self.cds_recs.sort(key=gtf_record_sort_key)
 
 class GtfData:
-    """data from a GTF file"""
+    """Data from a GTF file.  This is a container of GtfTranscript objects
+    and there children.  There is no gene objects, as they are not required records
+    in GTF."""
     def __init__(self):
         self.transcripts = []
         self.transcripts_by_id: dict[str, GtfTranscript] = {}
+        # transcripts by chrom then range overlap.
+        self.transcripts_by_range = defaultdict(IntervalTree)
 
-    def add_transcript(self, gtf_transcript):
-        self.transcripts.append(gtf_transcript)
-        self.transcripts_by_id[gtf_transcript.transcript_id] = gtf_transcript
+    def add_transcript(self, transcript: GtfTranscript):
+        if transcript.transcript_id in self.transcripts_by_id:
+            raise GtfParseError(f"adding duplicate transcript id: `{transcript.transcript_id}'")
+        self.transcripts.append(transcript)
+        self.transcripts_by_id[transcript.transcript_id] = transcript
+        self.transcripts_by_range[transcript.chrom].addi(transcript.start, transcript.end, transcript)
 
     def get_transcript(self, transcript_id):
         """return transcript for id or None if not found"""
@@ -113,10 +136,69 @@ class GtfData:
     def iter_transcript_ids(self):
         return self.transcripts_by_id.keys()
 
+    def get_chroms(self):
+        """get a sorted list of the chrom names"""
+        return sorted(self.transcripts_by_range.keys())
+
+    def iter_overlap_transcripts(self, chrom, start, end, *, strand=None):
+        """Generator overlapping transcripts, optionally filtering for strand"""
+        # defaultdict will handle chrom not in GTF
+        for interval in self.transcripts_by_range[chrom].overlap(start, end):
+            transcript = interval.data
+            if (strand is None) or (transcript.strand == strand):
+                yield transcript
+
+    def iter_overlap_transcripts_sr(self, seq_range):
+        """Generator overlapping transcripts given a SeqRange object,
+        optionally filtering for strand."""
+        yield from self.iter_overlap_transcripts(seq_range.name, seq_range.start, seq_range.end,
+                                                 strand=seq_range.strand)
+
+
+def _parse_attribute_match(match: re.Match) -> tuple[str, str | int | float]:
+    """Parse a single attribute match into key-value pair, converting
+    unquote values to int or float if possible"""
+    key = match.group(1)
+    quoted_value = match.group(2)
+    unquoted_value = match.group(3)
+
+    if quoted_value is not None:
+        return key, quoted_value
+    else:
+        # It was unquoted - try to convert to number
+        try:
+            # Try int first
+            if '.' not in unquoted_value:
+                return key, int(unquoted_value)
+            else:
+                return key, float(unquoted_value)
+        except ValueError:
+            # If conversion fails, keep as string
+            return key, unquoted_value
+
+def _parse_attribute(attr_str: str, attrs) -> None:
+    key, value = _parse_attribute_match(attr_str)
+    if key in attrs:
+        if key in attrs:
+            if not isinstance(attrs[key], list):
+                attrs[key] = [attrs[key]]  # convert to list
+            attrs[key].append(value)
+    else:
+        attrs[key] = value
 
 def _parse_attributes(attrs_str: str) -> Attrs:
     """Parse GTF attributes string into dict."""
-    return dict(re.findall(r'(\w+)\s+"([^"]+)"', attrs_str))
+    attrs = {}
+
+    # Match both quoted values and unquoted values
+    # Pattern: key "quoted value" OR key unquoted_value
+    pattern = r'(\w+)\s+(?:"([^"]*)"|([^;\s]+))'
+
+    for attr_str in re.finditer(pattern, attrs_str):
+        _parse_attribute(attr_str, attrs)
+
+    return attrs
+
 
 def _parse_coordinates(start_str: str, end_str: str) -> tuple[int, int]:
     try:
@@ -192,6 +274,44 @@ def _parse_gtf_line(line: str) -> GtfRecord:
                frame=_parse_frame(fields[7]),
                attrs=attrs)
 
+def _format_attr(key, value):
+    if isinstance(value, (int, float)):
+        return f'{key} {value}'
+    else:
+        return f'{key} "{value}"'
+
+def _format_attr_key_val(key, value):
+    attr_strs = []
+    if isinstance(value, list):
+        for value_n in value:
+            attr_strs.append(_format_attr(key, value_n))
+    else:
+        attr_strs = [_format_attr(key, value)]
+    return attr_strs
+
+def _format_attrs(attrs):
+    """Build list of key=val, handling duplicate keys"""
+    attrs_strs = []
+    for key, value in attrs.items():
+        attrs_strs += _format_attr_key_val(key, value)
+    attrs_field = '; '.join(attrs_strs)
+    if attrs_field:
+        attrs_field += ';'
+    return attrs_field
+
+def _str_or_dot(val):
+    return str(val) if val is not None else '.'
+
+def _format_gtf_columns(chrom, source, feature, start, end, score, strand, frame,
+                        attrs) -> str:
+    """Return GTF format line."""
+
+    # Join all fields with tabs
+    fields = [chrom, source, feature, str(start + 1), str(end),
+              _str_or_dot(score), _str_or_dot(strand), _str_or_dot(frame),
+              _format_attrs(attrs)]
+    return '\t'.join(fields)
+
 def gtf_record_parser(gtf_file: str):
     """Parse GTF file, yields GtfRecord GtfTranscript, GtfExon, or GtfCDS objects.
     File maybe compressed"""
@@ -240,3 +360,21 @@ def gtf_data_parser(gtf_file):
     _load_gtf_record(gtf_file, gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs)
     _resolve_gtf_records(gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs)
     return gtf_data
+
+def gtf_write_row(gtf_fh, chrom, source, feature, start, end, score, strand, frame, *,
+                  gene_id=None, gene_name=None, transcript_id=None, attrs=None):
+    """
+    Write a row of a GTF without creating a GtfRecord object.  Handle score, strand, frame being
+    None.
+    """
+    # Individual attributes override attrs
+    merged = attrs.copy() if attrs is not None else {}
+    if gene_id is not None:
+        merged['gene_id'] = gene_id
+    if gene_name is not None:
+        merged['gene_name'] = gene_name
+    if transcript_id is not None:
+        merged['transcript_id'] = transcript_id
+
+    print(_format_gtf_columns(chrom, source, feature, start, end, score, strand, frame, merged),
+          file=gtf_fh)

@@ -8,9 +8,10 @@ import pysam
 import logging
 import re
 import multiprocessing as mp
-from flair import FlairInputDataError, SeqRange, PosRange
 from collections import Counter
+from flair import FlairInputDataError, SeqRange, PosRange
 from flair.flair_align import inferMM2JuncStrand, intron_chain_to_exon_starts
+from flair.gtf_io import gtf_data_parser
 from flair.ssUtils import addOtherJuncs, gtfToSSBed
 from flair.ssPrep import buildIntervalTree, ssCorrect
 from flair.pycbio.hgdata.bed import BedReader
@@ -45,7 +46,7 @@ def get_args():
                         help='output file name base for FLAIR isoforms (default: flair)')
     parser.add_argument('-t', '--threads', type=int, default=12,
                         help='number of threads to run with - related to parallel_mode')
-    parser.add_argument('-f', '--gtf', default='',
+    parser.add_argument('-f', '--gtf', dest="annot_gtf", default=None,
                         help='GTF annotation file, used for identifying annotated isoforms')
 
     mutexc = parser.add_mutually_exclusive_group(required=False)
@@ -194,8 +195,8 @@ def generate_known_SS_database(args, temp_dir):
     # Convert gtf to bed and split by chromosome.
     juncs, chromosomes, knownSS = dict(), set(), dict()  # initialize juncs for adding to db
 
-    if args.gtf:
-        juncs, chromosomes, knownSS = gtfToSSBed(args.gtf, knownSS, False, False, False)
+    if args.annot_gtf:
+        juncs, chromosomes, knownSS = gtfToSSBed(args.annot_gtf, knownSS, False, False, False)
 
     # Do the same for the other juncs file.
     if args.junction_tab or args.junction_bed:
@@ -208,7 +209,7 @@ def generate_known_SS_database(args, temp_dir):
         if not add_flag:
             logging.info(f'WARNING: No junctions found in {shortread} that passed filters')
         if not has_novel_juncs:
-            logging.info(f'WARNING: {shortread} did not have any additional junctions that passed filters and were not in {args.gtf}')
+            logging.info(f'WARNING: {shortread} did not have any additional junctions that passed filters and were not in {args.annot_gtf}')
 
     # added to allow annotations not to be used.
     if len(list(juncs.keys())) < 1:
@@ -418,33 +419,22 @@ class AnnotData(object):
 def generate_region_dict(all_regions):
     chrom_to_regions, regions_to_annot_data = {}, {}
     for region in all_regions:
-        print("@@@", region)
         if region.name not in chrom_to_regions:
             chrom_to_regions[region.name] = []
         chrom_to_regions[region.name].append(region)
         regions_to_annot_data[region] = AnnotData()
     return chrom_to_regions, regions_to_annot_data
 
-def get_t_name_to_exons(gtf):
-    # FIXME: convert to common GTF parser
+def get_t_name_to_exons(annot_gtf_data):
+    # FIXME: make  chrom_to_transcript_to_exons a class or do something with less data transforms
     chrom_to_transcript_to_exons = {}
-    for line in open(gtf):
-        if line[0] != '#':
-            line = line.rstrip().split('\t')
-            chrom, ty, start, end, strand = line[0], line[2], int(line[3]) - 1, int(line[4]), line[6]
-            if ty == 'transcript' or ty == 'exon':
-                if chrom not in chrom_to_transcript_to_exons:
-                    chrom_to_transcript_to_exons[chrom] = {}
-                transcript_id = line[8][line[8].find('transcript_id') + 15:]
-                transcript_id = transcript_id[:transcript_id.find('"')]
-                gene_id = line[8].split('gene_id "')[1].split('"')[0].replace('_', '-')
-                if (transcript_id, gene_id) not in chrom_to_transcript_to_exons[chrom]:
-                    chrom_to_transcript_to_exons[chrom][(transcript_id, gene_id)] = [(None, None, strand), []]
-
-                if ty == 'transcript':
-                    chrom_to_transcript_to_exons[chrom][(transcript_id, gene_id)][0] = (start, end, strand)
-                elif ty == 'exon':
-                    chrom_to_transcript_to_exons[chrom][(transcript_id, gene_id)][1].append((start, end))
+    for trans in annot_gtf_data.transcripts:
+        if trans.chrom not in chrom_to_transcript_to_exons:
+            chrom_to_transcript_to_exons[trans.chrom] = {}
+        if (trans.transcript_id, trans.gene_id) not in chrom_to_transcript_to_exons[trans.chrom]:
+            entry = [(trans.start, trans.end, trans.strand),
+                     [(exon.start, exon.end) for exon in trans.exons]]
+            chrom_to_transcript_to_exons[trans.chrom][(trans.transcript_id, trans.gene_id)] = entry
     return chrom_to_transcript_to_exons
 
 def get_annot_t_ends(tinfo):
@@ -492,9 +482,9 @@ def get_annot_for_chrom(chrom_regions, region_chrom, regions_to_annot_data, chro
     return regions_to_annot_data
 
 
-def get_annot_info(gtf, all_regions):
+def get_annot_info(annot_gtf_data, all_regions):
     chrom_to_regions, regions_to_annot_data = generate_region_dict(all_regions)
-    chrom_to_transcript_to_exons = get_t_name_to_exons(gtf)
+    chrom_to_transcript_to_exons = get_t_name_to_exons(annot_gtf_data)
 
     for region_chrom in chrom_to_transcript_to_exons:
         if region_chrom in chrom_to_regions:  # only get annot for regions that exist in reads
@@ -1344,7 +1334,8 @@ def get_reverse_complement(seq):
         new_seq.append(compbase[base])
     return ''.join(new_seq[::-1])
 
-def get_bed_gtf_fh_from_info(end_info, chrom, strand, juncs, gene_id, genome):
+def get_bed_gtf_from_info(end_info, chrom, strand, juncs, gene_id, genome):
+    # FIXME: what is end info??
     start, end, iso_id, read_names = end_info
     score = min(len(read_names), 1000)
     marker, iso = iso_id
@@ -1391,7 +1382,8 @@ def combine_annot_w_novel(args, gene_to_juncs_to_ends):
             gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)] = ends_list
 
 
-def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh, read_to_final_transcript, counts_fh, seq_fh):
+def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh,
+                      read_to_final_transcript, counts_fh, seq_fh):
     marker, iso = iso_info[2]
     iso = iso.split('-endvar')[0]
     if iso in name_to_used_counts:
@@ -1400,7 +1392,7 @@ def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_
     else:
         name_to_used_counts[iso] = 1
     iso_info[2] = (marker, iso)
-    bed_line, gtf_for_transcript, tseq = get_bed_gtf_fh_from_info(iso_info, chrom, strand, juncs, gene_id, genome)
+    bed_line, gtf_for_transcript, tseq = get_bed_gtf_from_info(iso_info, chrom, strand, juncs, gene_id, genome)
     iso_fh.write(bed_line)
     t_starts.append(iso_info[0])
     t_ends.append(iso_info[1])
@@ -1412,7 +1404,7 @@ def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_
     seq_fh.write('>' + iso + '_' + gene_id + '\n')
     seq_fh.write(tseq + '\n')
 
-def write_gene_gff(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh, read_to_final_transcript, counts_fh, seq_fh, gtf_fh):
+def write_gene_gff_old(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh, read_to_final_transcript, counts_fh, seq_fh, gtf_fh):
     gene_tot = 0
     for chrom, strand, juncs in gene_to_juncs_to_ends[gene_id]:
         for iso_info in gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)]:
@@ -1426,6 +1418,7 @@ def write_gene_gff(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh,
         for iso_info in ends_list:
             if len(iso_info[-1]) / gene_tot >= args.frac_support:
                 write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh, read_to_final_transcript, counts_fh, seq_fh)
+
     gtf_lines.insert(0, [chrom, 'FLAIR', 'gene', min(t_starts) + 1, max(t_ends), '.', gtf_lines[0][6], '.',
                          'gene_id "' + gene_id + '";'])
     for g in gtf_lines:
@@ -1466,8 +1459,8 @@ def combine_annot_w_novel_and_write_files(args, temp_prefix, gene_to_juncs_to_en
 
         # FIXME: one write file at a time, all the data is now bundled up
         for gene_id in gene_to_juncs_to_ends:
-            write_gene_gff(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh,
-                           read_to_final_transcript, counts_fh, seq_fh, gtf_fh)
+            write_gene_gff_old(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh,
+                               read_to_final_transcript, counts_fh, seq_fh, gtf_fh)
 
     if args.end_norm_dist:
         with open(temp_prefix + '.read_ends.bed', 'w') as ends_fh:
@@ -1560,14 +1553,14 @@ def run_for_region(listofargs):
              open(temp_prefix + '.novelisos.read.map.txt', 'w') as _:
             pass
         if args.output_endpos:
-            # FIXME: this appears to be clearing the file, but why?
             with open(temp_prefix + '.ends.tsv', 'w') as _:
                 pass
     gene_to_juncs_to_ends = isoform_processing(args, temp_prefix)
     combine_annot_w_novel_and_write_files(args, temp_prefix, gene_to_juncs_to_ends, genome)
     if args.predict_cds:
         logging.info('predicting CDS')
-        predict_productivity(temp_prefix, args.genome, args.gtf)
+        # FIXME: why is this passing in annotation GTF?
+        predict_productivity(temp_prefix, args.genome, args.annot_gtf)
 
     genome.close()
 
@@ -1591,13 +1584,13 @@ def partition_input_by_chrom(genome, genome_aligned_bam):
     return [SeqRange(chrom, 0, genome.get_reference_length(chrom))
             for chrom in genome.references]
 
-def partition_input_by_region(genome_aligned_bam, gtf, threads):
+def partition_input_by_region(genome_aligned_bam, annot_gtf, threads):
     cmd = ['flair_partition',
            '--min_partition_items=1000',
            f'--threads={threads}',
            f'--bam={genome_aligned_bam}']
-    if gtf is not None:
-        cmd += [f'--gtf={gtf}']
+    if annot_gtf is not None:
+        cmd += [f'--gtf={annot_gtf}']
     cmd += ['/dev/stdout']
     with pipettor.Popen(cmd) as part_fh:
         return [SeqRange(bed.chrom, bed.chromStart, bed.chromEnd)
@@ -1680,19 +1673,21 @@ def flair_transcriptome():
 
     logging.info('Getting regions')
     all_regions = partition_input(args.parallel_mode, genome, args.genome_aligned_bam,
-                                  args.gtf, args.threads)
+                                  args.annot_gtf, args.threads)
     logging.info(f'Number of regions {len(all_regions)}')
 
     logging.info('Generating splice site database')
     known_chromosomes, annotation_files = generate_known_SS_database(args, temp_dir)
 
     regions_to_annot_data = {}
-    if args.gtf:
+    annot_gtf_data = None
+    if args.annot_gtf:
         logging.info('Extracting annotation from GTF')
-        regions_to_annot_data = get_annot_info(args.gtf, all_regions)
+        annot_gtf_data = gtf_data_parser(args.annot_gtf)
+        regions_to_annot_data = get_annot_info(annot_gtf_data, all_regions)
 
     logging.info('splitting by chunk')
-    chunk_cmds, temp_prefixes = chunk_split(args, all_regions, known_chromosomes, args.gtf,
+    chunk_cmds, temp_prefixes = chunk_split(args, all_regions, known_chromosomes, args.annot_gtf,
                                             regions_to_annot_data, annotation_files,
                                             temp_dir)
 

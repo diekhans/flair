@@ -1,5 +1,5 @@
 usage: transcriptome [-h] -b GENOME_ALIGNED_BAM -g GENOME [-o OUTPUT]
-                     [-t THREADS] [-f GTF]
+                     [-t THREADS] [-f ANNOT_GTF]
                      [--junction_tab JUNCTION_TAB | --junction_bed JUNCTION_BED]
                      [--junction_support JUNCTION_SUPPORT]
                      [--ss_window SS_WINDOW] [-w END_WINDOW]
@@ -27,7 +27,8 @@ options:
   -t THREADS, --threads THREADS
                         number of threads to run with - related to
                         parallel_mode
-  -f GTF, --gtf GTF     GTF annotation file, used for identifying annotated
+  -f ANNOT_GTF, --gtf ANNOT_GTF
+                        GTF annotation file, used for identifying annotated
                         isoforms
   --junction_tab JUNCTION_TAB
                         short-read junctions in SJ.out.tab format. Use this

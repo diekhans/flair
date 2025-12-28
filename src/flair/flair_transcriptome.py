@@ -604,6 +604,7 @@ def group_reads_by_ends(read_info_list, sort_index, end_window):
     new_groups, group = [], []
     last_edge = 0
     for iso_info in sorted_ends:
+        print("@@@ iso_info1", iso_info)
         edge = iso_info[sort_index]
         if edge - last_edge <= end_window:
             group.append(iso_info)
@@ -1020,6 +1021,7 @@ def filter_all_single_exon(args, firstpass_SE, firstpass_unfiltered, firstpass):
     #  iso_info (32186479, 32188247, '99bfe5c4-0f3a-4f4d-b5c9-bac459c45e5c')
 
     for iso_info in firstpass_SE:
+        print("@@@ iso_info2", iso_info)
         start, end = iso_info[0], iso_info[1]
         if start < last_end:
             curr_group.append(iso_info)
@@ -1398,6 +1400,7 @@ def combine_annot_w_novel(args, gene_to_juncs_to_ends):
 
 def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh,
                       read_to_final_transcript, counts_fh, seq_fh):
+    print("@@@ iso_info3", iso_info)
     iso_id_src = iso_info[2]
     iso_id = iso_id_src.id.split('-endvar')[0]  # FIXME what is this all about?
     if iso_id in name_to_used_counts:

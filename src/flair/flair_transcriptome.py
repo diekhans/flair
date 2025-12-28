@@ -8,7 +8,7 @@ import pysam
 import logging
 import re
 import multiprocessing as mp
-from collections import Counter
+from collections import Counter, namedtuple
 from flair import FlairInputDataError, SeqRange, PosRange
 from flair.flair_align import inferMM2JuncStrand, intron_chain_to_exon_starts
 from flair.gtf_io import gtf_data_parser
@@ -148,6 +148,16 @@ def exons_to_juncs(exons):
             for i in range(len(exons) - 1)]
 
 
+ISO_SRC_ANNOT = 'annot'
+ISO_SRC_NOVEL = 'novel'
+
+class IsoIdSrc(namedtuple("IsoIdSrc",
+                          ("id", "src"))):
+    """isoform identifier along with the source of the isoform"""
+    # FIXME: it is unclear if this is the best way to store the information,
+    # this was create as a transition from iso (id) or (iso_id) (marker, id)
+    pass
+
 ####
 # misc
 ###
@@ -275,7 +285,7 @@ def correct_single_read(bed_read, intervalTree, junctionBoundaryDict):
 
 
 def get_rgb(name, strand, junclen):
-    # FIXME: document
+    # FIXME: document, this will not work for RefSeq
     if name.startswith('ENST'):
         return '3,28,252'
     elif junclen == 0:
@@ -576,12 +586,13 @@ def get_best_ends(curr_group, end_window):
 
 
 def combine_final_ends(curr_group):
+    # FIXME: group of what?
     if len(curr_group) == 1:
         return curr_group[0]
     else:
-        curr_group.sort(key=lambda x: x[2])  # sort by marker
+        curr_group.sort(key=lambda x: x[2])  # sort by iso_src
         all_reads = [y for x in curr_group for y in x[-1]]
-        if curr_group[0] != 'a':  # if no annotated iso, sort further
+        if curr_group[0] != ISO_SRC_ANNOT:  # if no annotated iso, sort further
             curr_group.sort(key=lambda x: len(x[-1]), reverse=True)
         best_iso = curr_group[0]
         best_iso[-1] = all_reads
@@ -1238,44 +1249,43 @@ def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, annots, ge
             write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, firstpass[iso_name], gene_to_terminal_junction_specific_ends,
                                       add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome)
 
-def decode_name_to_iso_gene(name, marker):
-    iso = '_'.join(name.split('_')[:-1])
+def decode_name_to_iso_gene(name, iso_src):
+    # FIXME: parsing is evil
+    iso_id = '_'.join(name.split('_')[:-1])
     gene_id = name.split('_')[-1]
-    return (marker, iso), gene_id
+    return IsoIdSrc(iso_id, iso_src), gene_id
 
 
 def read_ends_file(args, ends_file):
     # FIXME: make ends file a TSV and use TSVReader
-    iso_to_ends = {}
+    iso_id_to_ends = {}
     for line in open(ends_file):
         read_name, transcript_id, start, end = line.rstrip().split('\t')
         start, end = int(start), int(end)
-        if transcript_id not in iso_to_ends:
-            iso_to_ends[transcript_id] = []
-        iso_to_ends[transcript_id].append((start, end, None, None))
-    for iso in iso_to_ends:
+        if transcript_id not in iso_id_to_ends:
+            iso_id_to_ends[transcript_id] = []
+        iso_id_to_ends[transcript_id].append((start, end, None, None))
+    for iso_id in iso_id_to_ends:
         # (weighted_score, start1, end1, strand1, name1)
-        new_ends = get_best_ends(iso_to_ends[iso], args.end_window)[1:3]
-        iso_to_ends[iso] = new_ends
-    return iso_to_ends
+        new_ends = get_best_ends(iso_id_to_ends[iso_id], args.end_window)[1:3]
+        iso_id_to_ends[iso_id] = new_ends
+    return iso_id_to_ends
 
-def read_map_file(map_file, marker):
-    # FIXME: what is marker?
+def read_map_file(map_file, iso_src):
     og_iso_to_reads = {}
     for line in open(map_file):
         name, reads = line.rstrip().split('\t', 1)
         reads = reads.split(',')
-        # support = len(reads)
-        iso_id, gene_id = decode_name_to_iso_gene(name, marker)
-        og_iso_to_reads[iso_id] = reads
+        iso_id_src, gene_id = decode_name_to_iso_gene(name, iso_src)
+        og_iso_to_reads[iso_id_src] = reads
     return og_iso_to_reads
 
-def have_sufficient_support(args, iso_id, num_exons, og_iso_to_reads):
-    return ((iso_id in og_iso_to_reads) and
-            (((len(og_iso_to_reads[iso_id]) >= args.se_support) and (num_exons == 1)) or
-             ((len(og_iso_to_reads[iso_id]) >= args.sjc_support) and (num_exons > 1))))
+def have_sufficient_support(args, iso_id_src, num_exons, og_iso_to_reads):
+    return ((iso_id_src in og_iso_to_reads) and
+            (((len(og_iso_to_reads[iso_id_src]) >= args.se_support) and (num_exons == 1)) or
+             ((len(og_iso_to_reads[iso_id_src]) >= args.sjc_support) and (num_exons > 1))))
 
-def process_detected_iso(args, iso_bed, gene_id, iso_id, og_iso_to_reads, ends_file, iso_to_ends, gene_to_juncs_to_ends):
+def process_detected_iso(args, iso_bed, gene_id, iso_id_src, og_iso_to_reads, ends_file, iso_to_ends, gene_to_juncs_to_ends):
     start, end = iso_bed.chromStart, iso_bed.chromEnd
     juncs = bed_to_junctions(iso_bed)
     junc_key = (iso_bed.chrom, iso_bed.strand, tuple(juncs))
@@ -1292,11 +1302,11 @@ def process_detected_iso(args, iso_bed, gene_id, iso_id, og_iso_to_reads, ends_f
         gene_to_juncs_to_ends[gene_id] = {}
     if junc_key not in gene_to_juncs_to_ends[gene_id]:
         gene_to_juncs_to_ends[gene_id][junc_key] = []
-    gene_to_juncs_to_ends[gene_id][junc_key].append([start, end, iso_id, og_iso_to_reads[iso_id]])
+    gene_to_juncs_to_ends[gene_id][junc_key].append([start, end, iso_id_src, og_iso_to_reads[iso_id_src]])
 
-def process_detected_isos(args, map_file, bed_file, marker, ends_file, gene_to_juncs_to_ends):
+def process_detected_isos(args, map_file, bed_file, iso_src, ends_file, gene_to_juncs_to_ends):
     # FIXME: what is "og" mean? "ogle"?
-    og_iso_to_reads = read_map_file(map_file, marker)
+    og_iso_to_reads = read_map_file(map_file, iso_src)
 
     if args.end_norm_dist and ends_file:
         iso_to_ends = read_ends_file(args, ends_file)
@@ -1304,9 +1314,9 @@ def process_detected_isos(args, map_file, bed_file, marker, ends_file, gene_to_j
         iso_to_ends = {}
 
     for iso_bed in BedReader(bed_file):
-        iso_id, gene_id = decode_name_to_iso_gene(iso_bed.name, marker)
-        if have_sufficient_support(args, iso_id, iso_bed.blockCount, og_iso_to_reads):
-            process_detected_iso(args, iso_bed, gene_id, iso_id, og_iso_to_reads, ends_file, iso_to_ends, gene_to_juncs_to_ends)
+        iso_id_src, gene_id = decode_name_to_iso_gene(iso_bed.name, iso_src)
+        if have_sufficient_support(args, iso_id_src, iso_bed.blockCount, og_iso_to_reads):
+            process_detected_iso(args, iso_bed, gene_id, iso_id_src, og_iso_to_reads, ends_file, iso_to_ends, gene_to_juncs_to_ends)
 
 def isoform_processing(args, output):
     gene_to_juncs_to_ends = {}
@@ -1314,13 +1324,13 @@ def isoform_processing(args, output):
         process_detected_isos(args,
                               output + '.matchannot.read.map.txt',
                               output + '.matchannot.bed',
-                              'a',
+                              ISO_SRC_ANNOT,
                               output + '.matchannot.ends.tsv',
                               gene_to_juncs_to_ends)
     process_detected_isos(args,
                           output + '.novelisos.read.map.txt',
                           output + '.firstpass.bed',
-                          'n',
+                          ISO_SRC_NOVEL,
                           output + '.novelisos.ends.tsv',
                           gene_to_juncs_to_ends)
     return gene_to_juncs_to_ends
@@ -1334,18 +1344,22 @@ def get_reverse_complement(seq):
         new_seq.append(compbase[base])
     return ''.join(new_seq[::-1])
 
+####
+# results output
+####
+
 def get_bed_gtf_from_info(end_info, chrom, strand, juncs, gene_id, genome):
     # FIXME: what is end info??
-    start, end, iso_id, read_names = end_info
+    # build gtf, bed, fasta data
+    start, end, iso_id_src, read_names = end_info
     score = min(len(read_names), 1000)
-    marker, iso = iso_id
     exon_starts, exon_sizes = get_exons_from_juncs(juncs, start, end)
-    bed_line = [chrom, start, end, iso + '_' + gene_id, score, strand, start, end,
-                get_rgb(iso, strand, juncs), len(exon_starts), ','.join([str(x) for x in exon_sizes]),
+    bed_line = [chrom, start, end, iso_id_src.id + '_' + gene_id, score, strand, start, end,
+                get_rgb(iso_id_src.id, strand, juncs), len(exon_starts), ','.join([str(x) for x in exon_sizes]),
                 ','.join([str(x) for x in exon_starts])]
     gtf_lines = []
     gtf_lines.append([chrom, 'FLAIR', 'transcript', start + 1, end, score, strand, '.',
-                     'gene_id "' + gene_id + '"; transcript_id "' + iso + '";'])
+                     'gene_id "' + gene_id + '"; transcript_id "' + iso_id_src.id + '";'])
     exons = [(start + exon_starts[i], start + exon_starts[i] + exon_sizes[i]) for i in range(len(exon_starts))]
     if strand == '-':
         exons = exons[::-1]
@@ -1353,7 +1367,7 @@ def get_bed_gtf_from_info(end_info, chrom, strand, juncs, gene_id, genome):
     exon_seqs = []
     for i in range(len(exons)):
         gtf_lines.append([chrom, 'FLAIR', 'exon', exons[i][0] + 1, exons[i][1], score, strand, '.',
-                         'gene_id "' + gene_id + '"; transcript_id "' + iso + '"; exon_number ' + str(i + 1)])
+                         'gene_id "' + gene_id + '"; transcript_id "' + iso_id_src.id + '"; exon_number ' + str(i + 1)])
         exon_seq = genome.fetch(chrom, exons[i][0], exons[i][1])
         if strand == '-':
             exon_seq = get_reverse_complement(exon_seq)
@@ -1384,24 +1398,24 @@ def combine_annot_w_novel(args, gene_to_juncs_to_ends):
 
 def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh,
                       read_to_final_transcript, counts_fh, seq_fh):
-    marker, iso = iso_info[2]
-    iso = iso.split('-endvar')[0]
-    if iso in name_to_used_counts:
-        name_to_used_counts[iso] += 1
-        iso = iso + '-endvar' + str(name_to_used_counts[iso])
+    iso_id_src = iso_info[2]
+    iso_id = iso_id_src.id.split('-endvar')[0]  # FIXME what is this all about?
+    if iso_id in name_to_used_counts:
+        name_to_used_counts[iso_id] += 1
+        iso_id = iso_id + '-endvar' + str(name_to_used_counts[iso_id])
     else:
-        name_to_used_counts[iso] = 1
-    iso_info[2] = (marker, iso)
+        name_to_used_counts[iso_id] = 1
+    iso_info[2] = IsoIdSrc(iso_id, iso_id_src.src)
     bed_line, gtf_for_transcript, tseq = get_bed_gtf_from_info(iso_info, chrom, strand, juncs, gene_id, genome)
     iso_fh.write(bed_line)
     t_starts.append(iso_info[0])
     t_ends.append(iso_info[1])
     gtf_lines.extend(gtf_for_transcript)
-    map_fh.write(iso + '_' + gene_id + '\t' + ','.join(iso_info[3]) + '\n')
+    map_fh.write(iso_id + '_' + gene_id + '\t' + ','.join(iso_info[3]) + '\n')
     for r in iso_info[3]:
-        read_to_final_transcript[r] = (iso + '_' + gene_id, chrom, strand)
-    counts_fh.write(iso + '_' + gene_id + '\t' + str(len(iso_info[3])) + '\n')
-    seq_fh.write('>' + iso + '_' + gene_id + '\n')
+        read_to_final_transcript[r] = (iso_id + '_' + gene_id, chrom, strand)
+    counts_fh.write(iso_id + '_' + gene_id + '\t' + str(len(iso_info[3])) + '\n')
+    seq_fh.write('>' + iso_id + '_' + gene_id + '\n')
     seq_fh.write(tseq + '\n')
 
 def write_gene_gff_old(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh, read_to_final_transcript, counts_fh, seq_fh, gtf_fh):

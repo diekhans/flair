@@ -361,6 +361,7 @@ class BedRead(object):
         self.exon_starts = [x[0] - self.start for x in exons]
 
     def get_sequence(self, genome):
+        # FIXME: this code is duplicated in generate_transcriptome_reference
         exons = self.exons
         if self.strand == '-':
             exons = exons[::-1]
@@ -693,6 +694,7 @@ def filter_spliced_iso_something(otheriso_name, sup_annot_transcript_to_juncs, a
                         superset_support.append(otheriso_score)
                 else:
                     # is internal exon of other transcript - see if it contains additional sequence
+                    # FIXME: magic number  20, make define
                     if first_exon[1] == other_exon[1]:
                         unique_seq_bound.append((0, first_exon[1] - other_exon[0]))
                         if first_exon[0] >= other_exon[0] - 20:
@@ -986,7 +988,7 @@ def filter_single_exon_iso(args, grouped_iso, curr_group, firstpass_unfiltered):
     is_contained = False
     for comp_iso in curr_group:
         if comp_iso != grouped_iso:
-            # FIXME: waht is +/-10 magic number
+            # FIXME: what is +/-10 magic number make define
             if comp_iso[0] - 10 <= grouped_iso[0] and grouped_iso[1] <= comp_iso[1] + 10:
                 if len(comp_iso) == 2 or args.filter == 'nosubset':  # is exon from spliced transcript
                     is_contained = True
@@ -1016,9 +1018,6 @@ def filter_all_single_exon(args, firstpass_SE, firstpass_unfiltered, firstpass):
     # group_start = 0
     last_end = 0
     curr_group = []
-    # FIXME: iso_info sometimes has uuid, sometimes not
-    #  iso_info (32186476, 32190360)
-    #  iso_info (32186479, 32188247, '99bfe5c4-0f3a-4f4d-b5c9-bac459c45e5c')
 
     for iso_info in firstpass_SE:
         print("@@@ iso_info2", iso_info)
@@ -1109,8 +1108,7 @@ def get_spliced_exon_overlaps(strand, exons, annots):
     for annot_gene in annots.spliced_exons[strand]:
         annot_exons = sorted(list(annots.spliced_exons[strand][annot_gene]))
         # check if there is overlap in the genes
-        # FIXME: not clear how this check for overlap
-        # FIXME: waht does -1 mean here?
+        # FIXME: not clear how this checks for overlap
         if (min((annot_exons[-1][1], exons[-1][1])) > max((annot_exons[0][0], exons[0][0]))):
             covered_pos = set()
             for s, e in exons:
@@ -1209,23 +1207,27 @@ def write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, iso_bedread
     seq_fh.write('>' + iso_bedread.name + '\n')
     seq_fh.write(iso_bedread.get_sequence(genome) + '\n')
 
+def get_gene_to_terminal_junction_specific_end(iso_to_info, iso_name, gene_to_terminal_junction_specific_ends):
+    # FIXME: why (gene_id, strand) ?  genes must be strand-specific
+    gene_id, transcript_id, strand, exons = iso_to_info[iso_name]
+    if (gene_id, strand) not in gene_to_terminal_junction_specific_ends:
+        gene_to_terminal_junction_specific_ends[(gene_id, strand)] = {'left': {}, 'right': {}}
+    if len(exons) > 1:
+        if exons[0][1] not in gene_to_terminal_junction_specific_ends[(gene_id, strand)]['left']:
+            gene_to_terminal_junction_specific_ends[(gene_id, strand)]['left'][exons[0][1]] = exons[0][0]
+        else:
+            gene_to_terminal_junction_specific_ends[(gene_id, strand)]['left'][exons[0][1]] = min(
+                (gene_to_terminal_junction_specific_ends[(gene_id, strand)]['left'][exons[0][1]], exons[0][0]))
+        if exons[-1][0] not in gene_to_terminal_junction_specific_ends[(gene_id, strand)]['right']:
+            gene_to_terminal_junction_specific_ends[(gene_id, strand)]['right'][exons[-1][0]] = exons[-1][1]
+        else:
+            gene_to_terminal_junction_specific_ends[(gene_id, strand)]['right'][exons[-1][0]] = max(
+                (gene_to_terminal_junction_specific_ends[(gene_id, strand)]['right'][exons[-1][0]], exons[-1][1]))
+
 def get_gene_to_terminal_junction_specific_ends(iso_to_info):
     gene_to_terminal_junction_specific_ends = {}
     for iso_name in iso_to_info:
-        gene_id, transcript_id, strand, exons = iso_to_info[iso_name]
-        if (gene_id, strand) not in gene_to_terminal_junction_specific_ends:
-            gene_to_terminal_junction_specific_ends[(gene_id, strand)] = {'left': {}, 'right': {}}
-        if len(exons) > 1:
-            if exons[0][1] not in gene_to_terminal_junction_specific_ends[(gene_id, strand)]['left']:
-                gene_to_terminal_junction_specific_ends[(gene_id, strand)]['left'][exons[0][1]] = exons[0][0]
-            else:
-                gene_to_terminal_junction_specific_ends[(gene_id, strand)]['left'][exons[0][1]] = min(
-                    (gene_to_terminal_junction_specific_ends[(gene_id, strand)]['left'][exons[0][1]], exons[0][0]))
-            if exons[-1][0] not in gene_to_terminal_junction_specific_ends[(gene_id, strand)]['right']:
-                gene_to_terminal_junction_specific_ends[(gene_id, strand)]['right'][exons[-1][0]] = exons[-1][1]
-            else:
-                gene_to_terminal_junction_specific_ends[(gene_id, strand)]['right'][exons[-1][0]] = max(
-                    (gene_to_terminal_junction_specific_ends[(gene_id, strand)]['right'][exons[-1][0]], exons[-1][1]))
+        get_gene_to_terminal_junction_specific_end(iso_to_info, iso_name, gene_to_terminal_junction_specific_ends)
     return gene_to_terminal_junction_specific_ends
 
 def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, annots, genome, *,

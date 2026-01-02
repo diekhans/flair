@@ -620,7 +620,6 @@ def group_reads_by_ends(read_info_list, sort_index, end_window):
     new_groups, group = [], []
     last_edge = 0
     for iso_info in sorted_ends:
-        # FIXME: print("@@@ iso_info1", iso_info)
         edge = iso_info[sort_index]
         if edge - last_edge <= end_window:
             group.append(iso_info)
@@ -1048,7 +1047,6 @@ def filter_all_single_exon(args, firstpass_SE, firstpass_unfiltered, firstpass):
     curr_group = []
 
     for iso_info in firstpass_SE:
-        # FIXME: print("@@@ iso_info2", iso_info)
         start, end = iso_info[0], iso_info[1]
         if start < last_end:
             curr_group.append(iso_info)
@@ -1404,30 +1402,31 @@ def get_bed_gtf_from_info(end_info, chrom, strand, juncs, gene_id, genome):
     return '\t'.join([str(x) for x in bed_line]) + '\n', gtf_lines, trans_seq
 
 
+def combine_annot_w_novel_gene(gene_to_juncs_to_ends, gene_id, chrom, strand, juncs, args):
+    ends_list = gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)]
+    ends_list = collapse_end_groups(args.end_window, ends_list, False)
+    # FIXME could try accounting for all reads assigned to isoforms - assign them to closest ends
+    # not sure how much of an issue this is
+    if juncs != ():
+        if args.no_redundant == 'best_only':
+            ends_list.sort(key=lambda x: [len(x[-1]), x[1] - x[0]], reverse=True)
+            ends_list = [ends_list[0]]
+        elif args.no_redundant == 'longest':
+            ends_list.sort(key=lambda x: [x[1] - x[0]], reverse=True)
+            ends_list = [ends_list[0]]
+        else:
+            ends_list.sort(key=lambda x: [len(x[-1]), x[1] - x[0]], reverse=True)
+            ends_list = ends_list[:args.max_ends]
+    gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)] = ends_list
+
+
 def combine_annot_w_novel(args, gene_to_juncs_to_ends):
-    # FIXME: what is this really doing?
     for gene_id in gene_to_juncs_to_ends:
         for chrom, strand, juncs in gene_to_juncs_to_ends[gene_id]:
-            ends_list = gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)]
-            ends_list = collapse_end_groups(args.end_window, ends_list, False)
-            # FIXME could try accounting for all reads assigned to isoforms - assign them to closest ends
-            # not sure how much of an issue this is
-            if juncs != ():
-                if args.no_redundant == 'best_only':
-                    ends_list.sort(key=lambda x: [len(x[-1]), x[1] - x[0]], reverse=True)
-                    ends_list = [ends_list[0]]
-                elif args.no_redundant == 'longest':
-                    ends_list.sort(key=lambda x: [x[1] - x[0]], reverse=True)
-                    ends_list = [ends_list[0]]
-                else:
-                    ends_list.sort(key=lambda x: [len(x[-1]), x[1] - x[0]], reverse=True)
-                    ends_list = ends_list[:args.max_ends]
-            gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)] = ends_list
-
+            combine_annot_w_novel_gene(gene_to_juncs_to_ends, gene_id, chrom, strand, juncs, args)
 
 def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh,
                       read_to_final_transcript, counts_fh, seq_fh):
-    # FIXME: print("@@@ iso_info3", iso_info)
     iso_id_src = iso_info[2]
     iso_id = iso_id_src.id.split('-endvar')[0]  # FIXME what is this all about?
     if iso_id in name_to_used_counts:

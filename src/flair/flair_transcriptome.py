@@ -944,7 +944,8 @@ def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, re
         return sj_to_ends
 
 
-def filter_ends_by_subset_and_support(args, good_ends_with_sup_reads):
+def filter_ends_by_redundant_and_support(args, good_ends_with_sup_reads):
+    # sorts ends, then selects best ones based on support and value of args.no_redundant
     best_ends = []
     for i in range(len(good_ends_with_sup_reads)):
         # last val is read support
@@ -954,7 +955,7 @@ def filter_ends_by_subset_and_support(args, good_ends_with_sup_reads):
                                   reverse=True)
     junc_support = sum([x[-1] for x in good_ends_with_sup_reads])
     if junc_support >= args.sjc_support:
-        if args.no_redundant == 'none':
+        if args.no_redundant == 'none': # this means we allow multiple ends per junction chain
             if good_ends_with_sup_reads[0][-1] < args.sjc_support:
                 good_ends_with_sup_reads = [good_ends_with_sup_reads[0]]
                 good_ends_with_sup_reads[0][-1] = junc_support
@@ -964,9 +965,10 @@ def filter_ends_by_subset_and_support(args, good_ends_with_sup_reads):
             for these_ends in good_ends_with_sup_reads:
                 best_ends.append(these_ends)
         else:
-            # best_only uses the default sorting
+            # best_only uses the default sorting, doesn't require additional action
             if args.no_redundant == 'longest':
                 good_ends_with_sup_reads.sort(reverse=True, key=lambda x: x[2] - x[1])
+            # picking single best ends
             best = good_ends_with_sup_reads[0]
             best[-1] = junc_support  # all reads for junc are counted as support
             best_ends.append(best)
@@ -988,7 +990,7 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, chrom, sj_to_ends, firstp
             if juncs == ():
                 best_ends = [x[:-1] + [len(x[-1])] for x in good_ends_with_sup_reads if len(x[-1]) >= args.sjc_support]
             else:
-                best_ends = filter_ends_by_subset_and_support(args, good_ends_with_sup_reads)
+                best_ends = filter_ends_by_redundant_and_support(args, good_ends_with_sup_reads)
             for best_score, best_start, best_end, best_strand, best_name, score in best_ends:
                 iso_bedread = BedRead()
                 iso_bedread.generate_from_vals(chrom, best_start, best_end, best_name, score, best_strand, juncs)
@@ -1405,7 +1407,7 @@ def get_bed_gtf_from_info(end_info, chrom, strand, juncs, gene_id, genome):
     return '\t'.join([str(x) for x in bed_line]) + '\n', gtf_lines, trans_seq
 
 
-def combine_annot_w_novel_gene(gene_to_juncs_to_ends, gene_id, chrom, strand, juncs, args):
+def combine_annot_w_novel_junc_chain(gene_to_juncs_to_ends, gene_id, chrom, strand, juncs, args):
     ends_list = gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)]
     ends_list = collapse_end_groups(args.end_window, ends_list, False)
     # FIXME could try accounting for all reads assigned to isoforms - assign them to closest ends
@@ -1426,7 +1428,7 @@ def combine_annot_w_novel_gene(gene_to_juncs_to_ends, gene_id, chrom, strand, ju
 def combine_annot_w_novel(args, gene_to_juncs_to_ends):
     for gene_id in gene_to_juncs_to_ends:
         for chrom, strand, juncs in gene_to_juncs_to_ends[gene_id]:
-            combine_annot_w_novel_gene(gene_to_juncs_to_ends, gene_id, chrom, strand, juncs, args)
+            combine_annot_w_novel_junc_chain(gene_to_juncs_to_ends, gene_id, chrom, strand, juncs, args)
 
 def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh,
                       read_to_final_transcript, counts_fh, seq_fh):
@@ -1568,27 +1570,36 @@ def run_for_region(listofargs):
     # load splice junctions for chrom
     logging.info('correcting splice junctions')
 
-    # building splice junction reference for region (contains annot and orthogonal data)
+    # building splice junction reference for region (splice_site_annot_chrom contains annot and orthogonal data)
     intervalTree, junctionBoundaryDict = buildIntervalTree(splice_site_annot_chrom, args.ss_window, region_chrom, False)
 
     # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
+    # this also handles read strandedness if necessary
+
     sj_to_ends = filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, region_end, bam_file, good_align_to_annot, intervalTree,
                                             junctionBoundaryDict)
     bam_file.close()
     logging.info('generating isoforms')
 
     # for each junction chain, clusters ends - generates junction chain x ends firstpass objects
-    # then does initial filtering by read support and 
+    # then does initial filtering by read support and redundant ends
+    # also separates single exon isoforms from spliced isoforms (because they're handled differently in future step for identifying annotated gene/isoform names)
     firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE = process_juncs_to_firstpass_isos(args, temp_prefix,
                                                                                                  region_chrom, sj_to_ends,
                                                                                                  firstpass_SE)
     logging.info('filtering isoforms')
 
+    # filter isoforms - remove any that represent a subset of another identified isoform - based on what args.filter is set to
+    # also generate iso_to_unique_bound - a mapping of each isoform to the unique sequence at its ends 
+    # (this is to better handle isoforms that represent junction subsets with additional sequence at the ends)
     firstpass, iso_to_unique_bound = filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE,
                                                            annots, sup_annot_transcript_to_juncs)
     if len(firstpass.keys()) > 0:
         logging.info('getting gene names and writing firstpass')
-
+        # this section identifies annotated gene and isoform names (primarily based on splice junction matching, secondarily by exon overlap)
+        # also adjusts isoform strand, determines novel isoform and gene names
+        # also normalizes transcript ends (temporarily extends ends so that transcript end alignment does not drive transcript assignment during transcriptome alignment)
+        # writes out bed and fa files
         if args.end_norm_dist is not None:
             get_gene_names_and_write_firstpass(temp_prefix, region_chrom, firstpass, annots, genome,
                                                normalize_ends=True, add_length_at_ends=args.end_norm_dist, unique_bound=iso_to_unique_bound)
@@ -1597,6 +1608,7 @@ def run_for_region(listofargs):
         clipping_file = temp_prefix + '.reads.genomicclipping.txt'  # if args.trimmedreads else None
         logging.info('identifying good match to firstpass')
 
+        # aligns to firstpass transcriptome, identifies best read -> isoform alignment for each read, then gets read counts per isoform
         transcriptome_align_and_count(args, temp_prefix + 'reads.notannotmatch.fasta',
                                       temp_prefix + '.firstpass.fa',
                                       temp_prefix + '.firstpass.bed',
@@ -1612,7 +1624,12 @@ def run_for_region(listofargs):
         if args.output_endpos:
             with open(temp_prefix + '.ends.tsv', 'w') as _:
                 pass
+    
+    # this loads in both the annot match and firstpass transcriptomes 
+    # uses read support from read map files to filter to only supported isoforms
     gene_to_juncs_to_ends = isoform_processing(args, temp_prefix)
+    # this combines annot and novel isoforms by junction chain - makes sure we still don't exceed max_ends per junction chain
+    # also writes bed, fa, gtf files
     combine_annot_w_novel_and_write_files(args, temp_prefix, gene_to_juncs_to_ends, genome)
     if args.predict_cds:
         logging.info('predicting CDS')

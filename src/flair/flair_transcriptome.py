@@ -522,6 +522,7 @@ def get_annot_info(annot_gtf_data, all_regions):
 def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound):
     # FIXME: convert filter_transcriptome_align.py to a library
     # count sam transcripts ; the dash at the end means STDIN
+    # FIXME: minimap output needs to be piped through filter_transcriptome_align without saving the bam file
     count_cmd = ['filter_transcriptome_align.py', '--sam', '-',
                  '-o', output_name, '-t', 1,  # feeding 1 thread in because this is already multithreaded here
                  ]
@@ -667,7 +668,7 @@ def get_isos_with_similar_juncs(juncs, firstpass_junc_to_name, junc_to_gene):
             isos_with_similar_juncs.update(junc_to_gene[j])  # annot isos
     return isos_with_similar_juncs
 
-def filter_spliced_iso_something(otheriso_name, sup_annot_transcript_to_juncs, annots,
+def identify_spliced_iso_subset(otheriso_name, sup_annot_transcript_to_juncs, annots,
                                  firstpass_unfiltered, juncs, first_exon, last_exon, terminal_exon_is_subset,
                                  superset_support, unique_seq_bound):
     # FIXME: not sure what this function is doing
@@ -731,7 +732,8 @@ def filter_spliced_iso(filter_type, support, juncs, exons, name, score, annots,
     unique_seq_bound = []
     for otheriso_name in isos_with_similar_juncs:
         if otheriso_name != name:
-            filter_spliced_iso_something(otheriso_name, sup_annot_transcript_to_juncs, annots,
+            # modifies superset_support, unique_seq_bound, terminal_exon_is_subset
+            identify_spliced_iso_subset(otheriso_name, sup_annot_transcript_to_juncs, annots,
                                          firstpass_unfiltered, juncs, first_exon, last_exon, terminal_exon_is_subset,
                                          superset_support, unique_seq_bound)
     # unique_seq is pegged at distance from first/last splice junction
@@ -976,6 +978,7 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, chrom, sj_to_ends, firstp
     with open(temp_prefix + '.firstpass.unfiltered.bed', 'w') as iso_fh, \
             open(temp_prefix + '.firstpass.reallyunfiltered.bed', 'w') as iso_unfilt_fh:
         for juncs in sj_to_ends:
+            # FIXME make good_ends_with_sup_reads objects be a named tuple
             good_ends_with_sup_reads = collapse_end_groups(args.end_window, sj_to_ends[juncs])
             for best_score, best_start, best_end, best_strand, best_name, sup_reads in good_ends_with_sup_reads:
                 score = len(sup_reads)
@@ -1509,7 +1512,7 @@ def combine_annot_w_novel_and_write_files(args, temp_prefix, gene_to_juncs_to_en
         with open(temp_prefix + '.read_ends.bed', 'w') as ends_fh:
             write_transcript_ends_beds(args, temp_prefix, read_to_final_transcript, ends_fh)
 
-def generate_genomic_clipping_reference(temp_prefix, bam_file, region_chrom, region_start, region_end):
+def generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region_chrom, region_start, region_end):
     with open(temp_prefix + '.reads.genomicclipping.txt', 'w') as clipping_fh:
         for read in bam_file.fetch(region_chrom, int(region_start), int(region_end)):
             if not read.is_secondary and not read.is_supplementary:
@@ -1539,7 +1542,7 @@ def run_for_region(listofargs):
     temp_split = temp_prefix.split('/')[-1].split('-')
     region_chrom, region_start, region_end = '-'.join(temp_split[:-2]), temp_split[-2], temp_split[-1]
 
-    # first extract reads for chrom as fasta
+    # first extract reads for region as fasta
     pipettor.run([('samtools', 'view', '-h', args.genome_aligned_bam, region_chrom + ':' + region_start + '-' + region_end),
                   ('samtools', 'fasta', '-')],
                  stdout=temp_prefix + '.reads.fasta')
@@ -1549,22 +1552,33 @@ def run_for_region(listofargs):
 
     # if args.trimmedreads:
     logging.info('generating genomic clipping reference')
-    generate_genomic_clipping_reference(temp_prefix, bam_file, region_chrom, region_start, region_end)
+    # genomic clipping: amount of clipping (from cigar) at ends of reads when aligned to genome
+    # generates file with [read{\t}clipping amount] on each line
+    # for comparing with amount of clipping after alignment to transcriptome
+    # in order to check whether transcriptome alignment is comparable to or better than genomic alignment - can be considered to support isoform
+    # used in filter_transcriptome_align
+    generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region_chrom, region_start, region_end)
 
     logging.info('identifying good match to annot')
+    # aligning to reference transcriptome, then identifying reads that match well to reference transcripts
+    # with filter_transcriptome_align
     good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs = \
         identify_good_match_to_annot(args, temp_prefix, region_chrom, annots, genome)
 
     # load splice junctions for chrom
     logging.info('correcting splice junctions')
 
+    # building splice junction reference for region (contains annot and orthogonal data)
     intervalTree, junctionBoundaryDict = buildIntervalTree(splice_site_annot_chrom, args.ss_window, region_chrom, False)
 
+    # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
     sj_to_ends = filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, region_end, bam_file, good_align_to_annot, intervalTree,
                                             junctionBoundaryDict)
     bam_file.close()
     logging.info('generating isoforms')
 
+    # for each junction chain, clusters ends - generates junction chain x ends firstpass objects
+    # then does initial filtering by read support and 
     firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE = process_juncs_to_firstpass_isos(args, temp_prefix,
                                                                                                  region_chrom, sj_to_ends,
                                                                                                  firstpass_SE)

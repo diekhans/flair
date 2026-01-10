@@ -669,8 +669,8 @@ def get_isos_with_similar_juncs(juncs, firstpass_junc_to_name, junc_to_gene):
     return isos_with_similar_juncs
 
 def identify_spliced_iso_subset(otheriso_name, sup_annot_transcript_to_juncs, annots,
-                                 firstpass_unfiltered, juncs, first_exon, last_exon, terminal_exon_is_subset,
-                                 superset_support, unique_seq_bound):
+                                firstpass_unfiltered, juncs, first_exon, last_exon, terminal_exon_is_subset,
+                                superset_support, unique_seq_bound):
     # FIXME: not sure what this function is doing
     if isinstance(otheriso_name, tuple):  # FIXME: why type check
         # annotated isoform
@@ -734,8 +734,8 @@ def filter_spliced_iso(filter_type, support, juncs, exons, name, score, annots,
         if otheriso_name != name:
             # modifies superset_support, unique_seq_bound, terminal_exon_is_subset
             identify_spliced_iso_subset(otheriso_name, sup_annot_transcript_to_juncs, annots,
-                                         firstpass_unfiltered, juncs, first_exon, last_exon, terminal_exon_is_subset,
-                                         superset_support, unique_seq_bound)
+                                        firstpass_unfiltered, juncs, first_exon, last_exon, terminal_exon_is_subset,
+                                        superset_support, unique_seq_bound)
     # unique_seq is pegged at distance from first/last splice junction
     unique_seq_bound = list(set(unique_seq_bound))
     if strand == '-':
@@ -956,7 +956,7 @@ def filter_ends_by_redundant_and_support(args, good_ends_with_sup_reads):
                                   reverse=True)
     junc_support = sum([x[-1] for x in good_ends_with_sup_reads])
     if junc_support >= args.sjc_support:
-        if args.no_redundant == 'none': # this means we allow multiple ends per junction chain
+        if args.no_redundant == 'none':   # this means we allow multiple ends per junction chain
             if good_ends_with_sup_reads[0][-1] < args.sjc_support:
                 good_ends_with_sup_reads = [good_ends_with_sup_reads[0]]
                 good_ends_with_sup_reads[0][-1] = junc_support
@@ -1555,6 +1555,7 @@ def run_for_region(listofargs):
 
     # if args.trimmedreads:
     logging.info('generating genomic clipping reference')
+
     # genomic clipping: amount of clipping (from cigar) at ends of reads when aligned to genome
     # generates file with [read{\t}clipping amount] on each line
     # for comparing with amount of clipping after alignment to transcriptome
@@ -1590,9 +1591,11 @@ def run_for_region(listofargs):
                                                                                                  firstpass_SE)
     logging.info('filtering isoforms')
 
-    # filter isoforms - remove any that represent a subset of another identified isoform - based on what args.filter is set to
-    # also generate iso_to_unique_bound - a mapping of each isoform to the unique sequence at its ends 
-    # (this is to better handle isoforms that represent junction subsets with additional sequence at the ends)
+    # - filter isoforms - remove any that represent a subset of another
+    # - identified isoform - based on what args.filter is set to also generate
+    # - iso_to_unique_bound - a mapping of each isoform to the unique sequence
+    #   at its ends (this is to better handle isoforms that represent junction
+    #   subsets with additional sequence at the ends)
     firstpass, iso_to_unique_bound = filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE,
                                                            annots, sup_annot_transcript_to_juncs)
     if len(firstpass.keys()) > 0:
@@ -1606,8 +1609,8 @@ def run_for_region(listofargs):
                                                normalize_ends=True, add_length_at_ends=args.end_norm_dist, unique_bound=iso_to_unique_bound)
         else:
             get_gene_names_and_write_firstpass(temp_prefix, region_chrom, firstpass, annots, genome, unique_bound=iso_to_unique_bound)
-        clipping_file = temp_prefix + '.reads.genomicclipping.txt'  # if args.trimmedreads else None
-        logging.info('identifying good match to firstpass')
+            clipping_file = temp_prefix + '.reads.genomicclipping.txt'  # if args.trimmedreads else None
+            logging.info('identifying good match to firstpass')
 
         # aligns to firstpass transcriptome, identifies best read -> isoform alignment for each read, then gets read counts per isoform
         transcriptome_align_and_count(args, temp_prefix + 'reads.notannotmatch.fasta',
@@ -1625,10 +1628,11 @@ def run_for_region(listofargs):
         if args.output_endpos:
             with open(temp_prefix + '.ends.tsv', 'w') as _:
                 pass
-    
-    # this loads in both the annot match and firstpass transcriptomes 
+
+    # this loads in both the annot match and firstpass transcriptomes
     # uses read support from read map files to filter to only supported isoforms
     gene_to_juncs_to_ends = isoform_processing(args, temp_prefix)
+
     # this combines annot and novel isoforms by junction chain - makes sure we still don't exceed max_ends per junction chain
     # also writes bed, fa, gtf files
     combine_annot_w_novel_and_write_files(args, temp_prefix, gene_to_juncs_to_ends, genome)

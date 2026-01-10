@@ -762,6 +762,7 @@ def filter_spliced_iso(filter_type, support, juncs, exons, name, score, annots,
 def generate_normalize_trasnscript_ends(transcript_id, gene_id, strand, annots,
                                         gene_to_terminal_junction_specific_ends):
     exons = annots.transcript_to_exons[(transcript_id, gene_id)]
+    # FIXME: make gene_to_terminal_junction_specific_ends as astructure.
     if (gene_id, strand) not in gene_to_terminal_junction_specific_ends:
         gene_to_terminal_junction_specific_ends[(gene_id, strand)] = {'left': {}, 'right': {}}
     if len(exons) > 1:  # don't normalize ends for single exon transcripts

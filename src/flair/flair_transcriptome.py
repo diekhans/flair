@@ -785,47 +785,76 @@ class GeneMaxTerminalExonsEnds:
     def get_right_end(self, exon):
         return self.right_ends[exon.start]
 
-def terminal_exons_ends_add_transcript(transcript_id, gene_id, strand, exons,
-                                       gene_to_max_terminal_exons_ends):
-    # FIXME: why is strand used here? genes are strand specific.
-    gene_junction_ends = gene_to_max_terminal_exons_ends.get((gene_id, strand))
-    if gene_junction_ends is None:
-        gene_junction_ends = GeneMaxTerminalExonsEnds(gene_id)
-        gene_to_max_terminal_exons_ends[(gene_id, strand)] = gene_junction_ends
+class MaxTerminalExonsEnds:
+    """Collection of maximal terminal exons ends by gene.
+    A genes terminal exons are grouped by the interior exon splice junction
+    location.
+    """
+    def __init__(self):
+        # FIXME: this is temporary.  The code groups by (gene_id, strand)
+        # for reasons that are suspected to be bugs in stranding.  We keep
+        # this but generate a warning until we are sure it is fixed
+        self._by_gene_id = {}  # (gene_id, strand) -> GeneMaxTerminalExonsEnds
+        self._gene_id_to_strand = {}
+        self._genes_warned = set()
 
-    if len(exons) > 1:  # don't normalize ends for single exon transcripts
-        gene_junction_ends.add_left_end(exons[0])
-        gene_junction_ends.add_right_end(exons[-1])
+    def _obtain(self, gene_id, strand):
+        "get current entry or create a new one"
+        gene_key = (gene_id, strand)
+        gene_entry = self._by_gene_id.get(gene_key)
+        if gene_entry is None:
+            gene_entry = GeneMaxTerminalExonsEnds(gene_id)
+            self._by_gene_id[gene_key] = gene_entry
 
-def terminal_exons_ends_add_annots(annots):
-    gene_to_max_terminal_exons_ends = {}  # (gene_id, strand) -> GeneMaxTerminalExonsEnds
+        # FIXME: tmp generate strand warning
+        existing_strand = self._gene_id_to_strand.get(gene_id)
+        if existing_strand is None:
+            self._gene_id_to_strand[gene_id] = strand
+        elif (strand != existing_strand) and (gene_id not in self._genes_warned):
+            self._genes_warned.add(gene_id)
+            logging.warning("BUG: gene id '%s' has transcripts on both strands", gene_id)
+
+        return gene_entry
+
+    def add_transcript(self, gene_id, strand, transcript_id, exons):
+        # don't normalize ends for single exon transcripts, but still record gene
+        # FIXME: do we actually want to add gene
+        gene_entry = self._obtain(gene_id, strand)
+        if len(exons) > 1:
+            gene_entry.add_left_end(exons[0])
+            gene_entry.add_right_end(exons[-1])
+
+    def fetch(self, gene_id, strand) -> GeneMaxTerminalExonsEnds:
+        """return entry or error"""
+        return self._by_gene_id[(gene_id, strand)]
+
+def max_terminal_exons_ends_from_annots(annots):
+    max_terminal_exons_ends = MaxTerminalExonsEnds()
     for transcript_id, gene_id, strand in annots.transcripts:
         exons = annots.transcript_to_exons[(transcript_id, gene_id)]
-        terminal_exons_ends_add_transcript(transcript_id, gene_id, strand, exons,
-                                           gene_to_max_terminal_exons_ends)
-    return gene_to_max_terminal_exons_ends
+        max_terminal_exons_ends.add_transcript(gene_id, strand, transcript_id, exons)
+    return max_terminal_exons_ends
 
-def get_gene_to_max_terminal_exons_ends(iso_to_info):
-    # FIXME: better name, indicate from isoforms, make consistent with generate_normalize_ends and group together.
-    gene_to_max_terminal_exons_ends = {}
+def max_terminal_exons_ends_from_iso_infos(iso_to_info):
+    max_terminal_exons_ends = MaxTerminalExonsEnds()
     for iso_name in iso_to_info:
         gene_id, transcript_id, strand, exons = iso_to_info[iso_name]
-        terminal_exons_ends_add_transcript(transcript_id, gene_id, strand, exons,
-                                       gene_to_max_terminal_exons_ends)
-    return gene_to_max_terminal_exons_ends
-
-def normalize_ends_update_exons(gene_id, strand, exons, gene_to_max_terminal_exons_ends,
-                                *, add_length_at_ends=0):
-    gene_junction_ends = gene_to_max_terminal_exons_ends.get((gene_id, strand))
-    exons[0] = Exon(gene_junction_ends.get_left_end(exons[0]) - add_length_at_ends,
-                    exons[0].end)
-    exons[-1] = Exon(exons[-1].start,
-                     gene_junction_ends.get_right_end(exons[-1]) + add_length_at_ends)
+        max_terminal_exons_ends.add_transcript(gene_id, strand, transcript_id, exons)
+    return max_terminal_exons_ends
 
 ####
 # transcriptome reference
 ####
-def generate_transcriptome_reference_transcript(strand, transcript_to_strand, transcript_id, gene_id, annots, normalize_ends, gene_to_max_terminal_exons_ends,
+def normalize_gene_terminal_exons(max_terminal_exons_ends, gene_id, strand, exons,
+                                  *, add_length_at_ends=0):
+    "updates terminal exons ends"
+    gene_terminal_exons = max_terminal_exons_ends.fetch(gene_id, strand)
+    exons[0] = Exon(gene_terminal_exons.get_left_end(exons[0]) - add_length_at_ends,
+                    exons[0].end)
+    exons[-1] = Exon(exons[-1].start,
+                     gene_terminal_exons.get_right_end(exons[-1]) + add_length_at_ends)
+
+def generate_transcriptome_reference_transcript(strand, transcript_to_strand, transcript_id, gene_id, annots, normalize_ends, max_terminal_exons_ends,
                                                 add_length_at_ends, transcript_to_new_exons, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh):
     transcript_to_strand[(transcript_id, gene_id)] = strand
     exons = list(annots.transcript_to_exons[(transcript_id, gene_id)])
@@ -835,8 +864,8 @@ def generate_transcriptome_reference_transcript(strand, transcript_to_strand, tr
                                                    0, annots, None, None, None, strand)
     if is_not_subset:
         if normalize_ends:
-            normalize_ends_update_exons(gene_id, strand, exons, gene_to_max_terminal_exons_ends,
-                                        add_length_at_ends=add_length_at_ends)
+            normalize_gene_terminal_exons(max_terminal_exons_ends, gene_id, strand, exons,
+                                          add_length_at_ends=add_length_at_ends)
             transcript_to_new_exons[(transcript_id, gene_id)] = tuple(exons)
         exons = tuple(exons)
         start, end = exons[0].start, exons[-1].end
@@ -856,12 +885,12 @@ def generate_transcriptome_reference_transcript(strand, transcript_to_strand, tr
 def generate_transcriptome_reference_guts(normalize_ends, annots, add_length_at_ends, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh):
     transcript_to_strand = {}
     transcript_to_new_exons = {}
-    gene_to_max_terminal_exons_ends = None
+    max_terminal_exons_ends = None
     if normalize_ends:
-        gene_to_max_terminal_exons_ends = terminal_exons_ends_add_annots(annots)
+        max_terminal_exons_ends = max_terminal_exons_ends_from_annots(annots)
 
     for transcript_id, gene_id, strand in annots.transcripts:
-        generate_transcriptome_reference_transcript(strand, transcript_to_strand, transcript_id, gene_id, annots, normalize_ends, gene_to_max_terminal_exons_ends, add_length_at_ends,
+        generate_transcriptome_reference_transcript(strand, transcript_to_strand, transcript_id, gene_id, annots, normalize_ends, max_terminal_exons_ends, add_length_at_ends,
                                                     transcript_to_new_exons, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh)
     return transcript_to_strand, transcript_to_new_exons
 
@@ -1256,12 +1285,12 @@ def generate_non_gene_iso_groups_strand(novel_gene_isos_to_group, strand, chrom,
         for s, e, t in curr_group:
             iso_to_info[t][0] = group_name
 
-def write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, iso_bedread, gene_to_max_terminal_exons_ends, add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome):
+def write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, iso_bedread, max_terminal_exons_ends, add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome):
     gene_id, transcript_id, strand, exons = iso_to_info[iso_name]
-    # FIXME: this has nothing to do with writing.
+    # FIXME: do normalization outside of write function
     if normalize_ends and len(exons) > 1:  # don't normalize ends for single exon transcripts
-        normalize_ends_update_exons(gene_id, strand, exons, gene_to_max_terminal_exons_ends,
-                                    add_length_at_ends=add_length_at_ends)
+        normalize_gene_terminal_exons(max_terminal_exons_ends, gene_id, strand, exons,
+                                      add_length_at_ends=add_length_at_ends)
         iso_bedread.reset_from_exons(exons)
     iso_bedread.strand = strand
     iso_bedread.name = transcript_id + '_' + gene_id
@@ -1285,18 +1314,18 @@ def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, annots, ge
 
     # generating standardized set of ends for gene
     if normalize_ends:
-        gene_to_max_terminal_exons_ends = get_gene_to_max_terminal_exons_ends(iso_to_info)
+        max_terminal_exons_ends = max_terminal_exons_ends_from_iso_infos(iso_to_info)
     else:
         # FIXME: passing None is move obvious to flow control,
         # although making write_first_pass_isoforms less monolithic
         # it does more than writing
-        gene_to_max_terminal_exons_ends = {}
+        max_terminal_exons_ends = {}
 
     with (open(temp_prefix + '.firstpass.bed', 'w') as iso_fh,
           open(temp_prefix + '.firstpass.fa', 'w') as seq_fh,
           open(temp_prefix + '.firstpass.uniquebound.txt', 'w') as unique_fh):
         for iso_name in iso_to_info:
-            write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, firstpass[iso_name], gene_to_max_terminal_exons_ends,
+            write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, firstpass[iso_name], max_terminal_exons_ends,
                                       add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome)
 
 def decode_name_to_iso_gene(name, iso_src):
@@ -1348,6 +1377,7 @@ def process_detected_iso(args, iso_bed, gene_id, iso_id_src, og_iso_to_reads, en
             start += args.end_norm_dist
             end -= args.end_norm_dist
 
+    # FIXME: make object
     if gene_id not in gene_to_juncs_to_ends:
         gene_to_juncs_to_ends[gene_id] = {}
     if junc_key not in gene_to_juncs_to_ends[gene_id]:

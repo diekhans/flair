@@ -13,7 +13,10 @@ endif
 
 ifeq (${PYTHONWARNINGS},)
    # set to error to find were they are coming from
-   export PYTHONWARNINGS=always
+   # FIXME: gets lots of warnings by not closing files, and these break some
+   # expect results.  Disable for now.
+   #   ResourceWarning: Enable tracemalloc to get the object allocation traceback
+   #export PYTHONWARNINGS=always
 endif
 
 

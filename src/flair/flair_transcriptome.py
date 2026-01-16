@@ -757,7 +757,7 @@ def filter_spliced_iso(filter_type, support, juncs, exons, name, score, annots,
     return False, None
 
 ####
-# transcriptome reference
+# terminal exon normalization
 ####
 class GeneMaxTerminalExonsEnds:
     """Class to collect the maximal terminal exons ends for a gene.

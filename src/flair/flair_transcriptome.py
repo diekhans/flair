@@ -818,7 +818,7 @@ class MaxTerminalExonsEnds:
 
     def add_transcript(self, gene_id, strand, transcript_id, exons):
         # don't normalize ends for single exon transcripts, but still record gene
-        # FIXME: do we actually want to add gene
+        # FIXME: do we actually want to add single-exon genes?
         gene_entry = self._obtain(gene_id, strand)
         if len(exons) > 1:
             gene_entry.add_left_end(exons[0])

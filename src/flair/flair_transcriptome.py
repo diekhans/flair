@@ -572,6 +572,29 @@ def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, o
 # Transcript end assignment
 ##
 
+class ReadEndInfo:
+    """Represents a group of reads sharing similar transcript ends"""
+    def __init__(self, start, end, strand, read_id, weighted_score=0.0, supporting_reads=None):
+        self.start = start
+        self.end = end
+        self.strand = strand
+        self.read_id = read_id  # Representative read for this group
+        self.weighted_score = weighted_score
+        self.supporting_reads = supporting_reads or []
+
+    @property
+    def num_reads(self):
+        return len(self.supporting_reads)
+
+    @property
+    def length(self):
+        return self.end - self.start
+
+    @property
+    def score(self):
+        """Alias for num_reads for compatibility"""
+        return self.num_reads
+
 def get_best_ends(curr_group, end_window):
     best_ends = []
     if len(curr_group) > int(end_window):
@@ -599,6 +622,7 @@ def get_best_ends(curr_group, end_window):
             best_ends.append((weighted_score, start1, end1, strand, name1))
     best_ends.sort(reverse=True)
     # FIXME: DO I WANT TO ADD CORRECTION TO NEARBY ANNOTATED TSS/TTS????
+    # FIXME: better integrate with  ReadEndInfo
     return best_ends[0]
 
 
@@ -637,11 +661,10 @@ def group_reads_by_ends(read_info_list, sort_index, end_window):
 # read_ends is a list containing elements with: (read.start, read.end, read.strand, read.name)
 # If the reads are spliced, the group will contain only the info for reads with a shared splice junction
 # if the reads are unspliced, the group will contain info for all unspliced reads in a given chromosome/region,
-# The output is a list containing elements with:
-#    [weighted.end.score, group.start, group.end, group.strand, representative.read.name,
-#     [list of all read names in group]]
-# weighted.end.score (represents how many reads have ends similar to this exact position)
-# You can rewrite this to redo the grouping method, but please maintain the inputs and outputs.
+# The output is a list of ReadEndInfo objects containing:
+#    - weighted_score (represents how many reads have ends similar to this exact position)
+#    - start, end, strand, read_id (representative read id)
+#    - supporting_reads (list of all read names in group)
 
 def collapse_end_groups(end_window, read_ends, do_get_best_ends=True):
     start_groups = group_reads_by_ends(read_ends, 0, end_window)
@@ -650,7 +673,11 @@ def collapse_end_groups(end_window, read_ends, do_get_best_ends=True):
         all_end_groups.extend(group_reads_by_ends(start_group, 1, end_window))
     for end_group in all_end_groups:
         if do_get_best_ends:
-            iso_end_groups.append(list(get_best_ends(end_group, end_window)) + [[x[3] for x in end_group]])
+            # get_best_ends returns (weighted_score, start, end, strand, name)
+            weighted_score, start, end, strand, name = get_best_ends(end_group, end_window)
+            supporting_reads = [x[3] for x in end_group]
+            read_end_info = ReadEndInfo(start, end, strand, name, weighted_score, supporting_reads)
+            iso_end_groups.append(read_end_info)
         else:
             iso_end_groups.append(combine_final_ends(end_group))
     return iso_end_groups
@@ -1009,31 +1036,38 @@ def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, re
 
 def filter_ends_by_redundant_and_support(args, good_ends_with_sup_reads):
     # sorts ends, then selects best ones based on support and value of args.no_redundant
+    # good_ends_with_sup_reads is now a list of ReadEndInfo objects
     best_ends = []
-    for i in range(len(good_ends_with_sup_reads)):
-        # last val is read support
-        good_ends_with_sup_reads[i][-1] = len(good_ends_with_sup_reads[i][-1])
     # first by weighted score, then by length
-    good_ends_with_sup_reads.sort(key=lambda x: [x[0], x[2] - x[1]],
+    good_ends_with_sup_reads.sort(key=lambda x: [x.weighted_score, x.length],
                                   reverse=True)
-    junc_support = sum([x[-1] for x in good_ends_with_sup_reads])
+    junc_support = sum([x.num_reads for x in good_ends_with_sup_reads])
     if junc_support >= args.sjc_support:
         if args.no_redundant == 'none':   # this means we allow multiple ends per junction chain
-            if good_ends_with_sup_reads[0][-1] < args.sjc_support:
-                good_ends_with_sup_reads = [good_ends_with_sup_reads[0]]
-                good_ends_with_sup_reads[0][-1] = junc_support
+            if good_ends_with_sup_reads[0].num_reads < args.sjc_support:
+                best = good_ends_with_sup_reads[0]
+                # Update supporting_reads to include all reads for this junction
+                all_reads = []
+                for end_info in good_ends_with_sup_reads:
+                    all_reads.extend(end_info.supporting_reads)
+                best.supporting_reads = all_reads
+                good_ends_with_sup_reads = [best]
             else:
-                good_ends_with_sup_reads = [x for x in good_ends_with_sup_reads if x[-1] >= args.sjc_support]
+                good_ends_with_sup_reads = [x for x in good_ends_with_sup_reads if x.num_reads >= args.sjc_support]
                 good_ends_with_sup_reads = good_ends_with_sup_reads[:args.max_ends]  # select only top most supported ends
             for these_ends in good_ends_with_sup_reads:
                 best_ends.append(these_ends)
         else:
             # best_only uses the default sorting, doesn't require additional action
             if args.no_redundant == 'longest':
-                good_ends_with_sup_reads.sort(reverse=True, key=lambda x: x[2] - x[1])
+                good_ends_with_sup_reads.sort(reverse=True, key=lambda x: x.length)
             # picking single best ends
             best = good_ends_with_sup_reads[0]
-            best[-1] = junc_support  # all reads for junc are counted as support
+            # Update supporting_reads to include all reads for this junction
+            all_reads = []
+            for end_info in good_ends_with_sup_reads:
+                all_reads.extend(end_info.supporting_reads)
+            best.supporting_reads = all_reads
             best_ends.append(best)
     return best_ends
 
@@ -1043,21 +1077,24 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, chrom, sj_to_ends, firstp
     with open(temp_prefix + '.firstpass.unfiltered.bed', 'w') as iso_fh, \
             open(temp_prefix + '.firstpass.reallyunfiltered.bed', 'w') as iso_unfilt_fh:
         for juncs in sj_to_ends:
-            # FIXME make good_ends_with_sup_reads objects be a named tuple
+            # Now returns ReadEndInfo objects
             good_ends_with_sup_reads = collapse_end_groups(args.end_window, sj_to_ends[juncs])
-            for best_score, best_start, best_end, best_strand, best_name, sup_reads in good_ends_with_sup_reads:
-                score = len(sup_reads)
+            for read_end_info in good_ends_with_sup_reads:
                 iso_bedread = BedRead()
-                iso_bedread.generate_from_vals(chrom, best_start, best_end, best_name, score, best_strand, juncs)
+                iso_bedread.generate_from_vals(chrom, read_end_info.start, read_end_info.end,
+                                               read_end_info.read_id, read_end_info.score,
+                                               read_end_info.strand, juncs)
                 iso_unfilt_fh.write('\t'.join(iso_bedread.get_bed_line()) + '\n')
             if juncs == ():
-                best_ends = [x[:-1] + [len(x[-1])] for x in good_ends_with_sup_reads if len(x[-1]) >= args.sjc_support]
+                best_ends = [x for x in good_ends_with_sup_reads if x.num_reads >= args.sjc_support]
             else:
                 best_ends = filter_ends_by_redundant_and_support(args, good_ends_with_sup_reads)
-            for best_score, best_start, best_end, best_strand, best_name, score in best_ends:
+            for read_end_info in best_ends:
                 iso_bedread = BedRead()
-                iso_bedread.generate_from_vals(chrom, best_start, best_end, best_name, score, best_strand, juncs)
-                firstpass_unfiltered[best_name] = iso_bedread
+                iso_bedread.generate_from_vals(chrom, read_end_info.start, read_end_info.end,
+                                               read_end_info.read_id, read_end_info.score,
+                                               read_end_info.strand, juncs)
+                firstpass_unfiltered[read_end_info.read_id] = iso_bedread
                 iso_fh.write('\t'.join(iso_bedread.get_bed_line()) + '\n')
                 if juncs == ():
                     firstpass_SE.add((iso_bedread.exons[0][0], iso_bedread.exons[0][1], iso_bedread.name))
@@ -1065,7 +1102,7 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, chrom, sj_to_ends, firstp
                     for j in juncs:
                         if j not in firstpass_junc_to_name:
                             firstpass_junc_to_name[j] = set()
-                        firstpass_junc_to_name[j].add(best_name)
+                        firstpass_junc_to_name[j].add(read_end_info.read_id)
                     firstpass_SE.update(iso_bedread.exons)
 
     firstpass_SE = sorted(list(firstpass_SE))

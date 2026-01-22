@@ -572,6 +572,14 @@ def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, o
 # Transcript end assignment
 ##
 
+class ReadInfo:
+    """Represents a single read's end information"""
+    def __init__(self, start, end, strand, name):
+        self.start = start
+        self.end = end
+        self.strand = strand
+        self.name = name
+
 class ReadEndInfo:
     """Represents a group of reads sharing similar transcript ends"""
     def __init__(self, start, end, strand, read_id, weighted_score=0.0, supporting_reads=None):
@@ -614,31 +622,96 @@ class IsoformInfo:
     def set_gene_id(self, gene_id):
         self.gene_id = gene_id
 
+class EndInfo:
+    """Represents transcript end information for final isoforms"""
+    def __init__(self, start, end, iso_id_src, read_names):
+        self.start = start
+        self.end = end
+        self.iso_id_src = iso_id_src
+        self.read_names = read_names
+
+    @property
+    def score(self):
+        return min(len(self.read_names), 1000)
+
+    @property
+    def length(self):
+        return self.end - self.start
+
+class JunctionChain:
+    """Represents a specific junction chain (splice pattern)"""
+    def __init__(self, chrom, strand, juncs):
+        self.chrom = chrom
+        self.strand = strand
+        self.juncs = juncs
+
+    def __eq__(self, other):
+        return (self.chrom == other.chrom and
+                self.strand == other.strand and
+                self.juncs == other.juncs)
+
+    def __hash__(self):
+        return hash((self.chrom, self.strand, self.juncs))
+
+class GeneIsoformData:
+    """Organizes all isoforms for a single gene"""
+    def __init__(self, gene_id):
+        self.gene_id = gene_id
+        self._by_junction = {}
+
+    def add_isoform(self, chrom, strand, juncs, end_info):
+        """Add an isoform to the gene's isoform data"""
+        junc_chain = JunctionChain(chrom, strand, juncs)
+        if junc_chain not in self._by_junction:
+            self._by_junction[junc_chain] = []
+        self._by_junction[junc_chain].append(end_info)
+
+    def get_isoforms(self, chrom, strand, juncs):
+        """Get all isoforms for a specific junction chain"""
+        junc_chain = JunctionChain(chrom, strand, juncs)
+        return self._by_junction.get(junc_chain, [])
+
+    def set_isoforms(self, chrom, strand, juncs, isoforms):
+        """Set the isoforms list for a specific junction chain"""
+        junc_chain = JunctionChain(chrom, strand, juncs)
+        self._by_junction[junc_chain] = isoforms
+
+    def junction_chains(self):
+        """Iterate over all junction chains in this gene"""
+        return iter(self._by_junction.keys())
+
+    @property
+    def total_read_support(self):
+        """Sum of all reads supporting all isoforms"""
+        return sum(len(iso.read_names)
+                   for isos in self._by_junction.values()
+                   for iso in isos)
+
 def get_best_ends(curr_group, end_window):
     best_ends = []
     if len(curr_group) > int(end_window):
-        all_starts = Counter([x[0] for x in curr_group])
-        all_ends = Counter([x[1] for x in curr_group])
-        for start1, end1, strand1, name1 in curr_group:
-            weighted_score = all_starts[start1] + all_ends[end1]
-            best_ends.append((weighted_score, start1, end1, strand1, name1))
+        all_starts = Counter([x.start for x in curr_group])
+        all_ends = Counter([x.end for x in curr_group])
+        for read_info in curr_group:
+            weighted_score = all_starts[read_info.start] + all_ends[read_info.end]
+            best_ends.append((weighted_score, read_info.start, read_info.end, read_info.strand, read_info.name))
     else:
         # take most common non-ambiguous strand for group
-        groupStrands = Counter([x[2] for x in curr_group]).most_common()
+        groupStrands = Counter([x.strand for x in curr_group]).most_common()
         strand = 'ambig'
         for i in range(len(groupStrands)):
             if groupStrands[i][0] != 'ambig':
                 strand = groupStrands[i][0]
                 break
 
-        for start1, end1, strand1, name1 in curr_group:
+        for read_info1 in curr_group:
             score, weighted_score = 0, 0
-            for start2, end2, strand2, name2 in curr_group:
-                if abs(start1 - start2) <= end_window and abs(end1 - end2) <= end_window:
+            for read_info2 in curr_group:
+                if abs(read_info1.start - read_info2.start) <= end_window and abs(read_info1.end - read_info2.end) <= end_window:
                     score += 2
-                    weighted_score += (((end_window - abs(start1 - start2)) / end_window) +
-                                       ((end_window - abs(end1 - end2)) / end_window))
-            best_ends.append((weighted_score, start1, end1, strand, name1))
+                    weighted_score += (((end_window - abs(read_info1.start - read_info2.start)) / end_window) +
+                                       ((end_window - abs(read_info1.end - read_info2.end)) / end_window))
+            best_ends.append((weighted_score, read_info1.start, read_info1.end, strand, read_info1.name))
     best_ends.sort(reverse=True)
     # FIXME: DO I WANT TO ADD CORRECTION TO NEARBY ANNOTATED TSS/TTS????
     # FIXME: better integrate with  ReadEndInfo
@@ -650,21 +723,21 @@ def combine_final_ends(curr_group):
     if len(curr_group) == 1:
         return curr_group[0]
     else:
-        curr_group.sort(key=lambda x: x[2])  # sort by iso_src
-        all_reads = [y for x in curr_group for y in x[-1]]
-        if curr_group[0] != ISO_SRC_ANNOT:  # if no annotated iso, sort further
-            curr_group.sort(key=lambda x: len(x[-1]), reverse=True)
+        curr_group.sort(key=lambda x: x.iso_id_src)  # sort by iso_src
+        all_reads = [y for x in curr_group for y in x.read_names]
+        if curr_group[0].iso_id_src.src != ISO_SRC_ANNOT:  # if no annotated iso, sort further
+            curr_group.sort(key=lambda x: len(x.read_names), reverse=True)
         best_iso = curr_group[0]
-        best_iso[-1] = all_reads
+        best_iso.read_names = all_reads
         return best_iso
 
 
 def group_reads_by_ends(read_info_list, sort_index, end_window):
-    sorted_ends = sorted(read_info_list, key=lambda x: x[sort_index])
+    sorted_ends = sorted(read_info_list, key=lambda x: x.start if sort_index == 0 else x.end)
     new_groups, group = [], []
     last_edge = 0
     for iso_info in sorted_ends:
-        edge = iso_info[sort_index]
+        edge = iso_info.start if sort_index == 0 else iso_info.end
         if edge - last_edge <= end_window:
             group.append(iso_info)
         else:
@@ -694,7 +767,7 @@ def collapse_end_groups(end_window, read_ends, do_get_best_ends=True):
         if do_get_best_ends:
             # get_best_ends returns (weighted_score, start, end, strand, name)
             weighted_score, start, end, strand, name = get_best_ends(end_group, end_window)
-            supporting_reads = [x[3] for x in end_group]
+            supporting_reads = [x.name for x in end_group]
             read_end_info = ReadEndInfo(start, end, strand, name, weighted_score, supporting_reads)
             iso_end_groups.append(read_end_info)
         else:
@@ -1043,8 +1116,8 @@ def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, re
                             junc_key = tuple(sorted(corrected_read.juncs))
                             if junc_key not in sj_to_ends:
                                 sj_to_ends[junc_key] = []
-                            sj_to_ends[junc_key].append((corrected_read.start, corrected_read.end,
-                                                         corrected_read.strand, corrected_read.name))
+                            sj_to_ends[junc_key].append(ReadInfo(corrected_read.start, corrected_read.end,
+                                                                  corrected_read.strand, corrected_read.name))
     if generate_fasta:
         fasta_fh.close()
     if return_used_reads:
@@ -1401,7 +1474,7 @@ def read_ends_file(args, ends_file):
         start, end = int(start), int(end)
         if transcript_id not in iso_id_to_ends:
             iso_id_to_ends[transcript_id] = []
-        iso_id_to_ends[transcript_id].append((start, end, None, None))
+        iso_id_to_ends[transcript_id].append(ReadInfo(start, end, None, None))
     for iso_id in iso_id_to_ends:
         # (weighted_score, start1, end1, strand1, name1)
         new_ends = get_best_ends(iso_id_to_ends[iso_id], args.end_window)[1:3]
@@ -1425,7 +1498,6 @@ def have_sufficient_support(args, iso_id_src, num_exons, og_iso_to_reads):
 def process_detected_iso(args, iso_bed, gene_id, iso_id_src, og_iso_to_reads, ends_file, iso_to_ends, gene_to_juncs_to_ends):
     start, end = iso_bed.chromStart, iso_bed.chromEnd
     juncs = bed_to_junctions(iso_bed)
-    junc_key = (iso_bed.chrom, iso_bed.strand, tuple(juncs))
 
     if args.end_norm_dist:
         if ends_file:
@@ -1435,12 +1507,10 @@ def process_detected_iso(args, iso_bed, gene_id, iso_id_src, og_iso_to_reads, en
             start += args.end_norm_dist
             end -= args.end_norm_dist
 
-    # FIXME: make object
     if gene_id not in gene_to_juncs_to_ends:
-        gene_to_juncs_to_ends[gene_id] = {}
-    if junc_key not in gene_to_juncs_to_ends[gene_id]:
-        gene_to_juncs_to_ends[gene_id][junc_key] = []
-    gene_to_juncs_to_ends[gene_id][junc_key].append([start, end, iso_id_src, og_iso_to_reads[iso_id_src]])
+        gene_to_juncs_to_ends[gene_id] = GeneIsoformData(gene_id)
+    end_info = EndInfo(start, end, iso_id_src, og_iso_to_reads[iso_id_src])
+    gene_to_juncs_to_ends[gene_id].add_isoform(iso_bed.chrom, iso_bed.strand, tuple(juncs), end_info)
 
 def process_detected_isos(args, map_file, bed_file, iso_src, ends_file, gene_to_juncs_to_ends):
     # FIXME: what is "og" mean? "ogle"?
@@ -1489,7 +1559,10 @@ def get_reverse_complement(seq):
 def get_bed_gtf_from_info(end_info, chrom, strand, juncs, gene_id, genome):
     # FIXME: what is end info??
     # build gtf, bed, fasta data
-    start, end, iso_id_src, read_names = end_info
+    start = end_info.start
+    end = end_info.end
+    iso_id_src = end_info.iso_id_src
+    read_names = end_info.read_names
     score = min(len(read_names), 1000)
     exon_starts, exon_sizes = get_bed_exons_from_juncs(juncs, start, end)
     # FIXME: duplicate code to build BED record
@@ -1511,66 +1584,66 @@ def get_bed_gtf_from_info(end_info, chrom, strand, juncs, gene_id, genome):
 
 
 def combine_annot_w_novel_junc_chain(gene_to_juncs_to_ends, gene_id, chrom, strand, juncs, args):
-    ends_list = gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)]
+    ends_list = gene_to_juncs_to_ends[gene_id].get_isoforms(chrom, strand, juncs)
     ends_list = collapse_end_groups(args.end_window, ends_list, False)
     # FIXME could try accounting for all reads assigned to isoforms - assign them to closest ends
     # not sure how much of an issue this is
     if juncs != ():
         if args.no_redundant == 'best_only':
-            ends_list.sort(key=lambda x: [len(x[-1]), x[1] - x[0]], reverse=True)
+            ends_list.sort(key=lambda x: [len(x.read_names), x.end - x.start], reverse=True)
             ends_list = [ends_list[0]]
         elif args.no_redundant == 'longest':
-            ends_list.sort(key=lambda x: [x[1] - x[0]], reverse=True)
+            ends_list.sort(key=lambda x: [x.end - x.start], reverse=True)
             ends_list = [ends_list[0]]
         else:
-            ends_list.sort(key=lambda x: [len(x[-1]), x[1] - x[0]], reverse=True)
+            ends_list.sort(key=lambda x: [len(x.read_names), x.end - x.start], reverse=True)
             ends_list = ends_list[:args.max_ends]
-    gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)] = ends_list
+    gene_to_juncs_to_ends[gene_id].set_isoforms(chrom, strand, juncs, ends_list)
 
 
 def combine_annot_w_novel(args, gene_to_juncs_to_ends):
     for gene_id in gene_to_juncs_to_ends:
-        for chrom, strand, juncs in gene_to_juncs_to_ends[gene_id]:
-            combine_annot_w_novel_junc_chain(gene_to_juncs_to_ends, gene_id, chrom, strand, juncs, args)
+        for junc_chain in gene_to_juncs_to_ends[gene_id].junction_chains():
+            combine_annot_w_novel_junc_chain(gene_to_juncs_to_ends, gene_id, junc_chain.chrom, junc_chain.strand, junc_chain.juncs, args)
 
 def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh,
                       read_to_final_transcript, counts_fh, seq_fh):
-    iso_id_src = iso_info[2]
+    iso_id_src = iso_info.iso_id_src
     iso_id = iso_id_src.id.split('-endvar')[0]  # FIXME what is this all about?
     if iso_id in name_to_used_counts:
         name_to_used_counts[iso_id] += 1
         iso_id = iso_id + '-endvar' + str(name_to_used_counts[iso_id])
     else:
         name_to_used_counts[iso_id] = 1
-    iso_info[2] = IsoIdSrc(iso_id, iso_id_src.src)
+    iso_info.iso_id_src = IsoIdSrc(iso_id, iso_id_src.src)
     bed_line, gtf_for_transcript, tseq = get_bed_gtf_from_info(iso_info, chrom, strand, juncs, gene_id, genome)
     iso_fh.write(bed_line)
-    t_starts.append(iso_info[0])
-    t_ends.append(iso_info[1])
+    t_starts.append(iso_info.start)
+    t_ends.append(iso_info.end)
     gtf_lines.extend(gtf_for_transcript)
-    map_fh.write(iso_id + '_' + gene_id + '\t' + ','.join(iso_info[3]) + '\n')
-    for r in iso_info[3]:
+    map_fh.write(iso_id + '_' + gene_id + '\t' + ','.join(iso_info.read_names) + '\n')
+    for r in iso_info.read_names:
         read_to_final_transcript[r] = (iso_id + '_' + gene_id, chrom, strand)
-    counts_fh.write(iso_id + '_' + gene_id + '\t' + str(len(iso_info[3])) + '\n')
+    counts_fh.write(iso_id + '_' + gene_id + '\t' + str(len(iso_info.read_names)) + '\n')
     seq_fh.write('>' + iso_id + '_' + gene_id + '\n')
     seq_fh.write(tseq + '\n')
 
 def write_gene_gff_old(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh, read_to_final_transcript, counts_fh, seq_fh, gtf_fh):
     gene_tot = 0
-    for chrom, strand, juncs in gene_to_juncs_to_ends[gene_id]:
-        for iso_info in gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)]:
-            gene_tot += len(iso_info[-1])
+    for junc_chain in gene_to_juncs_to_ends[gene_id].junction_chains():
+        for iso_info in gene_to_juncs_to_ends[gene_id].get_isoforms(junc_chain.chrom, junc_chain.strand, junc_chain.juncs):
+            gene_tot += len(iso_info.read_names)
 
     gtf_lines, t_starts, t_ends = [], [], []
-    for chrom, strand, juncs in gene_to_juncs_to_ends[gene_id]:
-        ends_list = gene_to_juncs_to_ends[gene_id][(chrom, strand, juncs)]
+    for junc_chain in gene_to_juncs_to_ends[gene_id].junction_chains():
+        ends_list = gene_to_juncs_to_ends[gene_id].get_isoforms(junc_chain.chrom, junc_chain.strand, junc_chain.juncs)
 
         name_to_used_counts = {}
         for iso_info in ends_list:
-            if len(iso_info[-1]) / gene_tot >= args.frac_support:
-                write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh, read_to_final_transcript, counts_fh, seq_fh)
+            if len(iso_info.read_names) / gene_tot >= args.frac_support:
+                write_iso_seq_map(iso_info, name_to_used_counts, junc_chain.chrom, junc_chain.strand, junc_chain.juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh, read_to_final_transcript, counts_fh, seq_fh)
 
-    gtf_lines.insert(0, [chrom, 'FLAIR', 'gene', min(t_starts) + 1, max(t_ends), '.', gtf_lines[0][6], '.',
+    gtf_lines.insert(0, [gtf_lines[0][0], 'FLAIR', 'gene', min(t_starts) + 1, max(t_ends), '.', gtf_lines[0][6], '.',
                          'gene_id "' + gene_id + '";'])
     for g in gtf_lines:
         gtf_fh.write('\t'.join([str(x) for x in g]) + '\n')

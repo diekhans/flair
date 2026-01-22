@@ -24,8 +24,10 @@ class GtfRecord:
     are converted to list of values
     """
     def __init__(self, chrom: str, source: str, feature: str,
-                 start: int, end: int, score: str, strand: str, frame: str,
-                 attrs: Attrs):
+                 start: int, end: int, score: str, strand: str, frame: str, *,
+                 attrs: Attrs = None,
+                 gene_id: str = None, gene_name: str = None, transcript_id: str = None,
+                 exon_number: int = None):
         self.chrom = chrom
         self.source = source
         self.feature = feature
@@ -34,7 +36,17 @@ class GtfRecord:
         self.score = score
         self.strand = strand
         self.frame = frame
-        self.attrs = attrs
+
+        # Make a copy of attrs and add optional parameters
+        self.attrs = attrs.copy() if attrs is not None else {}
+        if gene_id is not None:
+            self.attrs['gene_id'] = gene_id
+        if gene_name is not None:
+            self.attrs['gene_name'] = gene_name
+        if transcript_id is not None:
+            self.attrs['transcript_id'] = transcript_id
+        if exon_number is not None:
+            self.attrs['exon_number'] = exon_number
 
     @property
     def gene_id(self):
@@ -47,6 +59,10 @@ class GtfRecord:
     @property
     def transcript_id(self):
         return self.attrs.get("transcript_id")
+
+    @property
+    def exon_number(self):
+        return self.attrs.get("exon_number")
 
     def __len__(self) -> int:
         return self.end - self.start
@@ -73,22 +89,36 @@ class GtfExon(GtfRecord):
     """GTF exon."""
 
     def __init__(self, chrom: str, source: str, feature: str, start: int, end: int,
-                 score: str, strand: str, frame: str,
-                 attrs: Attrs):
-        super().__init__(chrom, source, feature, start, end, score, strand, frame, attrs)
+                 score: str, strand: str, frame: str, *,
+                 attrs: Attrs = None,
+                 gene_id: str = None, gene_name: str = None, transcript_id: str = None,
+                 exon_number: int = None):
+        super().__init__(chrom, source, feature, start, end, score, strand, frame,
+                         attrs=attrs, gene_id=gene_id, gene_name=gene_name, transcript_id=transcript_id,
+                         exon_number=exon_number)
 
 class GtfCDS(GtfRecord):
     """GTF CDS (coding sequence)."""
 
     def __init__(self, chrom: str, source: str, feature: str, start: int, end: int,
-                 score: str, strand: str, frame: str, attrs: Attrs):
-        super().__init__(chrom, source, feature, start, end, score, strand, frame, attrs)
+                 score: str, strand: str, frame: str, *,
+                 attrs: Attrs = None,
+                 gene_id: str = None, gene_name: str = None, transcript_id: str = None,
+                 exon_number: int = None):
+        super().__init__(chrom, source, feature, start, end, score, strand, frame,
+                         attrs=attrs, gene_id=gene_id, gene_name=gene_name, transcript_id=transcript_id,
+                         exon_number=exon_number)
 
 class GtfTranscript(GtfRecord):
     """GTF transcript with exons."""
     def __init__(self, chrom: str, source: str, feature: str, start: int, end: int,
-                 score: str, strand: str, frame: str, attrs: Attrs):
-        super().__init__(chrom, source, feature, start, end, score, strand, frame, attrs)
+                 score: str, strand: str, frame: str, *,
+                 attrs: Attrs = None,
+                 gene_id: str = None, gene_name: str = None, transcript_id: str = None,
+                 exon_number: int = None):
+        super().__init__(chrom, source, feature, start, end, score, strand, frame,
+                         attrs=attrs, gene_id=gene_id, gene_name=gene_name, transcript_id=transcript_id,
+                         exon_number=exon_number)
 
         self.exons: list[GtfExon] = []
         self.cds_recs: list[GtfCDS] = []
@@ -276,9 +306,9 @@ def _parse_gtf_line(line: str) -> GtfRecord:
 
 def _format_attr(key, value):
     if isinstance(value, (int, float)):
-        return f'{key} {value}'
+        return f'{key} {value};'
     else:
-        return f'{key} "{value}"'
+        return f'{key} "{value}";'
 
 def _format_attr_key_val(key, value):
     attr_strs = []
@@ -294,10 +324,7 @@ def _format_attrs(attrs):
     attrs_strs = []
     for key, value in attrs.items():
         attrs_strs += _format_attr_key_val(key, value)
-    attrs_field = '; '.join(attrs_strs)
-    if attrs_field:
-        attrs_field += ';'
-    return attrs_field
+    return ' '.join(attrs_strs)
 
 def _str_or_dot(val):
     return str(val) if val is not None else '.'

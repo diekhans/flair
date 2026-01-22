@@ -11,7 +11,7 @@ import multiprocessing as mp
 from collections import Counter, namedtuple
 from flair import FlairInputDataError, SeqRange, PosRange
 from flair.flair_align import inferMM2JuncStrand, intron_chain_to_exon_starts
-from flair.gtf_io import gtf_data_parser
+from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon
 from flair.ssUtils import addOtherJuncs, gtfToSSBed
 from flair.ssPrep import buildIntervalTree, ssCorrect
 from flair.pycbio.hgdata.bed import BedReader
@@ -1117,7 +1117,7 @@ def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, re
                             if junc_key not in sj_to_ends:
                                 sj_to_ends[junc_key] = []
                             sj_to_ends[junc_key].append(ReadInfo(corrected_read.start, corrected_read.end,
-                                                                  corrected_read.strand, corrected_read.name))
+                                                                 corrected_read.strand, corrected_read.name))
     if generate_fasta:
         fasta_fh.close()
     if return_used_reads:
@@ -1569,18 +1569,21 @@ def get_bed_gtf_from_info(end_info, chrom, strand, juncs, gene_id, genome):
     bed_line = [chrom, start, end, iso_id_src.id + '_' + gene_id, score, strand, start, end,
                 get_rgb(iso_id_src.id, strand, juncs), len(exon_starts), ','.join([str(x) for x in exon_sizes]),
                 ','.join([str(x) for x in exon_starts])]
-    gtf_lines = []
-    gtf_lines.append([chrom, 'FLAIR', 'transcript', start + 1, end, score, strand, '.',
-                     'gene_id "' + gene_id + '"; transcript_id "' + iso_id_src.id + '";'])
     exons = [Exon(start + exon_starts[i], start + exon_starts[i] + exon_sizes[i])
              for i in range(len(exon_starts))]
     trans_seq = get_sequence_for_exons(genome, chrom, strand, exons)
     if strand == '-':
         exons.reverse()
+
+    # Create GtfTranscript with exons
+    gtf_transcript = GtfTranscript(chrom, 'FLAIR', 'transcript', start, end, score, strand, '.',
+                                   gene_id=gene_id, transcript_id=iso_id_src.id)
     for i, exon in enumerate(exons, start=1):
-        gtf_lines.append([chrom, 'FLAIR', 'exon', exon.start + 1, exon.end, score, strand, '.',
-                         'gene_id "' + gene_id + '"; transcript_id "' + iso_id_src.id + '"; exon_number ' + str(i)])
-    return '\t'.join([str(x) for x in bed_line]) + '\n', gtf_lines, trans_seq
+        gtf_exon = GtfExon(chrom, 'FLAIR', 'exon', exon.start, exon.end, score, strand, '.',
+                           gene_id=gene_id, transcript_id=iso_id_src.id, exon_number=i)
+        gtf_transcript.add_exon(gtf_exon)
+
+    return '\t'.join([str(x) for x in bed_line]) + '\n', gtf_transcript, trans_seq
 
 
 def combine_annot_w_novel_junc_chain(gene_to_juncs_to_ends, gene_id, chrom, strand, juncs, args):
@@ -1606,7 +1609,7 @@ def combine_annot_w_novel(args, gene_to_juncs_to_ends):
         for junc_chain in gene_to_juncs_to_ends[gene_id].junction_chains():
             combine_annot_w_novel_junc_chain(gene_to_juncs_to_ends, gene_id, junc_chain.chrom, junc_chain.strand, junc_chain.juncs, args)
 
-def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh,
+def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_transcripts, map_fh,
                       read_to_final_transcript, counts_fh, seq_fh):
     iso_id_src = iso_info.iso_id_src
     iso_id = iso_id_src.id.split('-endvar')[0]  # FIXME what is this all about?
@@ -1616,11 +1619,11 @@ def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_
     else:
         name_to_used_counts[iso_id] = 1
     iso_info.iso_id_src = IsoIdSrc(iso_id, iso_id_src.src)
-    bed_line, gtf_for_transcript, tseq = get_bed_gtf_from_info(iso_info, chrom, strand, juncs, gene_id, genome)
+    bed_line, gtf_data, tseq = get_bed_gtf_from_info(iso_info, chrom, strand, juncs, gene_id, genome)
     iso_fh.write(bed_line)
     t_starts.append(iso_info.start)
     t_ends.append(iso_info.end)
-    gtf_lines.extend(gtf_for_transcript)
+    gtf_transcripts.append(gtf_data)
     map_fh.write(iso_id + '_' + gene_id + '\t' + ','.join(iso_info.read_names) + '\n')
     for r in iso_info.read_names:
         read_to_final_transcript[r] = (iso_id + '_' + gene_id, chrom, strand)
@@ -1628,25 +1631,61 @@ def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_
     seq_fh.write('>' + iso_id + '_' + gene_id + '\n')
     seq_fh.write(tseq + '\n')
 
-def write_gene_gff_old(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh, read_to_final_transcript, counts_fh, seq_fh, gtf_fh):
+def calculate_gene_total_reads(gene_isoform_data):
+    """Calculate total read support across all isoforms in a gene."""
     gene_tot = 0
-    for junc_chain in gene_to_juncs_to_ends[gene_id].junction_chains():
-        for iso_info in gene_to_juncs_to_ends[gene_id].get_isoforms(junc_chain.chrom, junc_chain.strand, junc_chain.juncs):
+    for junc_chain in gene_isoform_data.junction_chains():
+        for iso_info in gene_isoform_data.get_isoforms(junc_chain.chrom, junc_chain.strand, junc_chain.juncs):
             gene_tot += len(iso_info.read_names)
+    return gene_tot
 
-    gtf_lines, t_starts, t_ends = [], [], []
-    for junc_chain in gene_to_juncs_to_ends[gene_id].junction_chains():
-        ends_list = gene_to_juncs_to_ends[gene_id].get_isoforms(junc_chain.chrom, junc_chain.strand, junc_chain.juncs)
+def write_gene_isoforms(gene_isoform_data, gene_id, gene_tot, args, genome, iso_fh, map_fh, read_to_final_transcript, counts_fh, seq_fh):
+    """Write isoform data (BED, sequences, maps) for isoforms meeting the threshold.
+    Returns tuple of (gtf_transcripts, t_starts, t_ends) for GTF writing."""
+    gtf_transcripts, t_starts, t_ends = [], [], []
+
+    for junc_chain in gene_isoform_data.junction_chains():
+        ends_list = gene_isoform_data.get_isoforms(junc_chain.chrom, junc_chain.strand, junc_chain.juncs)
 
         name_to_used_counts = {}
         for iso_info in ends_list:
             if len(iso_info.read_names) / gene_tot >= args.frac_support:
-                write_iso_seq_map(iso_info, name_to_used_counts, junc_chain.chrom, junc_chain.strand, junc_chain.juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_lines, map_fh, read_to_final_transcript, counts_fh, seq_fh)
+                write_iso_seq_map(iso_info, name_to_used_counts, junc_chain.chrom, junc_chain.strand, junc_chain.juncs,
+                                  gene_id, genome, iso_fh, t_starts, t_ends, gtf_transcripts, map_fh,
+                                  read_to_final_transcript, counts_fh, seq_fh)
 
-    gtf_lines.insert(0, [gtf_lines[0][0], 'FLAIR', 'gene', min(t_starts) + 1, max(t_ends), '.', gtf_lines[0][6], '.',
-                         'gene_id "' + gene_id + '";'])
-    for g in gtf_lines:
-        gtf_fh.write('\t'.join([str(x) for x in g]) + '\n')
+    return gtf_transcripts, t_starts, t_ends
+
+def write_gene_gtf(gtf_transcripts, t_starts, t_ends, gene_id, gtf_fh):
+    """Write GTF records for a gene (gene record, transcript records, and exon records)."""
+    first_transcript = gtf_transcripts[0]
+    gtf_write_row(gtf_fh, first_transcript.chrom, 'FLAIR', 'gene', min(t_starts), max(t_ends), '.',
+                  first_transcript.strand, '.', gene_id=gene_id)
+
+    # Write transcript and exon records
+    for gtf_transcript in gtf_transcripts:
+        # Write transcript record
+        print(gtf_transcript, file=gtf_fh)
+
+        # Write exon records
+        for gtf_exon in gtf_transcript.exons:
+            print(gtf_exon, file=gtf_fh)
+
+def write_gene_output(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh, read_to_final_transcript, counts_fh, seq_fh, gtf_fh):
+    """Write all output files for a single gene (isoforms, sequences, maps, and GTF)."""
+    gene_isoform_data = gene_to_juncs_to_ends[gene_id]
+
+    # Calculate total read support for the gene
+    gene_tot = calculate_gene_total_reads(gene_isoform_data)
+
+    # Write isoform data and collect GTF information
+    gtf_transcripts, t_starts, t_ends = write_gene_isoforms(
+        gene_isoform_data, gene_id, gene_tot, args, genome,
+        iso_fh, map_fh, read_to_final_transcript, counts_fh, seq_fh)
+
+    # Write GTF records
+    if gtf_transcripts:
+        write_gene_gtf(gtf_transcripts, t_starts, t_ends, gene_id, gtf_fh)
 
 def get_transcirpts_to_reads(temp_prefix, suffix):
     transcript_to_reads = {}
@@ -1683,8 +1722,8 @@ def combine_annot_w_novel_and_write_files(args, temp_prefix, gene_to_juncs_to_en
 
         # FIXME: one write file at a time, all the data is now bundled up
         for gene_id in gene_to_juncs_to_ends:
-            write_gene_gff_old(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh,
-                               read_to_final_transcript, counts_fh, seq_fh, gtf_fh)
+            write_gene_output(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh,
+                              read_to_final_transcript, counts_fh, seq_fh, gtf_fh)
 
     if args.end_norm_dist:
         with open(temp_prefix + '.read_ends.bed', 'w') as ends_fh:

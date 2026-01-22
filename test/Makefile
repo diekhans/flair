@@ -557,18 +557,24 @@ test-variants-help: mkdirs
 # flair fusion
 ###
 fusion-tests: test-fusion test-fusion-pary test-fusion-help
+FUSION_TEST_SHARED_OUT = $O/fusion_tests
+FUSION_TEST_BAM = ${FUSION_TEST_SHARED_OUT}_chimeric.bam
 
-test-fusion: mkdirs ${GENOME_FA}
-	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq --genome ${GENOME_FA} -t 4 -o $O/$@ --filtertype separate --minfragmentsize 40 --maxintronlen 350k
-	flair fusion -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq -b $O/$@_chimeric.bam --maxloci 4 -o $O/$@ -s 2
+test-fusion: mkdirs ${GENOME_FA} ${FUSION_TEST_BAM}
+	flair fusion -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq -b ${FUSION_TEST_BAM} --maxloci 4 -o $O/$@ -s 2
 	diff <(sort <(cut -f 1,2,3,5,6,7,8,9,10,11,12 $E/$@.fusions.isoforms.bed)) <(sort <(cut -f 1,2,3,5,6,7,8,9,10,11,12 $O/$@.fusions.isoforms.bed))
 	diff <(sort <(grep -v ">" $E/$@.fusions.isoforms.fa)) <(sort <(grep -v ">" $O/$@.fusions.isoforms.fa))
 
-test-fusion-pary: mkdirs ${GENOME_FA}
-	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq --genome ${GENOME_FA} -t 4 -o $O/$@ --filtertype separate --minfragmentsize 40 --maxintronlen 350k
-	flair fusion -g ${GENOME_FA} -f $I/parY.annotation.gtf -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq -b $O/$@_chimeric.bam --maxloci 4 -o $O/$@ -s 2
+test-fusion-pary: mkdirs ${GENOME_FA} ${FUSION_TEST_BAM}
+	flair fusion -g ${GENOME_FA} -f $I/parY.annotation.gtf -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq -b ${FUSION_TEST_BAM} --maxloci 4 -o $O/$@ -s 2
 	$(call cmp_expect_sort,$@.fusions.isoforms.bed)
 	$(call cmp_expect_sort,$@.fusions.isoforms.fa)
+
+${FUSION_TEST_BAM}: mkdirs
+	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq \
+	   --genome ${GENOME_FA} -t 4 -o ${FUSION_TEST_SHARED_OUT} \
+	   --filtertype separate --minfragmentsize 40 --maxintronlen 350k
+
 
 test-fusion-help: mkdirs
 	flair fusion  --help > $O/$@.out

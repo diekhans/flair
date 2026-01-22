@@ -64,9 +64,9 @@ def get_args():
                         help='window size for comparing TSS/TES (100)')
 
     parser.add_argument('--sjc_support', type=int, default=1,
-                        help='''minimum number of supporting reads for a spliced isoform (1)''')
+                        help='''minimum number of supporting reads for a spliced isoform''')
     parser.add_argument('--se_support', type=int, default=3,
-                        help='''minimum number of supporting reads for a single exon isoform (3)''')
+                        help='''minimum number of supporting reads for a single exon isoform''')
     parser.add_argument('--frac_support', type=float, default=0.05,
                         help='''minimum fraction of gene locus support for isoform to be called
                         default: 0.05, only isoforms that make up more than 5 percent of the gene
@@ -123,6 +123,12 @@ def get_args():
     parser.add_argument('--output_bam', default=False, action='store_true',
                         help='output intermediate bams aligned to the transcriptome. '
                              'Only works with --keep_intermediate, for debugging')
+    parser.add_argument('--fusion_breakpoints',
+                        help='''for fusion detection only - bed file containing locations of fusion breakpoints on the synthetic genome''')
+    parser.add_argument('--allow_paralogs', default=False, action='store_true',
+                        help='specify if want to allow reads to be assigned to multiple paralogs with equivalent alignment')
+    parser.add_argument('--generate_map', default=False, action='store_true',
+                        help='''specify this argument to generate a txt file of read-isoform assignments''')
     args = parser.parse_args()
     args.parallel_mode = parse_parallel_mode(parser, args.parallel_mode)
     args.trust_ends = False
@@ -520,13 +526,14 @@ def get_annot_info(annot_gtf_data, all_regions):
 
 
 def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound):
-    # FIXME: convert filter_transcriptome_align.py to a library
-    # count sam transcripts ; the dash at the end means STDIN
-    # FIXME: minimap output needs to be piped through filter_transcriptome_align without saving the bam file
-    count_cmd = ['filter_transcriptome_align.py', '--sam', '-',
-                 '-o', output_name, '-t', 1,  # feeding 1 thread in because this is already multithreaded here
-                 ]
+    # FIXME: convert filter_transcriptome_align.py to a library, however
+    # minimap output needs to be piped through filter_transcriptome_align
+    # without saving the bam file.
 
+    # count sam transcripts ; the dash at the end means STDIN
+    # use 1 thread in because this is already multithreaded here
+    count_cmd = ['filter_transcriptome_align.py', '--sam', '-',
+                 '-o', output_name, '-t', 1,]
     if clipping_file:
         count_cmd.extend(['--trimmedreads', clipping_file])
     if map_file:
@@ -553,7 +560,11 @@ def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, cl
                           '--transcriptomefasta', args.transcriptfasta])
     if args.remove_internal_priming and is_annot:
         count_cmd.append('--permissive_last_exons')
-    return tuple(count_cmd)
+    if args.fusion_breakpoints:
+        count_cmd += ['--fusion_breakpoints', args.fusion_breakpoints]
+    if args.allow_paralogs:
+        count_cmd += ['--allow_paralogs']
+    return count_cmd
 
 
 def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound):

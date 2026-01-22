@@ -1,5 +1,11 @@
 # Major user-visible changes
 
+##
+* Incompatibles
+  * Removed flair correct and collapse modules, the functionality is replaced
+    by flair transcriptome.
+    
+
 ## [v3.0.0b1] 2025-11-27 (beta 1)
 * General
   * Removed dependencies on pandas and rpy2.

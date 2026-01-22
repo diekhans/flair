@@ -595,6 +595,25 @@ class ReadEndInfo:
         """Alias for num_reads for compatibility"""
         return self.num_reads
 
+class IsoformInfo:
+    """Represents metadata about a detected isoform"""
+    def __init__(self, transcript_id, strand, exons):
+        self.transcript_id = transcript_id
+        self.strand = strand
+        self.exons = exons
+        self.gene_id = None  # Assigned later
+
+    @property
+    def start(self):
+        return self.exons[0][0] if self.exons else None
+
+    @property
+    def end(self):
+        return self.exons[-1][1] if self.exons else None
+
+    def set_gene_id(self, gene_id):
+        self.gene_id = gene_id
+
 def get_best_ends(curr_group, end_window):
     best_ends = []
     if len(curr_group) > int(end_window):
@@ -865,8 +884,8 @@ def max_terminal_exons_ends_from_annots(annots):
 def max_terminal_exons_ends_from_iso_infos(iso_to_info):
     max_terminal_exons_ends = MaxTerminalExonsEnds()
     for iso_name in iso_to_info:
-        gene_id, transcript_id, strand, exons = iso_to_info[iso_name]
-        max_terminal_exons_ends.add_transcript(gene_id, strand, transcript_id, exons)
+        iso_info = iso_to_info[iso_name]
+        max_terminal_exons_ends.add_transcript(iso_info.gene_id, iso_info.strand, iso_info.transcript_id, iso_info.exons)
     return max_terminal_exons_ends
 
 ####
@@ -1288,7 +1307,9 @@ def get_gene_name_firstpass(iso_name, iso_bedread, annots, annot_name_to_used_co
     else:
         strand = iso_bedread.strand
         novel_gene_isos_to_group[strand].append((iso_bedread.start, iso_bedread.end, iso_name))
-    iso_to_info[iso_name] = [gene_id, transcript_id, strand, iso_bedread.exons]
+    iso_info = IsoformInfo(transcript_id, strand, iso_bedread.exons)
+    iso_info.gene_id = gene_id
+    iso_to_info[iso_name] = iso_info
 
 def get_gene_names_firstpass(firstpass, annots):
     annot_name_to_used_counts = {}
@@ -1312,7 +1333,7 @@ def generate_non_gene_iso_groups_strand(novel_gene_isos_to_group, strand, chrom,
             if len(curr_group) > 0:
                 group_name = f'{chrom}:{group_start}-{last_end}:{strand}'
                 for s, e, t in curr_group:
-                    iso_to_info[t][0] = group_name
+                    iso_to_info[t].set_gene_id(group_name)
             curr_group = [(start, end, t_name)]
             group_start = start
         if end > last_end:
@@ -1320,17 +1341,17 @@ def generate_non_gene_iso_groups_strand(novel_gene_isos_to_group, strand, chrom,
     if len(curr_group) > 0:
         group_name = f'{chrom}:{group_start}-{last_end}:{strand}'
         for s, e, t in curr_group:
-            iso_to_info[t][0] = group_name
+            iso_to_info[t].set_gene_id(group_name)
 
 def write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, iso_bedread, max_terminal_exons_ends, add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome):
-    gene_id, transcript_id, strand, exons = iso_to_info[iso_name]
+    iso_info = iso_to_info[iso_name]
     # FIXME: do normalization outside of write function
-    if normalize_ends and len(exons) > 1:  # don't normalize ends for single exon transcripts
-        normalize_gene_terminal_exons(max_terminal_exons_ends, gene_id, strand, exons,
+    if normalize_ends and len(iso_info.exons) > 1:  # don't normalize ends for single exon transcripts
+        normalize_gene_terminal_exons(max_terminal_exons_ends, iso_info.gene_id, iso_info.strand, iso_info.exons,
                                       add_length_at_ends=add_length_at_ends)
-        iso_bedread.reset_from_exons(exons)
-    iso_bedread.strand = strand
-    iso_bedread.name = transcript_id + '_' + gene_id
+        iso_bedread.reset_from_exons(iso_info.exons)
+    iso_bedread.strand = iso_info.strand
+    iso_bedread.name = iso_info.transcript_id + '_' + iso_info.gene_id
 
     if unique_bound and iso_name in unique_bound:
         unique_fh.write(iso_bedread.name + '\t' + unique_bound[iso_name] + '\n')

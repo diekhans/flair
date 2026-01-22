@@ -1126,42 +1126,60 @@ def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, re
         return sj_to_ends
 
 
-def filter_ends_by_redundant_and_support(args, good_ends_with_sup_reads):
-    # sorts ends, then selects best ones based on support and value of args.no_redundant
-    # good_ends_with_sup_reads is now a list of ReadEndInfo objects
+def filter_ends_allow_multiple(good_ends_with_sup_reads, sjc_support, max_ends):
+    """Allow multiple ends per junction chain.
+    Returns list of ReadEndInfo objects that meet support threshold."""
     best_ends = []
-    # first by weighted score, then by length
+
+    if good_ends_with_sup_reads[0].num_reads < sjc_support:
+        # If top candidate doesn't meet threshold, merge all reads into it
+        best = good_ends_with_sup_reads[0]
+        all_reads = []
+        for end_info in good_ends_with_sup_reads:
+            all_reads.extend(end_info.supporting_reads)
+        best.supporting_reads = all_reads
+        best_ends.append(best)
+    else:
+        # Filter to those meeting support threshold and limit to max_ends
+        filtered = [x for x in good_ends_with_sup_reads if x.num_reads >= sjc_support]
+        filtered = filtered[:max_ends]  # select only top most supported ends
+        best_ends.extend(filtered)
+
+    return best_ends
+
+def filter_ends_single_best(good_ends_with_sup_reads, no_redundant_mode):
+    """Pick single best end from junction chain.
+    Returns list with single ReadEndInfo object."""
+    # best_only uses the default sorting, doesn't require additional action
+    if no_redundant_mode == 'longest':
+        good_ends_with_sup_reads.sort(reverse=True, key=lambda x: x.length)
+
+    # Pick single best end and merge all reads into it
+    best = good_ends_with_sup_reads[0]
+    all_reads = []
+    for end_info in good_ends_with_sup_reads:
+        all_reads.extend(end_info.supporting_reads)
+    best.supporting_reads = all_reads
+
+    return [best]
+
+def filter_ends_by_redundant_and_support(args, good_ends_with_sup_reads):
+    """Sort ends, then select best ones based on support and value of args.no_redundant.
+    good_ends_with_sup_reads is a list of ReadEndInfo objects."""
+    # First by weighted score, then by length
     good_ends_with_sup_reads.sort(key=lambda x: [x.weighted_score, x.length],
                                   reverse=True)
+
     junc_support = sum([x.num_reads for x in good_ends_with_sup_reads])
-    if junc_support >= args.sjc_support:
-        if args.no_redundant == 'none':   # this means we allow multiple ends per junction chain
-            if good_ends_with_sup_reads[0].num_reads < args.sjc_support:
-                best = good_ends_with_sup_reads[0]
-                # Update supporting_reads to include all reads for this junction
-                all_reads = []
-                for end_info in good_ends_with_sup_reads:
-                    all_reads.extend(end_info.supporting_reads)
-                best.supporting_reads = all_reads
-                good_ends_with_sup_reads = [best]
-            else:
-                good_ends_with_sup_reads = [x for x in good_ends_with_sup_reads if x.num_reads >= args.sjc_support]
-                good_ends_with_sup_reads = good_ends_with_sup_reads[:args.max_ends]  # select only top most supported ends
-            for these_ends in good_ends_with_sup_reads:
-                best_ends.append(these_ends)
-        else:
-            # best_only uses the default sorting, doesn't require additional action
-            if args.no_redundant == 'longest':
-                good_ends_with_sup_reads.sort(reverse=True, key=lambda x: x.length)
-            # picking single best ends
-            best = good_ends_with_sup_reads[0]
-            # Update supporting_reads to include all reads for this junction
-            all_reads = []
-            for end_info in good_ends_with_sup_reads:
-                all_reads.extend(end_info.supporting_reads)
-            best.supporting_reads = all_reads
-            best_ends.append(best)
-    return best_ends
+    if junc_support < args.sjc_support:
+        return []
+
+    if args.no_redundant == 'none':
+        # Allow multiple ends per junction chain
+        return filter_ends_allow_multiple(good_ends_with_sup_reads, args.sjc_support, args.max_ends)
+    else:
+        # Pick single best end
+        return filter_ends_single_best(good_ends_with_sup_reads, args.no_redundant)
 
 
 def process_juncs_to_firstpass_isos(args, temp_prefix, chrom, sj_to_ends, firstpass_SE):

@@ -161,6 +161,23 @@ def exons_to_juncs(exons):
 ISO_SRC_ANNOT = 'annot'
 ISO_SRC_NOVEL = 'novel'
 
+# tolerance for terminal exon boundary comparisons
+TERMINAL_EXON_BOUNDARY_TOLERANCE = 20
+
+# margin for single-exon isoform overlap comparisons
+SINGLE_EXON_OVERLAP_MARGIN = 10
+
+# expression ratio threshold for filtering overlapping single-exon isoforms
+SINGLE_EXON_EXPRESSION_RATIO = 1.2
+
+# overlap fraction thresholds for gene assignment
+MIN_ISOFORM_OVERLAP_FRAC = 0.5
+MIN_ANNOT_OVERLAP_FRAC = 0.8
+
+# search window for binary search of single-exon annotations
+ANNOT_SE_SEARCH_WINDOW = 2
+
+
 class IsoIdSrc(namedtuple("IsoIdSrc",
                           ("id", "src"))):
     """isoform identifier along with the source of the isoform"""
@@ -839,15 +856,14 @@ def identify_spliced_iso_subset(otheriso_name, sup_annot_transcript_to_juncs, an
                         superset_support.append(otheriso_score)
                 else:
                     # is internal exon of other transcript - see if it contains additional sequence
-                    # FIXME: magic number  20, make define
                     if first_exon.end == other_exon.end:
                         unique_seq_bound.append((0, first_exon.end - other_exon.start))
-                        if first_exon.start >= other_exon.start - 20:
+                        if first_exon.start >= other_exon.start - TERMINAL_EXON_BOUNDARY_TOLERANCE:
                             terminal_exon_is_subset[0] = 1
                             superset_support.append(otheriso_score)
                     if last_exon.start == other_exon.start:
                         unique_seq_bound.append((1, other_exon.end - last_exon.start))
-                        if last_exon.end <= other_exon.end + 20:
+                        if last_exon.end <= other_exon.end + TERMINAL_EXON_BOUNDARY_TOLERANCE:
                             terminal_exon_is_subset[1] = 1
                             superset_support.append(otheriso_score)
 
@@ -1241,15 +1257,15 @@ def filter_single_exon_iso(args, grouped_iso, curr_group, firstpass_unfiltered):
     is_contained = False
     for comp_iso in curr_group:
         if comp_iso != grouped_iso:
-            # FIXME: what is +/-10 magic number make define
-            if comp_iso[0] - 10 <= grouped_iso[0] and grouped_iso[1] <= comp_iso[1] + 10:
+            if (comp_iso[0] - SINGLE_EXON_OVERLAP_MARGIN <= grouped_iso[0] and
+                    grouped_iso[1] <= comp_iso[1] + SINGLE_EXON_OVERLAP_MARGIN):
                 if len(comp_iso) == 2 or args.filter == 'nosubset':  # is exon from spliced transcript
                     is_contained = True
                     break  # filter out
                 else:  # is other single exon - check relative expression
                     other_score = firstpass_unfiltered[comp_iso[2]].score
                     score = iso_bedread.score
-                    if score >= args.sjc_support and other_score * 1.2 < score:
+                    if score >= args.sjc_support and other_score * SINGLE_EXON_EXPRESSION_RATIO < score:
                         expression_comp_with_superset.append(True)
                     else:
                         expression_comp_with_superset.append(False)
@@ -1344,7 +1360,7 @@ def get_single_exon_gene_overlaps(iso_bedread, annots):
     exon = iso_bedread.exons[0]
     index = binary_search(exon, annots.all_annot_SE)
     # FIXME: how does this ever work? all_annot_SE is [(start, end, strand, gene_id), ...]
-    for annot_exon_info in annots.all_annot_SE[index - 2:index + 2]:  # start, end, strand, gene
+    for annot_exon_info in annots.all_annot_SE[index - ANNOT_SE_SEARCH_WINDOW:index + ANNOT_SE_SEARCH_WINDOW]:
         # FIXME: make overlap a function
         overlap = min(exon.end, annot_exon_info[1]) - max(exon.start, annot_exon_info[0])
         if overlap > 0:
@@ -1352,7 +1368,7 @@ def get_single_exon_gene_overlaps(iso_bedread, annots):
             frac_of_iso = float(overlap) / (exon.end - exon.start)
             # base coverage of the annotated isoform by the long-read isoform
             frac_of_annot = float(overlap) / (annot_exon_info[1] - annot_exon_info[0])
-            if frac_of_iso > 0.5 and frac_of_annot > 0.8:
+            if frac_of_iso > MIN_ISOFORM_OVERLAP_FRAC and frac_of_annot > MIN_ANNOT_OVERLAP_FRAC:
                 if annot_exon_info[3] not in gene_hits or frac_of_iso > gene_hits[annot_exon_info[3]][0]:
                     gene_hits[annot_exon_info[3]] = [frac_of_iso, frac_of_annot]
     return gene_hits

@@ -200,7 +200,7 @@ def convert_synthetic_isos(annotgtf, isoformsbed, readmapfile, readsfile, breakp
     out = open(outname, 'w')
     for line in open(isoformsbed):
         line = line.split('\t')
-        iso, start, esizes, estarts = line[3], int(line[1]), [int(x) for x in line[10].split(',')[:-1]], [int(x) for x in line[11].split(',')[:-1]]
+        iso, start, esizes, estarts = line[3], int(line[1]), [int(x) for x in line[10].rstrip(',').split(',')], [int(x) for x in line[11].rstrip(',').split(',')]
         fusionchr = line[0]
         synthinfo = [x.split('..') for x in synthchrtoinfo[fusionchr].split('--')]
         synthinfo = [[y[0], y[1], int(y[2]), int(y[3])] for y in synthinfo]

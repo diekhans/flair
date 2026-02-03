@@ -564,7 +564,7 @@ def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, cl
         count_cmd.extend(['--output_bam', output_name.split('.counts.tsv')[0] + '.bam'])
     if not args.no_check_splice:
         count_cmd.append('--check_splice')
-    if not args.no_check_splice or not args.no_stringent or is_annot:
+    if not args.no_check_splice or not args.no_stringent or is_annot or args.fusion_breakpoints:
         count_cmd.extend(['-i', ref_bed])  # annotated isoform bed file
     if args.trust_ends:
         count_cmd.append('--trust_ends')

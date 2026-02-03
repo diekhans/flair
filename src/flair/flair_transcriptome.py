@@ -1144,43 +1144,105 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
     return good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs
 
 
-def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, region_end, bam_file, good_align_to_annot, intervalTree,
-                               junctionBoundaryDict, generate_fasta=True, sj_to_ends=None,
-                               return_used_reads=False, allow_secondary=False):
-    if not sj_to_ends:
-        sj_to_ends = {}
-    if generate_fasta:
-        fasta_fh = open(temp_prefix + 'reads.notannotmatch.fasta', 'w')
-    c = 0
-    used_reads = set()
-    for read in bam_file.fetch(region_chrom, int(region_start), int(region_end)):
-        if (not read.is_secondary or allow_secondary) and (not read.is_supplementary or args.keep_sup):
-            if ((read.reference_name == region_chrom) and (int(region_start) <= read.reference_start) and (read.reference_end <= int(region_end))):
+class SpliceCorrector:
+    """Encapsulates splice site correction data and operations"""
+    def __init__(self, interval_tree, junction_boundary_dict):
+        self.interval_tree = interval_tree
+        self.junction_boundary_dict = junction_boundary_dict
+
+    def correct_read(self, bed_read):
+        return correct_single_read(bed_read, self.interval_tree,
+                                   self.junction_boundary_dict)
+
+
+def _should_process_read(read, region, keep_sup, allow_secondary):
+    """Check if read passes filtering criteria for processing"""
+    if read.is_secondary and not allow_secondary:
+        return False
+    if read.is_supplementary and not keep_sup:
+        return False
+    if read.reference_name != region.name:
+        return False
+    if not (region.start <= read.reference_start and read.reference_end <= region.end):
+        return False
+    return True
+
+
+def _convert_read_to_bedread(read):
+    """Convert a pysam read to BedRead, inferring strand for spliced reads"""
+    bed_read = BedRead()
+    read_strand = '-' if read.is_reverse else '+'
+    bed_read.generate_from_cigar(read.reference_start, read.is_reverse, read.cigartuples,
+                                 read.query_name, read.reference_name,
+                                 read.mapping_quality, read_strand)
+    if len(bed_read.juncs) > 0:
+        new_strand = inferMM2JuncStrand(read)
+        if new_strand != 'ambig':
+            bed_read.strand = new_strand
+    return bed_read
+
+
+def _add_corrected_read_to_groups(corrected_read, sj_to_ends):
+    """Add a corrected read to the junction-to-ends mapping"""
+    junc_key = tuple(sorted(corrected_read.juncs))
+    if junc_key not in sj_to_ends:
+        sj_to_ends[junc_key] = []
+    sj_to_ends[junc_key].append(ReadInfo(corrected_read.start, corrected_read.end,
+                                         corrected_read.strand, corrected_read.name))
+
+
+def _write_reads_fasta(bam_file, region, good_align_to_annot, keep_sup, fasta_path):
+    """Write non-annotation-matched reads to FASTA file"""
+    with open(fasta_path, 'w') as fasta_fh:
+        for read in bam_file.fetch(region.name, region.start, region.end):
+            if _should_process_read(read, region, keep_sup, allow_secondary=False):
                 if read.query_name not in good_align_to_annot:
-                    c += 1
-                    if generate_fasta:
-                        fasta_fh.write('>' + read.query_name + '\n')
-                        fasta_fh.write(read.get_forward_sequence() + '\n')
-                    if read.mapping_quality >= args.quality:  # TODO: test this more rigorously
-                        used_reads.add(read.query_name)
-                        bed_read = BedRead()
-                        read_strand = '-' if read.is_reverse else '+'
-                        bed_read.generate_from_cigar(read.reference_start, read.is_reverse, read.cigartuples,
-                                                     read.query_name,
-                                                     read.reference_name, read.mapping_quality, read_strand)
-                        if len(bed_read.juncs) > 0:
-                            new_strand = inferMM2JuncStrand(read)
-                            if new_strand != 'ambig':
-                                bed_read.strand = new_strand
-                        corrected_read = correct_single_read(bed_read, intervalTree, junctionBoundaryDict)
-                        if corrected_read:
-                            junc_key = tuple(sorted(corrected_read.juncs))
-                            if junc_key not in sj_to_ends:
-                                sj_to_ends[junc_key] = []
-                            sj_to_ends[junc_key].append(ReadInfo(corrected_read.start, corrected_read.end,
-                                                                 corrected_read.strand, corrected_read.name))
+                    fasta_fh.write('>' + read.query_name + '\n')
+                    fasta_fh.write(read.get_forward_sequence() + '\n')
+
+
+def filter_correct_group_reads(args, temp_prefix, region, bam_file, good_align_to_annot,
+                               splice_corrector, generate_fasta=True, sj_to_ends=None,
+                               return_used_reads=False, allow_secondary=False):
+    """Filter reads, correct splice junctions, and group by junction chain.
+
+    Args:
+        args: Command line arguments (uses args.quality, args.keep_sup)
+        temp_prefix: Prefix for temporary files
+        region: SeqRange with chrom/start/end
+        bam_file: pysam AlignmentFile
+        good_align_to_annot: Set of read names that matched annotation
+        splice_corrector: SpliceCorrector instance for junction correction
+        generate_fasta: If True, write non-annot reads to FASTA
+        sj_to_ends: Optional existing junction-to-ends dict to update
+        return_used_reads: If True, also return set of processed read names
+        allow_secondary: If True, include secondary alignments
+
+    Returns:
+        sj_to_ends dict, or (sj_to_ends, used_reads) if return_used_reads=True
+    """
+    if sj_to_ends is None:
+        sj_to_ends = {}
+    used_reads = set()
+
     if generate_fasta:
-        fasta_fh.close()
+        _write_reads_fasta(bam_file, region, good_align_to_annot, args.keep_sup,
+                           temp_prefix + 'reads.notannotmatch.fasta')
+
+    for read in bam_file.fetch(region.name, region.start, region.end):
+        if not _should_process_read(read, region, args.keep_sup, allow_secondary):
+            continue
+        if read.query_name in good_align_to_annot:
+            continue
+        if read.mapping_quality < args.quality:
+            continue
+
+        used_reads.add(read.query_name)
+        bed_read = _convert_read_to_bedread(read)
+        corrected_read = splice_corrector.correct_read(bed_read)
+        if corrected_read:
+            _add_corrected_read_to_groups(corrected_read, sj_to_ends)
+
     if return_used_reads:
         return sj_to_ends, used_reads
     else:
@@ -1867,12 +1929,13 @@ def run_for_region(listofargs):
 
     # building splice junction reference for region (splice_site_annot_chrom contains annot and orthogonal data)
     intervalTree, junctionBoundaryDict = buildIntervalTree(splice_site_annot_chrom, args.ss_window, region_chrom, False)
+    splice_corrector = SpliceCorrector(intervalTree, junctionBoundaryDict)
 
     # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
     # this also handles read strandedness if necessary
-
-    sj_to_ends = filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, region_end, bam_file, good_align_to_annot, intervalTree,
-                                            junctionBoundaryDict)
+    region = SeqRange(region_chrom, int(region_start), int(region_end))
+    sj_to_ends = filter_correct_group_reads(args, temp_prefix, region, bam_file, good_align_to_annot,
+                                            splice_corrector)
     bam_file.close()
     logging.info('generating isoforms')
 

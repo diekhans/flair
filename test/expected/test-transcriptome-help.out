@@ -10,7 +10,8 @@ usage: transcriptome [-h] -b GENOME_ALIGNED_BAM -g GENOME [-o OUTPUT]
                      [--quality QUALITY] [--parallel_mode PARALLEL_MODE]
                      [--predict_cds] [--keep_intermediate] [--keep_sup]
                      [--end_norm_dist END_NORM_DIST] [--output_endpos]
-                     [--output_bam]
+                     [--output_bam] [--fusion_breakpoints FUSION_BREAKPOINTS]
+                     [--allow_paralogs] [--generate_map]
 
 generates confident transcript models directly from a bam file of aligned long
 rna-seq reads
@@ -48,10 +49,10 @@ options:
                         window size for comparing TSS/TES (100)
   --sjc_support SJC_SUPPORT
                         minimum number of supporting reads for a spliced
-                        isoform (1)
+                        isoform
   --se_support SE_SUPPORT
                         minimum number of supporting reads for a single exon
-                        isoform (3)
+                        isoform
   --frac_support FRAC_SUPPORT
                         minimum fraction of gene locus support for isoform to
                         be called default: 0.05, only isoforms that make up
@@ -113,3 +114,11 @@ options:
                         corrected read end positions. For development purposes
   --output_bam          output intermediate bams aligned to the transcriptome.
                         Only works with --keep_intermediate, for debugging
+  --fusion_breakpoints FUSION_BREAKPOINTS
+                        for fusion detection only - bed file containing
+                        locations of fusion breakpoints on the synthetic
+                        genome
+  --allow_paralogs      specify if want to allow reads to be assigned to
+                        multiple paralogs with equivalent alignment
+  --generate_map        specify this argument to generate a txt file of read-
+                        isoform assignments

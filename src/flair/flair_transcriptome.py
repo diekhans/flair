@@ -803,85 +803,119 @@ def collapse_end_groups(end_window, read_ends, do_get_best_ends=True):
     return iso_end_groups
 
 
-####
-# ???
-####
 def get_isos_with_similar_juncs(juncs, firstpass_junc_to_name, junc_to_gene):
-    isos_with_similar_juncs = set()
+    """Find isoforms sharing junctions with the given junction set.
+    Returns separate sets for novel (string UUIDs) and annotated ((transcript_id, gene_id) tuples)."""
+    novel_isos = set()
+    annot_isos = set()
     for j in juncs:
-        if firstpass_junc_to_name:
-            isos_with_similar_juncs.update(firstpass_junc_to_name[j])
+        if firstpass_junc_to_name and j in firstpass_junc_to_name:
+            novel_isos.update(firstpass_junc_to_name[j])
         if j in junc_to_gene:
-            isos_with_similar_juncs.update(junc_to_gene[j])  # annot isos
-    return isos_with_similar_juncs
+            annot_isos.update(junc_to_gene[j])
+    return novel_isos, annot_isos
 
-def identify_spliced_iso_subset(otheriso_name, sup_annot_transcript_to_juncs, annots,
-                                firstpass_unfiltered, juncs, first_exon, last_exon, terminal_exon_is_subset,
-                                superset_support, unique_seq_bound):
-    # FIXME: not sure what this function is doing
-    if isinstance(otheriso_name, tuple):  # FIXME: why type check
-        # annotated isoform
-        if sup_annot_transcript_to_juncs:
-            # using only supported annotated
-            if otheriso_name in sup_annot_transcript_to_juncs:
-                otheriso_score, otheriso_juncs = sup_annot_transcript_to_juncs[otheriso_name]
-                otheriso_exons = annots.transcript_to_exons[otheriso_name]
-            else:
-                return
-        elif otheriso_name in annots.transcript_to_exons:
-            # using all annotated
-            otheriso_exons = annots.transcript_to_exons[otheriso_name]
-            # using all novel
-            otheriso_juncs = exons_to_juncs(otheriso_exons)
-            otheriso_score = 0
+def _is_junction_subset(juncs, otheriso_juncs):
+    """Check if juncs is a proper subset of otheriso_juncs using string matching."""
+    if len(juncs) >= len(otheriso_juncs):
+        return False
+    iso_juncs_str = str(juncs)[1:-1].rstrip(',')
+    otheriso_juncs_str = str(otheriso_juncs)[1:-1]
+    return iso_juncs_str in otheriso_juncs_str
+
+
+def _check_terminal_exon_overlap(first_exon, last_exon, other_exon, otheriso_score,
+                                 terminal_exon_is_subset, superset_support):
+    """Check overlap with terminal exon of other transcript (first or last).
+    Only requires sharing the same terminal splice site."""
+    if first_exon.end == other_exon.end:
+        terminal_exon_is_subset[0] = 1
+        superset_support.append(otheriso_score)
+    elif last_exon.start == other_exon.start:
+        terminal_exon_is_subset[1] = 1
+        superset_support.append(otheriso_score)
+
+
+def _check_internal_exon_overlap(first_exon, last_exon, other_exon, otheriso_score,
+                                 terminal_exon_is_subset, superset_support, unique_seq_bound):
+    """Check overlap with internal exon of other transcript.
+    Records unique sequence boundaries and checks containment within tolerance."""
+    if first_exon.end == other_exon.end:
+        unique_seq_bound.append((0, first_exon.end - other_exon.start))
+        if first_exon.start >= (other_exon.start - TERMINAL_EXON_BOUNDARY_TOLERANCE):
+            terminal_exon_is_subset[0] = 1
+            superset_support.append(otheriso_score)
+    if last_exon.start == other_exon.start:
+        unique_seq_bound.append((1, other_exon.end - last_exon.start))
+        if last_exon.end <= (other_exon.end + TERMINAL_EXON_BOUNDARY_TOLERANCE):
+            terminal_exon_is_subset[1] = 1
+            superset_support.append(otheriso_score)
+
+
+def _check_junction_subset(juncs, first_exon, last_exon, otheriso_score, otheriso_juncs, otheriso_exons,
+                           terminal_exon_is_subset, superset_support, unique_seq_bound):
+    """Check if juncs is a subset of otheriso_juncs and update tracking lists."""
+    if not _is_junction_subset(juncs, otheriso_juncs):
+        return
+    for i, other_exon in enumerate(otheriso_exons):
+        is_terminal = (i == 0 or i == len(otheriso_exons) - 1)
+        if is_terminal:
+            _check_terminal_exon_overlap(first_exon, last_exon, other_exon, otheriso_score,
+                                         terminal_exon_is_subset, superset_support)
         else:
-            return
-    else:  # firstpass isoform
-        otheriso = firstpass_unfiltered[otheriso_name]
-        otheriso_score, otheriso_juncs, otheriso_exons = otheriso.score, otheriso.juncs, otheriso.exons
+            _check_internal_exon_overlap(first_exon, last_exon, other_exon, otheriso_score,
+                                         terminal_exon_is_subset, superset_support, unique_seq_bound)
 
-    if len(juncs) < len(otheriso_juncs):
-        iso_juncs_str, otheriso_juncs_str = str(juncs)[1:-1].rstrip(','), str(otheriso_juncs)[1:-1]
-        if iso_juncs_str in otheriso_juncs_str:  # if junctions are subset
-            # check whether first + last exon overlap
-            for i in range(len(otheriso_exons)):
-                other_exon = otheriso_exons[i]
-                if i == 0 or i == len(otheriso_exons) - 1:
-                    # is first or last exon of other transcript - just care that it shares the same terminal ss
-                    if first_exon.end == other_exon.end or last_exon.start == other_exon.start:
-                        if first_exon.end == other_exon.end:
-                            terminal_exon_is_subset[0] = 1
-                        elif last_exon.start == other_exon.start:
-                            terminal_exon_is_subset[1] = 1
-                        superset_support.append(otheriso_score)
-                else:
-                    # is internal exon of other transcript - see if it contains additional sequence
-                    if first_exon.end == other_exon.end:
-                        unique_seq_bound.append((0, first_exon.end - other_exon.start))
-                        if first_exon.start >= other_exon.start - TERMINAL_EXON_BOUNDARY_TOLERANCE:
-                            terminal_exon_is_subset[0] = 1
-                            superset_support.append(otheriso_score)
-                    if last_exon.start == other_exon.start:
-                        unique_seq_bound.append((1, other_exon.end - last_exon.start))
-                        if last_exon.end <= other_exon.end + TERMINAL_EXON_BOUNDARY_TOLERANCE:
-                            terminal_exon_is_subset[1] = 1
-                            superset_support.append(otheriso_score)
+
+def identify_spliced_iso_subset_annot(annot_iso_id, sup_annot_transcript_to_juncs, annots,
+                                      juncs, first_exon, last_exon, terminal_exon_is_subset,
+                                      superset_support, unique_seq_bound):
+    """Check if query isoform is subset of an annotated isoform.
+    annot_iso_id is (transcript_id, gene_id) tuple."""
+    if sup_annot_transcript_to_juncs:
+        # using only supported annotated
+        if annot_iso_id not in sup_annot_transcript_to_juncs:
+            return
+        otheriso_score, otheriso_juncs = sup_annot_transcript_to_juncs[annot_iso_id]
+        otheriso_exons = annots.transcript_to_exons[annot_iso_id]
+    elif annot_iso_id in annots.transcript_to_exons:
+        # using all annotated
+        otheriso_exons = annots.transcript_to_exons[annot_iso_id]
+        otheriso_juncs = exons_to_juncs(otheriso_exons)
+        otheriso_score = 0
+    else:
+        return
+    _check_junction_subset(juncs, first_exon, last_exon, otheriso_score, otheriso_juncs, otheriso_exons,
+                           terminal_exon_is_subset, superset_support, unique_seq_bound)
+
+
+def identify_spliced_iso_subset_novel(novel_iso_id, firstpass_unfiltered,
+                                      juncs, first_exon, last_exon, terminal_exon_is_subset,
+                                      superset_support, unique_seq_bound):
+    """Check if query isoform is subset of a novel (firstpass) isoform.
+    novel_iso_id is a string UUID."""
+    otheriso = firstpass_unfiltered[novel_iso_id]
+    _check_junction_subset(juncs, first_exon, last_exon, otheriso.score, otheriso.juncs, otheriso.exons,
+                           terminal_exon_is_subset, superset_support, unique_seq_bound)
 
 def filter_spliced_iso(filter_type, support, juncs, exons, name, score, annots,
                        firstpass_junc_to_name, firstpass_unfiltered,
                        sup_annot_transcript_to_juncs, strand):
     assert isinstance(exons[0], Exon)  # FIXME: debugging
-    isos_with_similar_juncs = get_isos_with_similar_juncs(juncs, firstpass_junc_to_name, annots.junc_to_gene)  # annot isos
+    novel_isos, annot_isos = get_isos_with_similar_juncs(juncs, firstpass_junc_to_name, annots.junc_to_gene)
     terminal_exon_is_subset = [0, 0]  # first exon is a subset, last exon is a subset
     first_exon, last_exon = exons[0], exons[-1]
     superset_support = []
     unique_seq_bound = []
-    for otheriso_name in isos_with_similar_juncs:
-        if otheriso_name != name:
-            # modifies superset_support, unique_seq_bound, terminal_exon_is_subset
-            identify_spliced_iso_subset(otheriso_name, sup_annot_transcript_to_juncs, annots,
-                                        firstpass_unfiltered, juncs, first_exon, last_exon, terminal_exon_is_subset,
-                                        superset_support, unique_seq_bound)
+    for novel_iso_id in novel_isos:
+        if novel_iso_id != name:
+            identify_spliced_iso_subset_novel(novel_iso_id, firstpass_unfiltered,
+                                              juncs, first_exon, last_exon, terminal_exon_is_subset,
+                                              superset_support, unique_seq_bound)
+    for annot_iso_id in annot_isos:
+        identify_spliced_iso_subset_annot(annot_iso_id, sup_annot_transcript_to_juncs, annots,
+                                          juncs, first_exon, last_exon, terminal_exon_is_subset,
+                                          superset_support, unique_seq_bound)
     # unique_seq is pegged at distance from first/last splice junction
     unique_seq_bound = list(set(unique_seq_bound))
     if strand == '-':
@@ -1257,8 +1291,8 @@ def filter_single_exon_iso(args, grouped_iso, curr_group, firstpass_unfiltered):
     is_contained = False
     for comp_iso in curr_group:
         if comp_iso != grouped_iso:
-            if (comp_iso[0] - SINGLE_EXON_OVERLAP_MARGIN <= grouped_iso[0] and
-                    grouped_iso[1] <= comp_iso[1] + SINGLE_EXON_OVERLAP_MARGIN):
+            if ((comp_iso[0] - SINGLE_EXON_OVERLAP_MARGIN) <= grouped_iso[0] and
+                    grouped_iso[1] <= (comp_iso[1] + SINGLE_EXON_OVERLAP_MARGIN)):
                 if len(comp_iso) == 2 or args.filter == 'nosubset':  # is exon from spliced transcript
                     is_contained = True
                     break  # filter out

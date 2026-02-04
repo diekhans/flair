@@ -1,6 +1,6 @@
 # Major user-visible changes
 
-##
+## [v3.x.xx]
 * Incompatibles
   * Removed flair correct and collapse modules, the functionality is replaced
     by flair transcriptome.

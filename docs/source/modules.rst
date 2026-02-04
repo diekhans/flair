@@ -1,14 +1,12 @@
 Modules
 ^^^^^^^
 
-``flair`` is a wrapper script with modules for running various
-processing scripts located in ``bin`` directory and should be install in your path by `pip` or `conda`.
-Modules must be run in order (align, correct, collapse).
+``flair`` is a program which implement the follow module sub-commands.
 
 If you want to compare multiple samples, there are two primary ways of doing this:
- - Combine the fastq or fasta reads of all samples and run FLAIR align, correct, and collapse (or FLAIR transcriptome) on all samples together (will generate the most comprehensive transcriptome)
- - Run FLAIR align, correct, and collapse (or FLAIR transcriptome) on each sample separately (better for large sets of samples)
- - Use FLAIR combine to merge results
+ - Combine the fastq or fasta reads of all samples and run FLAIR transcriptome on all samples together (will generate the most comprehensive transcriptome)
+ - Run FLAIR transcriptome on each sample separately (better for large sets of samples) and
+   use FLAIR combine to merge results
 
 .. _transcriptome-label:
 
@@ -21,13 +19,9 @@ flair transcriptome
 
 
 This module generates a transcriptome of high confidence isoforms (bed, gtf, and fasta files) directly from a bam file of aligned reads.
-This is 3x faster and uses 20x less memory than correct + collapse.
 To get aligned reads, you can use FLAIR align or just run the following command to generate the bam file to use as input.
 minimap2 -ax splice -s 80 -G 200k -t 20 --secondary=no genome.fa sample.fastq | samtools view -hb - | samtools sort - > sample.genomealigned.bam; samtools index sample.genomealigned.bam
-If you want to run downstream fusion detection with FLAIR fusion, run flair align with --filtertype separate to generate a separate file of chimeric alignments
-This module does not currently have all of the options included in collapse, such as promoter/3' end filtering.
-Other options have been simplified or combined. For instance, the collapse --annotation_reliant option from
-flair collapse is now the default. To run without relying on annotation as strongly, specify --noaligntoannot
+If you want to run downstream fusion detection with FLAIR fusion, run flair align with --filtertype separate to generate a separate file of chimeric alignments.
 
 
 **Outputs**
@@ -103,13 +97,13 @@ flair align
 
     usage: flair align -g genome.fa -r <reads.fq>|<reads.fa> [options]
 
+Use of this modules is deprecated, as ``FLAIR transcriptome`` operates on a BAM, and other output of ``flair align`` is no longer used.
 
 This module aligns reads to the genome using `minimap2 <https://github.com/lh3/minimap2>`__, 
 and converts the `SAM <https://en.wikipedia.org/wiki/SAM_(file_format)>`__ output to `BED12 <https://genome.ucsc.edu/FAQ/FAQformat.html#format14>`__.
 Aligned reads in BED12 format can be visualized in `IGV <https://igv.org/>`__ or the 
 `UCSC Genome browser <https://genome.ucsc.edu/cgi-bin/hgGateway>`__. 
 
-Note: If you want to independently align and filter your reads and convert them to bed12, you can do so. You may want to do this if you want different alignment options - for instance, if you want to detect maximal noncanonical splice sites, you may want to align with minimap2 -un option (For this specific case to work well, you will want to run FLAIR correct with shortreads, then run collapse with --annotation_reliant and --check_splice).
 
 **Outputs**
 
@@ -174,287 +168,9 @@ If you're using human sequences, the best reference genome is
 
 If your input sequences are Oxford nanopore reads, please use `Pychopper <https://github.com/epi2me-labs/pychopper>`__ before running Flair.
 
-If your reads are already aligned, you can convert the sorted ``bam`` output to ``bed12`` using
-``bam2Bed12`` to supply for flair-correct. This step smoothes gaps in the alignment.
-
 nvrna settings: See `minimap2's manual <https://lh3.github.io/minimap2/minimap2.html>`__ for details.
 
 quality: `More info on MAPQ scores <http://www.acgt.me/blog/2014/12/16/understanding-mapq-scores-in-sam-files-does-37-42>`__ 
-
-.. _correct-label:
-
-flair correct
-=============
-
-.. code:: text
-
-   usage: flair correct -q query.bed12 [-f annotation.gtf]|[-j introns.tab] [options]
-
-
-This module corrects misaligned splice sites using genome annotations and/or short-read splice junctions.
-If your genome annotation is sparse, please also use short-reads. Any reads with splice sites not near splice sites
-identified in orthogonal data will be thrown out.
-FLAIR WILL NOT DETECT NOVEL SPLICE SITES UNLESS YOU PROVIDE ORTHOGONAL SHORT-READ SUPPORT FOR THEM
-
-**Outputs**
-
- - ``<args.output>_all_corrected.bed`` for use in subsequent steps
- - ``<args.output>_all_inconsistent.bed`` rejected alignments
- - ``<args.output>_cannot_verify.bed`` (only if the) chromosome is not found in annotation 
-
-
-Options
--------
-
-Required arguments
-~~~~~~~~~~~~~~~~~~
-
-.. code:: text
-
-    --query	        Uncorrected bed12 file, e.g. output of flair align.
-    --genome	        Reference genome in fasta format.
-    
-    At least one of the following arguments is required:
-    --shortread         Bed format splice junctions from short-read sequencing. You can 
-                        generate these from SAM format files using the junctions_from_sam 
-                        program that comes with Flair. If you align your short reads with STAR,
-                        you should use the SJ.out.tab file from STAR for this.
-    --gtf	        GTF annotation file.
-    
-Optional arguments
-~~~~~~~~~~~~~~~~~~
-
-.. code:: text
-
-    --help	        Show all options 
-    --output	        Name base for output files (default: flair). You can supply an 
-                        output directory (e.g. output/flair) but it has to exist; Flair 
-                        will not create it. If you run the same command twice, Flair will 
-                        overwrite the files without warning.
-    --threads	        Number of processors to use (default 4).
-    --nvrna	        Specify this flag to make the strand of a read consistent with 
-                        the input annotation during correction.
-    --ss_window	        Window size for correcting splice sites (default 15).
-    --print_check	Print err.txt with step checking.
-
-Notes
------
-
-Make sure that the genome annotation and genome sequences are compatible (if the genome sequence contains the 'chr' prefix, the annotations must too).
-
-Please do use GTF instead of GFF; annotations should not split single exons into multiple entries. 
-
-.. _collapse-label:
-
-flair collapse
-==============
-
-.. code:: text
-
-    usage: flair collapse -g genome.fa -q <query.bed> -r <reads.fq>/<reads.fa> [options]
-
-Defines high-confidence isoforms from corrected reads. As FLAIR does not
-use annotations to collapse isoforms, FLAIR will pick the name of a read
-that shares the same splice junction chain as the isoform to be the
-isoform name. It is recommended to still provide an annotation with
-``--gtf``, which is used to rename FLAIR isoforms that match isoforms in
-existing annotation according to the transcript_id field in the gtf.
-
-Intermediate files generated by this step are removed by default, but
-can be retained for debugging purposes by supplying the argument
-``--keep_intermediate`` and optionally supplying a directory to keep
-those files with ``--temp_dir``.
-
-If there are multiple samples to be compared, the flair-corrected read
-``bed`` files should be concatenated prior to running
-flair-collapse. In addition, all raw read fastq/fasta files should
-either be specified after ``--reads`` with space/comma separators or
-concatenated into a single file.
-
-**Please note:** Flair collapse can be laggy on large (>1G)
-input bed files. If you find that Flair needs a lot of memory you may want to 
-follow the advice in dicussion #391 to split the bed files and reads by chromosome. 
-You can also run FLAIR transcriptome instead, which has much better 
-parallelization and data flow
-
-If you want to get CDS and produced amino acid sequence predictions,
-you can run predictProductivity (see Additional programs) once you
-have obtained a FLAIR transcriptome from either collapse or transcriptome.
-
-**Outputs**
-
- - ``isoforms.bed``
- - ``isoforms.gtf``
- - ``isoforms.fa`` 
-
-If an annotation file is
-provided, the isoforms ID format will contain the transcript id,
-underscore, and then the gene id, so it would look like ``ENST*_ENSG*``
-if you’re working with the `GENCODE human annotation <https://www.gencodegenes.org/human/>`__.
-
-If multiple TSSs/TESs are allowed (toggle with ``--max_ends`` or
-``--no_redundant``), then a ``-1`` or higher will be appended to the end
-of the isoform name for the isoforms that have identical splice junction
-chains and differ only by their TSS/TES. 
-
-For the gene field, the gene
-that is assigned to the isoform is based on whichever annotated gene has
-the greatest number of splice junctions shared with the isoform. If
-there are no genes in the annotation which can be assigned to the
-isoform, a genomic coordinate is used (e.g. ``chr*:100000``).
-
-If you need to know which reads specifically match each isoform, you can run with ``--generate_map``.
-Running ``--generate_map --check_splice --stringent`` will require each read assigned to the isoform
-to both have the exact same splice sites and cover 25bp into the first and last exons. Otherwise, you
-may get reads that support the isoform but do not fully cover it.
-
-Recommended uses
-----------------
-
-**Human**
-
-The following are the recommended options to run FLAIR to increase performance on known and novel transcripts. These are the options used for submission to the Long-read RNA-Seq Genome Annotation Assessment Project systematic evaluation, which showed that FLAIR is a top-performing tool: `Pardo-Palacios et al. Nature Methods 2024 <https://doi.org/10.1038/s41592-024-02298-3>`__.
-
-.. code:: text
-
-    flair collapse -g genome.fa --gtf gene_annotations.gtf -q reads.flair_all_corrected.bed -r reads.fastq
-    --stringent --check_splice --generate_map --annotation_reliant generate
-
-For novel isoform discovery in organisms with more unspliced transcripts and more overlapping genes, we recommend using a combination of options to capture more transcripts. For example:
-
-**Yeast** 
-
-.. code:: text
-
-    flair collapse -g genome.fa --gtf gene_annotations.gtf -q reads.flair_all_corrected.bed -r reads.fastq
-    --stringent --no_gtf_end_adjustment --check_splice --generate_map --trust_ends
-
-Note that if you are doing direct-RNA, this command will likely call degradation products as isoforms. If you want to avoid this this we recommend using --annotation-reliant.
-
-Options
--------
-
-Required arguments
-~~~~~~~~~~~~~~~~~~
-
-.. code:: text
-
-    --query	Bed file of aligned/corrected reads
-    --genome	FastA of reference genome
-    --reads	FastA/FastQ files of raw reads, can specify multiple files
-    
-Optional arguments
-~~~~~~~~~~~~~~~~~~
-    
-.. code:: text
-    
-    --help	        Show all options.
-    --output	        Name base for output files (default: flair.collapse). 
-                        You can supply an output directory (e.g. output/flair_collapse)
-    --threads	        Number of processors to use (default: 4).
-    --gtf	        GTF annotation file, used for renaming FLAIR isoforms to 
-                        annotated isoforms and adjusting TSS/TESs.
-    --generate_map	Specify this argument to generate a txt file of read-isoform 
-                        assignments (default: not specified). This file can be used to 
-                        quantify isoforms, but may produce slightly different results to
-                        using FLAIR quantify. Also, a single read is assigned to a single isoform,
-                        but not all reads are assigned to isoforms.
-    --annotation_reliant	Specify transcript fasta that corresponds to transcripts 
-                        in the gtf to run annotation-reliant flair collapse; to ask flair 
-                        to make transcript sequences given the gtf and genome fa, use 
-                        --annotation_reliant generate. With this option activated, FLAIR first
-                        aligns reads to the annotation and checks matches to annotated transcripts,
-                        then will only identify novel transcripts from remaining reads.
-    --predictCDS        specify if you want to predict the CDS of the final isoforms. 
-                        Will be output in the final bed file but not the gtf file. 
-                        Productivity annotation is also added in the name field, 
-                        which is detailed further in the predictProductivity documentation
-    
-**Options for read support**
-    
-.. code:: text
-    
-    --support	        Minimum number of supporting reads for an isoform; if s < 1, 
-                        it will be treated as a percentage of expression of the gene 
-                        (default: 3).
-    --stringent	        Specify if all supporting reads need to be full-length (80% 
-                        coverage and spanning 25 bp of the first and last exons).
-    --check_splice	Enforce coverage of 4 out of 6 bp around each splice site and 
-                        no insertions greater than 3 bp at the splice site. Please note: 
-                        If you want to use --annotation_reliant as well, set it to 
-                        generate instead of providing an input transcripts fasta file, 
-                        otherwise flair may fail to match the transcript IDs. 
-                        Alternatively you can create a correctly formatted transcript 
-                        fasta file using gtf_to_bed
-    --trust_ends	Specify if reads are generated from a long read method with 
-                        minimal fragmentation.
-    --quality	        Minimum MAPQ of read assignment to an isoform (default: 0).
-    
-**Longshot haplotyping options**
-    
-.. code:: text
-    
-    --longshot_bam	BAM file from Longshot containing haplotype information for each read.
-    --longshot_vcf	VCF file from Longshot.
-
-If you want to run collapse with longshot data, please see the FLAIR2 capabilities page for more information.
-
-For more information on the Longshot variant caller, see its `github page <https://github.com/pjedge/longshot>`__
-    
-**Transcript starts and ends**
-    
-.. code:: text
-    
-    --end_window	Window size for comparing transcripts starts (TSS) and ends 
-                        (TES) (default: 100).
-    --promoters	        Promoter regions bed file to identify full-length reads.
-    --3prime_regions	TES regions bed file to identify full-length reads.
-    --no_redundant	<none,longest,best_only> (default: none). For each unique 
-                        splice junction chain, report options include:
-                                - none	        best TSSs/TESs chosen for each unique
-                                                set of splice junctions
-                                - longest	single TSS/TES chosen to maximize length
-                                - best_only	single most supported TSS/TES
-    --isoformtss	When specified, TSS/TES for each isoform will be determined 
-                        from supporting reads for individual isoforms (default: not 
-                        specified, determined at the gene level).
-    --no_gtf_end_adjustment	Do not use TSS/TES from the input gtf to adjust 
-                        isoform TSSs/TESs. Instead, each isoform will be determined 
-                        from supporting reads.
-    --max_ends	        Maximum number of TSS/TES picked per isoform (default: 2).
-    --filter	        Report options include: 
-                                - nosubset	any isoforms that are a proper set of 
-                                                another isoform are removed
-                                - default	subset isoforms are removed based on support
-                                - comprehensive	default set + all subset isoforms
-                                - ginormous	comprehensive set + single exon subset 
-                                                isoforms
-    
-**Other options**
-    
-.. code:: text
-    
-    --temp_dir	        Directory for temporary files. use "./" to indicate current 
-                        directory (default: python tempfile directory).
-    --keep_intermediate	        Specify if intermediate and temporary files are to 
-                        be kept for debugging. Intermediate files include: 
-                        promoter-supported reads file, read assignments to 
-                        firstpass isoforms.
-    --fusion_dist	Minimium distance between separate read alignments on the 
-                        same chromosome to be considered a fusion, otherwise no reads 
-                        will be assumed to be fusions.
-    --mm2_args	        Additional minimap2 arguments when aligning reads first-pass 
-                        transcripts; separate args by commas, e.g. --mm2_args=-I8g,--MD.
-    --quiet	        Suppress progress statements from being printed.
-    --annotated_bed	BED file of annotated isoforms, required by --annotation_reliant. 
-                        If this file is not provided, flair collapse will generate the 
-                        bedfile from the gtf. Eventually this argument will be removed.
-    --range	        Interval for which to collapse isoforms, formatted 
-                        chromosome:coord1-coord2 or tab-delimited; if a range is specified, 
-                        then the --reads argument must be a BAM file and --query must be 
-                        a sorted, bgzip-ed bed file.
-
-
 
 .. _fusions-label:
 

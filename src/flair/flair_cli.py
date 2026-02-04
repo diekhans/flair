@@ -7,8 +7,8 @@ import logging
 from flair import VERSION, set_unix_path
 from flair.pycbio.sys import cli
 
-VALID_MODULES = ('align', 'correct', 'transcriptome', 'collapse', 'quantify',
-                 'combine', 'variants', 'variantquant', 'fusion', 'diffexp', 'diffsplice')
+VALID_MODULES = ('align', 'transcriptome', 'quantify', 'combine',
+                 'variants', 'variantquant', 'fusion', 'diffexp', 'diffsplice')
 
 def parse_args():
     """Argument parsing a module name for this and then returns the remaining arguments
@@ -47,15 +47,9 @@ def flair_module_run(opts, module, module_argv):  # noqa: C901
     if module == 'align':
         from flair import flair_align
         flair_align.align()
-    elif module == 'correct':
-        from flair.flair_correct import correct
-        correct()
     elif module == 'transcriptome':
         from flair.flair_transcriptome import flair_transcriptome
         flair_transcriptome()
-    elif module == 'collapse':
-        from flair.flair_collapse import collapse
-        collapse()
     elif module == 'quantify':
         from flair.flair_quantify import quantify
         quantify()

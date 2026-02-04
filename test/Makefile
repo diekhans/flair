@@ -46,7 +46,7 @@ default:
 	@exit 1
 
 test: test-base test-with-R
-test-base: align-tests correct-tests collapse-tests quantify-tests \
+test-base: align-tests quantify-tests \
 	combine-tests predict-productivity-tests diff-iso-usage-tests \
 	plot-usage-tests transcriptome-tests fusion-tests variants-tests \
 	partition-tests lib-tests
@@ -60,7 +60,7 @@ test-installed:
 test-base-installed:
 	${MAKE} test-base use_installed_flair=yes
 
-test-help: test-main-help test-align-help test-correct-help test-collapse-help \
+test-help: test-main-help test-align-help \
            test-quantify-help test-diffexp-help test-diffsplice-help \
            test-predict-productivity-help test-diff-iso-usage-help \
 	   test-plot-usage-help test-transcriptome-help test-variants-help \
@@ -98,8 +98,7 @@ BASIC_COUNTS_MATRIX = $I/basic.counts_matrix_diffexp.tsv
 BASIC_DIFFSPLICE_MATRIX = $I/basic.counts_matrix_diffsplice.tsv
 BASIC_DIFFSPLICE_BED = $I/test-collapse-annot.isoforms.bed
 
-BASIC_ALIGN_BED = $E/test-align.bed
-BASIC_CORRECT_READS_BED = $E/test-correct_all_corrected.bed
+# FIXME: recreate these files with transcriptome, and others below 
 BASIC_ISOFORMS_FA = $E/test-collapse-annot.isoforms.fa
 BASIC_ISOFORMS_BED = $E/test-collapse-annot.isoforms.bed
 
@@ -119,7 +118,6 @@ SEG1_PROMOTER_REGIONS = input/seg1.promoter-regions.bed
 
 SEG1_ALIGN_BED = $E/test-align-seg1.bed
 SEG1_ALIGN_BAM = $O/test-align-seg1.bam
-SEG1_CORRECT_READS_BED = $E/test-correct-seg1_all_corrected.bed
 SEG1_ISOFORMS_FA = expected/test-collapse-seg1.isoforms.fa
 SEG1_ISOFORMS_BED = expected/test-collapse-seg1.isoforms.bed
 
@@ -182,46 +180,6 @@ test-align-help: mkdirs
 	flair align --help > $O/$@.out
 	$(call cmp_expect,$@.out)
 
-###
-# FLAIR CORRECT
-###
-correct-tests: test-correct test-correct-seg1 test-correct-blocksize test-correct-help
-
-test-correct: mkdirs ${GENOME_FA}
-	flair correct -q ${BASIC_ALIGN_BED} --junction_tab $(BASIC_SHORTREAD_JUNCTIONS) -f $(BASIC_ANNOTATION_INCOMPLETE) -o $O/$@
-	$(call cmp_expect_sort,$@_all_inconsistent.bed)
-	$(call cmp_expect_sort,$@_all_corrected.bed)
-
-test-correct-seg1: mkdirs ${GENOME_FA}
-	flair correct -q ${SEG1_ALIGN_BED} -f ${SEG1_ANNOTATION} -o $O/$@
-	$(call cmp_expect_sort,$@_all_inconsistent.bed)
-	$(call cmp_expect_sort,$@_all_corrected.bed)
-
-# case that resulted in negative block size in coorrect
-test-correct-blocksize: mkdirs ${GENOME_FA}
-	flair correct -q input/tardigrade-regress-aligns.bed --junction_bed=input/tardigrade-regress-introns.bed -o $O/$@
-	$(call cmp_expect_sort,$@_all_corrected.bed)
-
-test-correct-help: mkdirs
-	flair correct --help > $O/$@.out
-	$(call cmp_expect,$@.out)
-
-###
-# FLAIR COLLAPSE
-###
-collapse-tests: test-collapse test-collapse-promoter test-collapse-incgtf test-collapse-incgtfannot \
-	test-collapse-annot test-collapse-support test-collapse-support-annot test-collapse-seg1 test-collapse-predcds \
-	test-collapse-help
-
-update-collapse-tests:
-	for tname in "test-collapse" "test-collapse-sup1" "test-collapse-promoter" "test-collapse-incgtf" "test-collapse-incgtfannot" "test-collapse-annot" "test-collapse-support" "test-collapse-support-annot" "test-collapse-seg1" "test-collapse-predcds"; \
-	do \
-	cp $O/$$tname.isoforms.bed $E/$$tname.isoforms.bed; \
-	cp $O/$$tname.isoforms.gtf $E/$$tname.isoforms.gtf; \
-	cp $O/$$tname.isoform.read.map.txt $E/$$tname.isoform.read.map.txt; \
-	done
-
-
 # macros to do comparions with expected results
 # FIXME: make sort version go away by making results stable
 define diff_bed_gtf_sort
@@ -243,80 +201,6 @@ endef
 define diff_bed_gtf_sort_read_map
 	@test -e $O/${1} || (echo Error: output file missing: $O/${1}; exit 1)
 endef
-
-
-
-# basic collapse
-test-collapse: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@
-	$(diff_bed_gtf_sort)
-	$(diff_bed_gtf_sort_read_map)
-
-test-collapse-sup1: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@ -s 1
-	$(diff_bed_gtf_sort)
-	$(diff_bed_gtf_sort_read_map)
-
-test-collapse-promoter: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@ -p $(BASIC_PROMOTER_REGIONS)
-	$(diff_bed_gtf_sort)
-	$(diff_bed_gtf_sort_read_map)
-	$(collapse_promoter_diff)
-
-test-collapse-incgtf: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $I/basic.annotation.incomplete.scrambled.gtf -o $O/$@ --gene_tss
-	$(diff_bed_gtf_sort)
-	$(diff_bed_gtf_sort_read_map)
-
-test-collapse-incgtfannot: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $I/basic.annotation.incomplete.scrambled.gtf -o $O/$@  --annotation_reliant generate --stringent
-	$(diff_bed_gtf_sort)
-	$(diff_bed_gtf_sort_read_map)
-
-test-collapse-predcds: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@ --predictCDS --gene_tss
-	$(diff_bed_gtf_sort)
-	$(call cmp_expect,$@.isoforms.CDS.bed)
-
-# collapse annotation-reliant
-##these reads are low quality, many isoforms fail with the check_splice parameter
-test-collapse-annot: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@ --annotation_reliant generate --stringent
-	$(diff_bed_gtf_sort)
-	$(diff_bed_gtf_sort_read_map)
-
-test-collapse-seg1: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r ${SEG1_READS_FQ} -q ${SEG1_CORRECT_READS_BED} -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(SEG1_ANNOTATION) -o $O/$@ --stringent --gene_tss
-	$(diff_bed_gtf_sort)
-	$(diff_bed_gtf_sort_read_map)
-
-# collapse with support
-test-collapse-support: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -s 0.25 -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@
-	$(diff_bed_gtf_sort)
-	$(diff_bed_gtf_sort_read_map)
-
-# collapse with support --annotation_reliant --isoformtss
-test-collapse-support-annot: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -s 0.25 -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@ \
-	     --gtf=${BASIC_ANNOTATION} --quality 0 --generate_map --annotation_reliant generate
-	$(diff_bed_gtf_sort)
-	$(diff_bed_gtf_sort_read_map)
-
-test-collapse-help: mkdirs
-	flair collapse --help > $O/$@.out
-	$(call cmp_expect,$@.out)
-
 
 ###
 # FLAIR COMBINE

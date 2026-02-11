@@ -12,12 +12,26 @@ ifneq (${use_installed_flair},yes)
 endif
 
 ifeq (${PYTHONWARNINGS},)
-   # set to error to find were they are coming from
+   # get resource and other warnings
+   #   ResourceWarning: Enable tracemalloc to get the object allocation traceback
+   # use
+   #    PYTHONTRACEMALLOC=20 make
+   # to find out were ResourceWarning are comming from
+   # WANRING tracemalloc is really slow
+   #
    # FIXME: gets lots of warnings by not closing files, and these break some
    # expect results.  Disable for now.
-   #   ResourceWarning: Enable tracemalloc to get the object allocation traceback
    #export PYTHONWARNINGS=always
 endif
+
+ifneq (${PYTHONTRACEMALLOC},)
+    msg = WARNING: PYTHONTRACEMALLOC is set test will be very slow
+    $(warning ${msg})
+    $(warning ${msg})
+    $(warning ${msg})
+    $(warning ${msg})
+endif
+
 
 
 ##
@@ -32,13 +46,15 @@ default:
 	@echo "   " make test-installed >&2
 	@echo To run tests without R depedencies using installed FLAIR, use: >&2
 	@echo "   " make test-base-installed >&2
-	@echo otherwise run individual tests by specifying test target, such as: >&2
+	@echo Otherwise run individual tests by specifying test target, such as: >&2
 	@echo "   " make align-tests >&2
 	@echo to installed FLAIR for individual tests use the use_installed_flair option, such as: >&2
 	@echo "   " make align-tests use_installed_flair=yes >&2
-	@echo remove output files: >&2
+	@echo "Run only library tests" >&2
+	@echo "   " make lib-tests >&2
+	@echo "Remove output files:" >&2
 	@echo "   " make clean >&2
-	@echo remove output and downloaded genomes files: >&2
+	@echo Remove output and downloaded genomes files: >&2
 	@echo "   " make real-clean >&2
 	@echo run flake8: >&2
 	@echo "   " make flake8 >&2
@@ -46,13 +62,13 @@ default:
 	@exit 1
 
 test: test-base test-with-R
+
 test-base: align-tests quantify-tests \
 	combine-tests predict-productivity-tests diff-iso-usage-tests \
 	plot-usage-tests transcriptome-tests fusion-tests variants-tests \
 	partition-tests lib-tests
 
 test-with-R: diffexp-tests diffsplice-tests
-
 
 test-installed:
 	${MAKE} test use_installed_flair=yes
@@ -69,6 +85,29 @@ test-help: test-main-help test-align-help \
 lint: flake8
 flake8:
 	cd .. && ${MAKE} flake8
+
+##
+# options for pytest
+##
+# keep pytest xdist from complaining about the terminal
+export TERM=dumb
+
+# override number of process with nproc=0 to run
+# in main process.
+# stdout not echo with mulitple processes
+# keep small for now due to startup time with only a few tests
+nproc = 0
+
+# logging level
+loglevel = INFO
+
+# override with pytest_extra=-v or what ever
+pytest_extra =
+
+# --tb=native standard traceback, less decoration, but lots pytest internal
+# traceback = --tb=native
+
+PYTEST_CMD = ${PYTEST} --capture=no ${traceback} --numprocesses=${nproc} --log-cli-level=${loglevel} ${pytest_extra}
 
 ##
 # Note: expected and output are sorted in cases where the order is not stable
@@ -509,11 +548,10 @@ test-partition-sam: mkdirs
 	$(call cmp_expect,$@.out)
 
 ##
-# library tests
+# library tests with pytest
 ##
-lib-tests: mkdirs
-	${PYTEST} --capture=no -vv
-
+lib-tests:
+	${PYTEST_CMD} .
 
 ##
 # build test input files

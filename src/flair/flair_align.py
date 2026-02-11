@@ -128,18 +128,26 @@ def bed_from_cigar(alignstart, is_reverse, cigartuples, readname, referencename,
     intronblocks = []
     hasmatch = False
     for block in cigartuples:
-        if block[0] == 3 and hasmatch: #intron, pay attention
+        if block[0] == pysam.CIGAR_OPS.CREF_SKIP and hasmatch:
+            # intron
             intronblocks.append([refpos, refpos + block[1]])
             refpos += block[1]
-        elif block[0] in {0, 7, 8, 2}:  # consumes reference
+        elif block[0] in frozenset((pysam.CIGAR_OPS.CMATCH,
+                                    pysam.CIGAR_OPS.CEQUAL,
+                                    pysam.CIGAR_OPS.CDIFF,
+                                    pysam.CIGAR_OPS.CDEL)):
+            # consumes reference
             refpos += block[1]
-            if block[0] in {0, 7, 8}: hasmatch = True#match
-    # dirtowrite = '-' if is_reverse else '+'
-    #chr1   476363  497259  ENST00000455464.7_ENSG00000237094.12    1000    -       476363  497259  0       3       582,169,151,    0,8676,20745,
+            if block[0] in frozenset((pysam.CIGAR_OPS.CMATCH,
+                                      pysam.CIGAR_OPS.CEQUAL,
+                                      pysam.CIGAR_OPS.CDIFF)):
+                hasmatch = True
     esizes, estarts = intron_chain_to_exon_starts(intronblocks,alignstart, refpos)
     rgbcolor = unknownTxn
-    if juncDirection == "+": rgbcolor = positiveTxn
-    elif juncDirection == "-": rgbcolor = negativeTxn
+    if juncDirection == "+":
+        rgbcolor = positiveTxn
+    elif juncDirection == "-":
+        rgbcolor = negativeTxn
     else:
         juncDirection = "-" if is_reverse else "+"
     outline = [referencename, str(alignstart), str(refpos), readname, str(qualscore), juncDirection, str(alignstart), str(refpos), rgbcolor, str(len(intronblocks) + 1), ','.join([str(x) for x in esizes]) + ',', ','.join([str(x) for x in estarts]) + ',']

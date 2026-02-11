@@ -9,17 +9,23 @@ import logging
 import re
 import multiprocessing as mp
 from collections import Counter, namedtuple
-from flair import FlairInputDataError, SeqRange, PosRange
+from flair import SeqRange, PosRange
 from flair.flair_align import inferMM2JuncStrand, intron_chain_to_exon_starts
 from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon
-from flair.ssUtils import addOtherJuncs, gtfToSSBed
-from flair.ssPrep import buildIntervalTree, ssCorrect
+from flair.intron_support import IntronSupport
+from flair.junction_correct import JunctionCorrector
 from flair.pycbio.hgdata.bed import BedReader
 
 # FIXME: temporarily disabled C901 (too complex) in .flake8
 # FIXME: add object for all file names
 # FIXME: use real TSVs
 # FIXME: need to document all the files
+# FIXME: it seems overkill to discard a single read based on one unsupported junction.
+#        These can be recovered from other reads. Simple way is to add all reads valid
+#        junctions, although maybe faster to track with introns are support and figure
+#        this out in correct.  Another might have a polymorphic different with the reference
+#        that changes splice junctions.  Should this be discarded if multiple long-reads
+#        support it, but it isn't annotated.  Maybe these can be identified.
 
 def parse_parallel_mode(parser, parallel_mode):
     "values: auto:10GB, bychrom, or byregion"
@@ -226,50 +232,24 @@ def bed_to_junctions(bed):
 ####
 # splice junction correction
 ####
+def setup_junction_corrector(gtf, junction_tab, junction_bed, junction_support, ss_window,
+                             *, chrom_filter=None):
+    """Create corrector with junction support evidence."""
+    # FIXME: currently reloads for every partition.
+    intron_support = IntronSupport()
+    if junction_bed is not None:
+        intron_support.load_bed_introns(junction_bed, chrom_filter=chrom_filter)
+    if junction_tab is not None:
+        intron_support.load_star(junction_tab, chrom_filter=chrom_filter)
+    if gtf is not None:
+        intron_support.load_gtf(gtf, chrom_filter=chrom_filter)
+    return JunctionCorrector(intron_support, ss_window, junction_support)
 
-def generate_known_SS_database(args, temp_dir):
-    # FIXME: being replaced with new correct code.
-    # Convert gtf to bed and split by chromosome.
-    juncs, chromosomes, knownSS = dict(), set(), dict()  # initialize juncs for adding to db
-
-    if args.annot_gtf:
-        juncs, chromosomes, knownSS = gtfToSSBed(args.annot_gtf, knownSS, False, False, False)
-
-    # Do the same for the other juncs file.
-    if args.junction_tab or args.junction_bed:
-        if args.junction_tab:
-            shortread, type = args.junction_tab, 'tab'
-        else:
-            shortread, type = args.junction_bed, 'bed'
-        juncs, chromosomes, add_flag, has_novel_juncs = addOtherJuncs(juncs, type, shortread, args.junction_support, chromosomes,
-                                                                      False, knownSS, False, False)
-        if not add_flag:
-            logging.info(f'WARNING: No junctions found in {shortread} that passed filters')
-        if not has_novel_juncs:
-            logging.info(f'WARNING: {shortread} did not have any additional junctions that passed filters and were not in {args.annot_gtf}')
-
-    # added to allow annotations not to be used.
-    if len(list(juncs.keys())) < 1:
-        raise FlairInputDataError("No junctions from GTF or junctionsBed to correct with")
-
-    annotation_files = dict()
-    for chrom in chromosomes:
-        annotation_files[chrom] = os.path.join(temp_dir, "%s_known_juncs.bed" % chrom)
-        with open(os.path.join(temp_dir, "%s_known_juncs.bed" % chrom), "w") as bed_fh:
-            if chrom in juncs:
-                data = juncs[chrom]
-                sortedData = sorted(list(data.keys()), key=lambda item: item[0])
-                for k in sortedData:
-                    annotation = data[k]
-                    c1, c2, strand = k
-                    print(chrom, c1, c2, annotation, ".", strand, sep="\t", file=bed_fh)
-    return chromosomes, annotation_files
-
-def correct_single_read(bed_read, intervalTree, junctionBoundaryDict):
-    # FIXME: being replaced with new correct code.
+def correct_single_read(bed_read, junction_corrector):
     juncs = bed_read.juncs
     strand = bed_read.strand
     c1Type, c2Type = ("donor", "acceptor") if strand == "+" else ("acceptor", "donor")
+
     newJuncs = list()
     ssStrands = set()
 
@@ -296,20 +276,18 @@ def correct_single_read(bed_read, intervalTree, junctionBoundaryDict):
 
         if None in ssTypes:  # or ssTypes[0] == ssTypes[1]: # Either two donors or two acceptors or both none.
             return None
-        newJuncs.append(Junc(c1Corr, c2Corr))
+        newJuncs.append((c1Corr, c2Corr))
 
-    starts, sizes = get_bed_exons_from_juncs(newJuncs, bed_read.start, bed_read.end)
+    starts, sizes = get_exons_from_juncs(newJuncs, bed_read.start, bed_read.end)
     # 0 length exons, remove them.
     if min(sizes) == 0:
         return None
-
     else:
         bed_read.juncs = newJuncs
         bed_read.exon_sizes = sizes
         bed_read.exon_starts = starts
         bed_read.set_exons()
         return bed_read
-
 
 def get_rgb(name, strand, junclen):
     # FIXME: document, this will not work for RefSeq
@@ -1083,6 +1061,7 @@ def generate_transcriptome_reference(temp_prefix, annots, chrom, genome,
 
 
 def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
+    # FIXME: refactor
     good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs = [], set(), {}
     if not args.no_align_to_annot and len(annots.transcripts) > 0:
         logging.info('generating transcriptome reference')
@@ -1144,17 +1123,6 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
     return good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs
 
 
-class SpliceCorrector:
-    """Encapsulates splice site correction data and operations"""
-    def __init__(self, interval_tree, junction_boundary_dict):
-        self.interval_tree = interval_tree
-        self.junction_boundary_dict = junction_boundary_dict
-
-    def correct_read(self, bed_read):
-        return correct_single_read(bed_read, self.interval_tree,
-                                   self.junction_boundary_dict)
-
-
 def _should_process_read(read, region, keep_sup, allow_secondary):
     """Check if read passes filtering criteria for processing"""
     if read.is_secondary and not allow_secondary:
@@ -1176,6 +1144,8 @@ def _convert_read_to_bedread(read):
                                  read.query_name, read.reference_name,
                                  read.mapping_quality, read_strand)
     if len(bed_read.juncs) > 0:
+        # FIXME: carry this through for later assignment.
+        # FIXME: how do we know if it is a stranded experiment?
         new_strand = inferMM2JuncStrand(read)
         if new_strand != 'ambig':
             bed_read.strand = new_strand
@@ -1202,7 +1172,7 @@ def _write_reads_fasta(bam_file, region, good_align_to_annot, keep_sup, fasta_pa
 
 
 def filter_correct_group_reads(args, temp_prefix, region, bam_file, good_align_to_annot,
-                               splice_corrector, generate_fasta=True, sj_to_ends=None,
+                               junction_corrector, generate_fasta=True, sj_to_ends=None,
                                return_used_reads=False, allow_secondary=False):
     """Filter reads, correct splice junctions, and group by junction chain.
 
@@ -1212,7 +1182,7 @@ def filter_correct_group_reads(args, temp_prefix, region, bam_file, good_align_t
         region: SeqRange with chrom/start/end
         bam_file: pysam AlignmentFile
         good_align_to_annot: Set of read names that matched annotation
-        splice_corrector: SpliceCorrector instance for junction correction
+        junction_corrector: JunctionCorrector instance for junction correction
         generate_fasta: If True, write non-annot reads to FASTA
         sj_to_ends: Optional existing junction-to-ends dict to update
         return_used_reads: If True, also return set of processed read names
@@ -1239,7 +1209,7 @@ def filter_correct_group_reads(args, temp_prefix, region, bam_file, good_align_t
 
         used_reads.add(read.query_name)
         bed_read = _convert_read_to_bedread(read)
-        corrected_read = splice_corrector.correct_read(bed_read)
+        corrected_read = junction_corrector.correct_read(bed_read)
         if corrected_read:
             _add_corrected_read_to_groups(corrected_read, sj_to_ends)
 
@@ -1696,7 +1666,6 @@ def get_reverse_complement(seq):
 ####
 # results output
 ####
-
 def get_bed_gtf_from_info(end_info, chrom, strand, juncs, gene_id, genome):
     # FIXME: what is end info??
     # build gtf, bed, fasta data
@@ -1908,34 +1877,31 @@ def run_for_region(listofargs):
     genome = pysam.FastaFile(args.genome)
     bam_file = pysam.AlignmentFile(args.genome_aligned_bam, 'rb')
 
-    # if args.trimmedreads:
-    logging.info('generating genomic clipping reference')
 
     # genomic clipping: amount of clipping (from cigar) at ends of reads when aligned to genome
     # generates file with [read{\t}clipping amount] on each line
     # for comparing with amount of clipping after alignment to transcriptome
     # in order to check whether transcriptome alignment is comparable to or better than genomic alignment - can be considered to support isoform
     # used in filter_transcriptome_align
+    logging.info('generating genomic clipping reference')
     generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region_chrom, region_start, region_end)
 
-    logging.info('identifying good match to annot')
     # aligning to reference transcriptome, then identifying reads that match well to reference transcripts
     # with filter_transcriptome_align
+    logging.info('identifying good match to annot')
     good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs = \
         identify_good_match_to_annot(args, temp_prefix, region_chrom, annots, genome)
 
     # load splice junctions for chrom
     logging.info('correcting splice junctions')
-
-    # building splice junction reference for region (splice_site_annot_chrom contains annot and orthogonal data)
-    intervalTree, junctionBoundaryDict = buildIntervalTree(splice_site_annot_chrom, args.ss_window, region_chrom, False)
-    splice_corrector = SpliceCorrector(intervalTree, junctionBoundaryDict)
+    junction_corrector = setup_junction_corrector(args.gtf, args.junction_tab, args.junction_bed, args.junction_support,
+                                                  args.ss_window)
 
     # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
     # this also handles read strandedness if necessary
     region = SeqRange(region_chrom, int(region_start), int(region_end))
     sj_to_ends = filter_correct_group_reads(args, temp_prefix, region, bam_file, good_align_to_annot,
-                                            splice_corrector)
+                                            junction_corrector)
     bam_file.close()
     logging.info('generating isoforms')
 

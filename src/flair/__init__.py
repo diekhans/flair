@@ -5,6 +5,25 @@ from flair.pycbio import NoStackError
 
 VERSION = "3.0.0b1"
 
+# Fixed minimum and maximums size for an intron sizes
+# This could be configurable at some point, especially
+# maximum size, do to crazy bad alignments
+#
+# Information glean from multiple sources,
+#
+# Minimal intron size
+#   - smallest annotated human intron is 30bp in MST1L
+#   - most indicate minimal size for most vertebrates
+#     is longer than this.
+#
+# Maximum intron size
+#   - below 10kb is common
+#   - DOI:10.1371/journal.pone.0233978 finds some brain
+#     expression of intron > 1mb
+#
+MIN_INTRON_SIZE = 2
+MAX_INTRON_SIZE = 1000000
+
 class FlairError(Exception):
     """General error condition in FLAIR"""
     pass
@@ -29,6 +48,10 @@ class PosRange(namedtuple("PosRange",
     def __new__(cls, start, end):
         assert start <= end  # allows zero length
         return super(PosRange, cls).__new__(cls, start, end)
+
+    def __len__(self):
+        return self.end - self.start
+
 
 class SeqRange(namedtuple("SeqRange",
                           ("name", "start", "end", "strand"))):

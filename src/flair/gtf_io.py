@@ -139,7 +139,8 @@ class GtfData:
     """Data from a GTF file.  This is a container of GtfTranscript objects
     and there children.  There is no gene objects, as they are not required records
     in GTF."""
-    def __init__(self):
+    def __init__(self, gtf_file=None):
+        self.gtf_file = gtf_file  # saved for error messages
         self.transcripts = []
         self.transcripts_by_id: dict[str, GtfTranscript] = {}
         # transcripts by chrom then range overlap.

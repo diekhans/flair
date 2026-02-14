@@ -123,7 +123,7 @@ class IntronSupport:
             print(f"{chrom}:{entry.begin}-{entry.end}: {entry.data}", file=fh)
 
     @staticmethod
-    def _no_introns_loaded_error(file_name, file_desc, chrom_filter):
+    def _no_introns_loaded_error(file_name, file_desc, chrom_filter=None):
         msg = f"No introns loaded from {file_desc} file"
         if chrom_filter is not None:
             msg += f" for chromosome `{chrom_filter}'"
@@ -192,7 +192,7 @@ class IntronSupport:
         return cnt
 
     def load_gtf(self, gtf_data: GtfData):
-        """Load introns from a annotation GTF. Return number of introns loaded."""
+        """Load introns from an annotation GTF. Return number of introns loaded."""
         cnt = 0
         try:
             for transcript in gtf_data.transcripts:

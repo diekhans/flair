@@ -29,7 +29,7 @@ from flair.pycbio.hgdata.bed import Bed, BedReader
 #        that changes splice junctions.  Should this be discarded if multiple long-reads
 #        support it, but it isn't annotated.  Maybe these can be identified.
 
-USE_NEW_SJ_CORRECT = False
+USE_NEW_SJ_CORRECT = True
 
 def parse_parallel_mode(parser, parallel_mode):
     "values: auto:10GB, bychrom, or byregion"
@@ -389,7 +389,8 @@ def setup_junction_corrector(gtf, junction_tab, junction_bed, junction_support, 
     if junction_tab is not None:
         intron_support.load_star(junction_tab, chrom_filter=chrom_filter)
     if gtf is not None:
-        intron_support.load_gtf(gtf, chrom_filter=chrom_filter)
+        gtf_data = gtf_data_parser(gtf)
+        intron_support.load_gtf(gtf_data)  # FIXME: no chrom_filter=chrom_filter
     return NewJunctionCorrectorWrapper(JunctionCorrector(intron_support, ss_window, junction_support))
 
 def get_rgb(name, strand, junclen):

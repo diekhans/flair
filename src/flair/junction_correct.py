@@ -27,6 +27,10 @@ class JunctionCorrector:
         self.flank_window = flank_window
         self.min_read_support = min_read_support
 
+    @property
+    def chroms(self):
+        return self.intron_support.chroms
+
     def overlap_introns(self, chrom, start, end, strand):
         def _filter_intron(intron):
             return ((intron.strand == strand) and

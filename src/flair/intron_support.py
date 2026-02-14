@@ -10,7 +10,7 @@ from flair.pycbio.hgdata.bed import BedReader
 from flair.pycbio.tsv import TsvReader
 
 # FIXME:
-#  - chrom_filter only load a subset fix this with random indexing
+#  - chrom_filter only load a subset fix this with random indexing or pickling
 
 class SupportIntron:
     """Coordinates and support.  Strand could None if not available, but currently

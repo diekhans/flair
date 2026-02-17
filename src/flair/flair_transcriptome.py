@@ -525,6 +525,7 @@ class BedRead:
     @property
     def exons(self):
         """Return exons as list of Exon objects."""
+        # FIXME: maybe get away from exon lists and just use BED
         return [Exon(blk.start, blk.end) for blk in self.bed.blocks]
 
     @property

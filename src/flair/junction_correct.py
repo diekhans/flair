@@ -8,6 +8,15 @@ from flair import PosRange
 from flair.pycbio.hgdata.bed import Bed
 
 ##
+# Notes:
+# - We might not want to prefer annotated junction due to possible NAGNAG junctions
+#   where annotations often pick just one.
+# - A scoring method for junctions based on weighting should be considered
+##
+
+
+
+##
 # somewhat arbitrary sizes to keep from going off ends
 # or overlapping other introns.
 ##
@@ -72,6 +81,9 @@ def _filter_too_close(read_bed, new_junctions, intron_hits):
                        intron_hits))
 
 def _find_best_hit(strand, start, end, intron_hits):
+    """Pick an intron as `best'  This prefers annotated introns, then
+    read-support introns with the larger number of reads.
+    """
     closest_introns = _collect_closest_hits(start, end, intron_hits)
     if len(closest_introns) > 1:
         # sort to prefer annotated or then more reads
@@ -80,8 +92,7 @@ def _find_best_hit(strand, start, end, intron_hits):
 
 def _collect_closest_hits(start, end, intron_hits):
     """Return list by introns with closest total distance from ends.
-    Multiple are return"""
-    # don't want to prefer annotated due to NAGNAG junctions
+    Multiple introns are return"""
     min_dist = inf
     closest_introns = []
     for intron in intron_hits:

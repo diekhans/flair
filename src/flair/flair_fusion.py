@@ -258,7 +258,6 @@ def detectfusions():
                              '--genome_aligned_bam', args.output + '.syntheticAligned.bam',
                              '--genome', args.output + '-syntheticFusionGenome.fa',
                              '--gtf', args.output + '-syntheticReferenceAnno.gtf',
-                             '--junction_bed', args.output + '.syntheticAligned.SJ.bed',
                              '--ss_window', '8',
                              '--generate_map',
                              '--quality', '0',
@@ -270,6 +269,10 @@ def detectfusions():
                              '--no_align_to_annot',
                              '--fusion_breakpoints', args.output + '-syntheticBreakpointLoc.bed',
                              '--output', args.output + '.syntheticAligned.flair',]
+    # only include junction if any where found
+    junc_bed = args.output + '.syntheticAligned.SJ.bed'
+    if os.path.getsize(junc_bed) > 0:
+        transcriptome_command.exptend(['--junction_bed', junc_bed])
 
     pipettor.run([faidxcommand])
     print('synth genome made')

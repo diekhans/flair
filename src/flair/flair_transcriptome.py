@@ -9,13 +9,11 @@ import logging
 import re
 import multiprocessing as mp
 from collections import Counter, namedtuple
-from flair import SeqRange, PosRange, FlairInputDataError
+from flair import SeqRange, PosRange
 from flair.flair_align import inferMM2JuncStrand, intron_chain_to_exon_starts
 from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
-from flair.ssUtils import addOtherJuncs, gtfToSSBed
-from flair.ssPrep import buildIntervalTree, ssCorrect
 from flair.pycbio.hgdata.bed import Bed, BedReader
 
 # FIXME: temporarily disabled C901 (too complex) in .flake8
@@ -28,8 +26,6 @@ from flair.pycbio.hgdata.bed import Bed, BedReader
 #        this out in correct.  Another might have a polymorphic different with the reference
 #        that changes splice junctions.  Should this be discarded if multiple long-reads
 #        support it, but it isn't annotated.  Maybe these can be identified.
-
-USE_NEW_SJ_CORRECT = True
 
 def parse_parallel_mode(parser, parallel_mode):
     "values: auto:10GB, bychrom, or byregion"
@@ -235,127 +231,6 @@ def bed_to_junctions(bed):
             for i in range(1, bed.blockCount)]
 
 ####
-# old splice junction correction
-####
-
-def generate_known_SS_database(args, temp_dir):
-    # FIXME: being replaced with new correct code.
-    # Convert gtf to bed and split by chromosome.
-    juncs, chromosomes, knownSS = dict(), set(), dict()  # initialize juncs for adding to db
-
-    if args.annot_gtf:
-        juncs, chromosomes, knownSS = gtfToSSBed(args.annot_gtf, knownSS, False, False, False)
-
-    # Do the same for the other juncs file.
-    if args.junction_tab or args.junction_bed:
-        if args.junction_tab:
-            shortread, type = args.junction_tab, 'tab'
-        else:
-            shortread, type = args.junction_bed, 'bed'
-        juncs, chromosomes, add_flag, has_novel_juncs = addOtherJuncs(juncs, type, shortread, args.junction_support, chromosomes,
-                                                                      False, knownSS, False, False)
-        if not add_flag:
-            logging.info(f'WARNING: No junctions found in {shortread} that passed filters')
-        if not has_novel_juncs:
-            logging.info(f'WARNING: {shortread} did not have any additional junctions that passed filters and were not in {args.annot_gtf}')
-
-    # added to allow annotations not to be used.
-    if len(list(juncs.keys())) < 1:
-        raise FlairInputDataError("No junctions from GTF or junctionsBed to correct with")
-
-    annotation_files = dict()
-    for chrom in chromosomes:
-        annotation_files[chrom] = os.path.join(temp_dir, "%s_known_juncs.bed" % chrom)
-        with open(os.path.join(temp_dir, "%s_known_juncs.bed" % chrom), "w") as bed_fh:
-            if chrom in juncs:
-                data = juncs[chrom]
-                sortedData = sorted(list(data.keys()), key=lambda item: item[0])
-                for k in sortedData:
-                    annotation = data[k]
-                    c1, c2, strand = k
-                    print(chrom, c1, c2, annotation, ".", strand, sep="\t", file=bed_fh)
-    return chromosomes, annotation_files
-
-def correct_single_read(bed_read, intervalTree, junctionBoundaryDict):
-    # FIXME: being replaced with new correct code.
-    juncs = bed_read.juncs
-    strand = bed_read.bed.strand
-    c1Type, c2Type = ("donor", "acceptor") if strand == "+" else ("acceptor", "donor")
-    newJuncs = list()
-    ssStrands = set()
-
-    for x in juncs:
-        c1, c2 = x[0], x[1]
-        if c1 not in junctionBoundaryDict:
-            junctionBoundaryDict = ssCorrect(c1, strand, c1Type, intervalTree, junctionBoundaryDict, False)
-        if c2 not in junctionBoundaryDict:
-            junctionBoundaryDict = ssCorrect(c2, strand, c2Type, intervalTree, junctionBoundaryDict, False)
-
-        c1Corr = junctionBoundaryDict[c1].ssCorr.coord
-        c2Corr = junctionBoundaryDict[c2].ssCorr.coord
-        # don't allow junctions outside or near the ends of the reads
-        ends_slop = 8
-        if not ((bed_read.bed.chromStart + ends_slop) <= c1Corr < (bed_read.bed.chromEnd - ends_slop)):
-            return None
-        if not ((bed_read.bed.chromStart + ends_slop) <= c2Corr < (bed_read.bed.chromEnd - ends_slop)):
-            return None
-
-        ssTypes = [junctionBoundaryDict[c1].ssCorr.ssType, junctionBoundaryDict[c2].ssCorr.ssType]
-
-        ssStrands.add(junctionBoundaryDict[c1].ssCorr.strand)
-        ssStrands.add(junctionBoundaryDict[c2].ssCorr.strand)
-
-        if None in ssTypes:  # or ssTypes[0] == ssTypes[1]: # Either two donors or two acceptors or both none.
-            return None
-        newJuncs.append(Junc(c1Corr, c2Corr))
-
-    starts, sizes = get_bed_exons_from_juncs(newJuncs, bed_read.bed.chromStart, bed_read.bed.chromEnd)
-    # 0 length exons, remove them.
-    if min(sizes) == 0:
-        return None
-
-    bed_read.update_from_juncs(newJuncs)
-    return bed_read
-
-class OldJunctionCorrector:
-    """Wrapper for old junction correction approach using per-chrom annotation files."""
-
-    def __init__(self, chromosomes, annotation_files, ss_window):
-        self._chromosomes = chromosomes
-        self.annotation_files = annotation_files
-        self.ss_window = ss_window
-        self._interval_trees = {}  # chrom -> (intervalTree, junctionBoundaryDict)
-
-    @property
-    def chroms(self):
-        return self._chromosomes
-
-    def _get_interval_tree(self, chrom):
-        """Get or build interval tree for a chromosome."""
-        if chrom not in self._interval_trees:
-            if chrom not in self.annotation_files:
-                return None, {}
-            intervalTree, junctionBoundaryDict = buildIntervalTree(
-                self.annotation_files[chrom], self.ss_window, chrom, False)
-            self._interval_trees[chrom] = (intervalTree, junctionBoundaryDict)
-        return self._interval_trees[chrom]
-
-    def correct_read(self, bed_read):
-        """Correct a BedRead using old correction logic."""
-        chrom = bed_read.bed.chrom
-        intervalTree, junctionBoundaryDict = self._get_interval_tree(chrom)
-        if intervalTree is None:
-            return None
-        return correct_single_read(bed_read, intervalTree, junctionBoundaryDict)
-
-
-def setup_old_junction_corrector(args, temp_dir):
-    """Create old-style corrector from GTF and junction files."""
-    chromosomes, annotation_files = generate_known_SS_database(args, temp_dir)
-    return OldJunctionCorrector(chromosomes, annotation_files, args.ss_window)
-
-
-####
 # splice junction correction
 ####
 class NewJunctionCorrectorWrapper:
@@ -385,7 +260,7 @@ def setup_junction_corrector(gtf, junction_tab, junction_bed, junction_support, 
     # FIXME: currently reloads for every partition.
     intron_support = IntronSupport()
     if junction_bed is not None:
-        intron_support.load_bed_introns(junction_bed, chrom_filter=chrom_filter)
+        intron_support.load_introns_bed(junction_bed, chrom_filter=chrom_filter)
     if junction_tab is not None:
         intron_support.load_star(junction_tab, chrom_filter=chrom_filter)
     if gtf is not None:
@@ -2024,16 +1899,8 @@ def run_for_region(listofargs):
 
     # load splice junctions for chrom
     logging.info('correcting splice junctions')
-    # FIXME: reloading whole mess for region
-    if USE_NEW_SJ_CORRECT:
-        junction_corrector = setup_junction_corrector(args.annot_gtf, args.junction_tab, args.junction_bed, args.junction_support,
-                                                      args.ss_window)
-    else:
-        # For old corrector, build interval tree from the per-chrom annotation file
-        intervalTree, junctionBoundaryDict = buildIntervalTree(splice_site_annot_chrom, args.ss_window, region.name, False)
-        junction_corrector = OldJunctionCorrector({region.name}, {region.name: splice_site_annot_chrom}, args.ss_window)
-        # Pre-populate the interval tree for this region
-        junction_corrector._interval_trees[region.name] = (intervalTree, junctionBoundaryDict)
+    junction_corrector = setup_junction_corrector(args.annot_gtf, args.junction_tab, args.junction_bed, args.junction_support,
+                                                  args.ss_window)
 
     # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
     # this also handles read strandedness if necessary
@@ -2223,11 +2090,8 @@ def flair_transcriptome():
     logging.info(f'Number of regions {len(all_regions)}')
 
     logging.info('Generating splice site database')
-    if USE_NEW_SJ_CORRECT:
-        junction_corrector = setup_junction_corrector(args.annot_gtf, args.junction_tab, args.junction_bed, args.junction_support,
-                                                      args.ss_window)
-    else:
-        junction_corrector = setup_old_junction_corrector(args, temp_dir)
+    junction_corrector = setup_junction_corrector(args.annot_gtf, args.junction_tab, args.junction_bed, args.junction_support,
+                                                  args.ss_window)
 
     regions_to_annot_data = {}
     annot_gtf_data = None

@@ -92,6 +92,9 @@ flake8:
 # keep pytest xdist from complaining about the terminal
 export TERM=dumb
 
+###
+# pytest config
+###
 # override number of process with nproc=0 to run
 # in main process.
 # stdout not echo with mulitple processes
@@ -104,9 +107,11 @@ loglevel = INFO
 # override with pytest_extra=-v or what ever
 pytest_extra =
 
-# --tb=native standard traceback, less decoration, but lots pytest internal
+# Sometimes standard traceback (--tb=native) helts debug, less decoration,
+# but lots pytest internal
 # traceback = --tb=native
 
+# --numprocesses is provided by pytest-xdist
 PYTEST_CMD = ${PYTEST} --capture=no ${traceback} --numprocesses=${nproc} --log-cli-level=${loglevel} ${pytest_extra}
 
 ##

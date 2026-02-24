@@ -95,6 +95,7 @@ def combine():
     bedfiles, mapfiles, samples, fafiles = [], [], [], []
     for line in open(manifest):
         line = line.rstrip().split('\t')
+        print(line)
         if not (3 <= len(line) <= 5):
             raise Exception(f'Expected between 3 to 5 columns in manifest, got {len(line)} in {manifest}')
         samples.append(line[0] + '__' + line[1])
@@ -314,18 +315,20 @@ def combine():
                 ichainendscount += 1
             isocount += 1
         else:
-            outgene = None
-            for i in theseisos:
-                if i[3].split('_')[-1][:4] == 'ENSG':
-                    outgene = i[3].split('_')[-1]
-            if not outgene:
-                outgene = mode([x[3].split('_')[-1] for x in theseisos])
-            outname = 'lowexpiso_' + outgene
-            if outname not in isomap:
-                isomap[outname] = []
-            for info in collapsedIsos:
-                theseisos = collapsedIsos[info]
-                isomap[outname].extend([x[2] + '..' + x[3] for x in theseisos])
+            for start, end, sample, isoname, isousage, isocounts in collapsedIsos:
+                theseisos = collapsedIsos[(start, end, sample, isoname, isousage, isocounts)]
+                outgene = None
+                for i in theseisos:
+                    if i[3].split('_')[-1][:4] == 'ENSG':
+                        outgene = i[3].split('_')[-1]
+                if not outgene:
+                    outgene = mode([x[3].split('_')[-1] for x in theseisos])
+                outname = 'lowexpiso_' + outgene
+                if outname not in isomap:
+                    isomap[outname] = []
+                for info in collapsedIsos:
+                    theseisos = collapsedIsos[info]
+                    isomap[outname].extend([x[2] + '..' + x[3] for x in theseisos])
     outbed.close()
     if generatefa:
         outfa.close()

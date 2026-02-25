@@ -516,20 +516,23 @@ def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, o
 
 def get_best_ends(curr_group, end_window):
     best_ends = []
+    groupStrands = Counter([x[2] for x in curr_group]).most_common()
+    # print(groupStrands, curr_group)
+    myStrand = groupStrands[0][0]
     if len(curr_group) > int(end_window):
         all_starts = Counter([x[0] for x in curr_group])
         all_ends = Counter([x[1] for x in curr_group])
         for start1, end1, strand1, name1 in curr_group:
             weighted_score = all_starts[start1] + all_ends[end1]
-            best_ends.append((weighted_score, start1, end1, strand1, name1))
+            best_ends.append((weighted_score, start1, end1, myStrand, name1))
     else:
         # take most common non-ambiguous strand for group
-        groupStrands = Counter([x[2] for x in curr_group]).most_common()
-        myStrand = 'ambig'
-        for i in range(len(groupStrands)):
-            if groupStrands[i][0] != 'ambig':
-                myStrand = groupStrands[i][0]
-                break
+        
+        # myStrand = 'ambig'
+        # for i in range(len(groupStrands)):
+            # if groupStrands[i][0] != 'ambig':
+            #     myStrand = groupStrands[i][0]
+            #     break
         
         for start1, end1, strand1, name1 in curr_group:
             score, weighted_score = 0, 0
@@ -839,6 +842,8 @@ def filter_correct_group_reads(args, temp_prefix, region_chrom, region_start, re
                             if new_strand != 'ambig':
                                 bed_read.strand = new_strand
                         corrected_read = correct_single_read(bed_read, intervalTree, junctionBoundaryDict)
+                        # print(read.query_name, bed_read.juncs)
+                        # print(read.query_name, corrected_read.juncs)
                         if corrected_read:
                             junc_key = tuple(sorted(corrected_read.juncs))
                             if junc_key not in sj_to_ends:
@@ -912,6 +917,7 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, chrom, sj_to_ends, firstp
             else:
                 best_ends = filter_ends_by_subset_and_support(args, good_ends_with_sup_reads)
             for best_score, best_start, best_end, best_strand, best_name, this_score in best_ends:
+                # print(best_name, best_strand)
                 this_iso = BedRead()
                 this_iso.generate_from_vals(chrom, best_start, best_end, best_name, this_score, best_strand, juncs)
                 firstpass_unfiltered[best_name] = this_iso
@@ -1074,7 +1080,7 @@ def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, juncchain_
         annot_name_to_used_counts = {}
         gene_to_terminal_junction_specific_ends = {}
         iso_to_info = {}
-        novel_gene_isos_to_group = {'+': [], '-': []}
+        novel_gene_isos_to_group = {'+': [], '-': [], '.':[]}
         for iso_name in firstpass:
             this_iso = firstpass[iso_name]
             # Adjust name based on annotation
@@ -1091,6 +1097,7 @@ def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, juncchain_
                     gene_hits = get_genes_with_shared_juncs(this_iso.juncs, junc_to_gene, gene_to_annot_juncs)
                 else:
                     gene_hits = get_single_exon_gene_overlaps(this_iso, all_annot_SE)  # single exon
+                
                 if gene_hits:
                     sorted_genes = sorted(gene_hits.items(), key=lambda x: x[1], reverse=True)
                     this_gene = sorted_genes[0][0]
@@ -1102,11 +1109,16 @@ def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, juncchain_
                     else:
                         gene_hits = get_spliced_exon_overlaps('+', this_iso.exons, all_spliced_exons, gene_hits)
                         gene_hits = get_spliced_exon_overlaps('-', this_iso.exons, all_spliced_exons, gene_hits)
+                    
                     if len(gene_hits) > 0:
                         gene_hits.sort(reverse=True)
                         this_gene = gene_hits[0][1]
                         if this_iso.strand == 'ambig':
                             this_iso.strand = gene_hits[0][2]
+                    else:
+                        # print(this_iso.strand, this_iso.name, gene_hits)
+                        if this_iso.strand == 'ambig':
+                            this_iso.strand = '.'
             if this_gene is not None:
                 strand = gene_to_strand[this_gene]
             else:

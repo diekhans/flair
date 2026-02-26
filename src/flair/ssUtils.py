@@ -32,6 +32,7 @@ def addOtherJuncs(juncs, filetype, bedJuncs, minsup, chromosomes, printErrFname,
     tempJuncs = list()
     addedFlag = False
     novelJuncs = False
+    # FIXME: use BedReader
     with open(bedJuncs,'r') as bedLines:
         for line in bedLines:
             cols = line.rstrip().split()
@@ -85,6 +86,7 @@ def addOtherJuncs(juncs, filetype, bedJuncs, minsup, chromosomes, printErrFname,
 
 def gtfToSSBed(gtffile, knownSS, printErr, printErrFname, verbose):
     ''' Convenience function, reformats GTF to bed'''
+    # N.B. doesn't  actually create a BED
 
     # First: get all exons per transcript.
     exons = dict()

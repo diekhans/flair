@@ -1,5 +1,5 @@
 usage: transcriptome [-h] -b GENOME_ALIGNED_BAM -g GENOME [-o OUTPUT]
-                     [-t THREADS] [-f GTF]
+                     [-t THREADS] [-f ANNOT_GTF]
                      [--junction_tab JUNCTION_TAB | --junction_bed JUNCTION_BED]
                      [--junction_support JUNCTION_SUPPORT]
                      [--ss_window SS_WINDOW] [-w END_WINDOW]
@@ -10,7 +10,8 @@ usage: transcriptome [-h] -b GENOME_ALIGNED_BAM -g GENOME [-o OUTPUT]
                      [--quality QUALITY] [--parallel_mode PARALLEL_MODE]
                      [--predict_cds] [--keep_intermediate] [--keep_sup]
                      [--end_norm_dist END_NORM_DIST] [--output_endpos]
-                     [--output_bam]
+                     [--output_bam] [--fusion_breakpoints FUSION_BREAKPOINTS]
+                     [--allow_paralogs] [--generate_map]
 
 generates confident transcript models directly from a bam file of aligned long
 rna-seq reads
@@ -27,7 +28,8 @@ options:
   -t THREADS, --threads THREADS
                         number of threads to run with - related to
                         parallel_mode
-  -f GTF, --gtf GTF     GTF annotation file, used for identifying annotated
+  -f ANNOT_GTF, --gtf ANNOT_GTF
+                        GTF annotation file, used for identifying annotated
                         isoforms
   --junction_tab JUNCTION_TAB
                         short-read junctions in SJ.out.tab format. Use this
@@ -47,10 +49,10 @@ options:
                         window size for comparing TSS/TES (100)
   --sjc_support SJC_SUPPORT
                         minimum number of supporting reads for a spliced
-                        isoform (1)
+                        isoform
   --se_support SE_SUPPORT
                         minimum number of supporting reads for a single exon
-                        isoform (3)
+                        isoform
   --frac_support FRAC_SUPPORT
                         minimum fraction of gene locus support for isoform to
                         be called default: 0.05, only isoforms that make up
@@ -58,8 +60,8 @@ options:
                         Set to 0 for max recall
   --no_stringent        specify if all supporting reads don't need to be full-
                         length (aligned to first and last exons of
-                        transcript). Use this for fragmented libraries, but
-                        understand that it will impact precision.
+                        transcript). Use this for fragmented libraries, with
+                        an understanding that it will impact precision.
   --no_check_splice     don't enforce accurate alignment around splice site.
                         Specify this for libraries with high error rates, but
                         it will reduce precision
@@ -108,7 +110,15 @@ options:
                         specify the number of basepairs to extend transcript
                         ends if you want to normalize them across transcripts
                         in a gene and extend them
-  --output_endpos       specify if you want to ouptut a setparate file with
+  --output_endpos       specify if you want to output a separate file with
                         corrected read end positions. For development purposes
   --output_bam          output intermediate bams aligned to the transcriptome.
                         Only works with --keep_intermediate, for debugging
+  --fusion_breakpoints FUSION_BREAKPOINTS
+                        for fusion detection only - bed file containing
+                        locations of fusion breakpoints on the synthetic
+                        genome
+  --allow_paralogs      specify if want to allow reads to be assigned to
+                        multiple paralogs with equivalent alignment
+  --generate_map        specify this argument to generate a txt file of read-
+                        isoform assignments

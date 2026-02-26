@@ -74,13 +74,13 @@ You can find the versions of packages matching the Ubuntu release at
 https://packages.ubuntu.com/. 
 
 
-## 4. Create a clean conda flair-dev environment
+## 4. Create a clean conda flair-master environment
 
 ```
 conda deactivate  # if you are in a flair environment
-conda env remove --name flair-dev --yes
-conda env create --name flair-dev -f misc/flair_dev_conda_env.yaml --yes
-conda activate flair-dev
+conda env remove --name flair-master --yes
+conda env create --name flair-master -f misc/flair_dev_conda_env.yaml --yes
+conda activate flair-master
 make clean
 pip install -e .[dev]
 ```
@@ -141,10 +141,18 @@ misc/flair_conda_env.yaml
 src/flair/__init__.py
 ```
 
-Use `bump-my-version` to increment the version numbers:
+Use `bump-my-version` to increment the version numbers. See what the possible
+bumps are:
 ```
-bump-my-version bump <major|minor|patch>
+bump-my-version show-bump
 ```
+
+Bump with the appropriate version increase.
+
+```
+bump-my-version bump <major|minor|patch|release>
+```
+
 Before you do this, make sure the current version is correctly listed in `.bumpversion.cfg`.
 
 Check that version were updated:
@@ -152,7 +160,7 @@ Check that version were updated:
 git diff
 ```
 
-If the bump rules doesn't work right, just use 1--new-version` to force the
+If the bump rules doesn't work right, just use --new-version` to force the
 version.
 
 General use of `bump-my-version`:
@@ -369,12 +377,8 @@ Mail an announcement, including `CHANGELOG.md` summary to
 
 Add `+master` to the current version to distinguish tree checkouts 
 ```
-bump-my-version replace --current-version=2.2.0 --new-version=2.2.0+master
+bump-my-version bump branch --new-version "3.0.0+master"
 ```
-
-IMPORTANT: then manually edit `.bumpversion.toml` to have this version,
-as `replace` doesn't change this.
-
 
 ```
 git commit -am 'set tree local version'

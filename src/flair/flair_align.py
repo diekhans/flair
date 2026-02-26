@@ -84,35 +84,24 @@ def inferMM2JuncStrand(read):
     except:
         juncDir = None
 
-    ogjuncdir = juncDir
-
     # Try to resolve strand by looking for polyA
     if not juncDir:
         left, right = read.cigartuples[0], read.cigartuples[-1]
         s1, s2 = read.query_sequence[:100], read.query_sequence[-100:]
-        # pa = str()
         if ("T" * 10 in s1 and left[0] == 4 and left[1] >= 10) and \
             ("A" * 10 in s2 and right[0] == 4 and right[1] >= 10):
             # probably internal priming
             juncDir = "ambig"
-
         elif ("T" * 10 in s1 and left[0] == 4 and left[1] >= 10):
             # maps to positive strand but has a rev comp polyA
-            juncDir = '-' #= "-" if orientation == 16 else "+"
-        # print("anti")
-        # pa = "ppa"
+            juncDir = '-' 
         elif ("A" * 10 in s2 and right[0] == 4 and right[1] >= 10):
             # maps to positive strand but has a sense polyA
-            juncDir = "+" # if orientation == 16 else "-"
-        # print("sense")
-        # pa = "ppa"
+            juncDir = "+"
         else:
-            # no polyA or polyT. Fragment?
             juncDir = "ambig"
-        # pa = "nan"
         
-
-    else:
+    else: # only executes for processing ts tag strand
         if orientation == 0 and juncDir == "+":
             juncDir = "+"
         elif orientation == 0 and juncDir == "-":

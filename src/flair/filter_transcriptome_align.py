@@ -167,9 +167,9 @@ def process_alignments(args, transcript_to_exons, transcript_to_bp_ss_index, tra
         for read, transcript, gtstart, gtend in chunkresults[i]:
             if transcript not in transcripttoreads:
                 transcripttoreads[transcript] = []
-            transcripttoreads[transcript].append(read)
+            transcripttoreads[transcript].append((read, gtstart, gtend))
             if args.output_endpos:
-                endout.write('\t'.join([str(x) for x in [read, transcript, gtstart, gtend]]) + '\n')
+                endout.write('\t'.join([str(x) for x in [read, transcript, gtstart[0], gtstart[1], gtend[0], gtend[1]]]) + '\n')
     if args.output_endpos:
         endout.close()
     write_output(args, transcripttoreads)

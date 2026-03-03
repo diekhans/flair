@@ -545,7 +545,7 @@ def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, cl
         count_cmd.extend(['--trimmedreads', clipping_file])
     if map_file:
         count_cmd.extend(['--generate_map', map_file])
-    if args.end_norm_dist:
+    if args.end_norm_dist or args.output_endpos:
         count_cmd.extend(['--output_endpos', output_name.split('.counts.tsv')[0] + '.ends.tsv',
                           '--end_norm_dist', args.end_norm_dist])
     if not args.no_stringent or is_annot:

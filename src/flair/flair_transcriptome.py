@@ -1865,6 +1865,7 @@ def generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, regi
                 if cigar[-1][0] in {4, 5}:
                     tot_clipped += cigar[-1][1]
                 clipping_fh.write(name + '\t' + str(tot_clipped) + '\n')
+    return temp_prefix + '.reads.genomicclipping.txt'
 
 
 def predict_productivity(out_prefix, genome_fasta, gtf):

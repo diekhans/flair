@@ -85,7 +85,7 @@ def get_annot_info(args):
     transcript_to_exons = {}
     transcript_to_genomic_ends = {}
     transcript_to_unique_bounds = {}
-    if args.stringent or args.check_splice or args.fusion_dist or args.fusion_breakpoints:
+    if args.stringent or args.check_splice or args.fusion_dist or args.fusion_breakpoints or args.output_endpos:
         for line in open(args.isoforms):
             line = line.rstrip().split('\t')
             name, left, right, chrom, strand = line[3], int(line[1]), int(line[2]), line[0], line[5]
@@ -275,8 +275,9 @@ def check_stringentandsplice(args, exoninfo, tname, coveredpos, tlen, blockstart
         # single exon genes always get checked
         passesstringent = check_stringent(coveredpos, exoninfo, tlen, blockstarts, blocksizes,
                                           args.trust_ends, tname, args.end_norm_dist, 
-                                          transcript_to_unique_bounds) if len(exoninfo) == 1 or args.stringent else True
-        passessplice = check_splicesites(coveredpos, exoninfo, tstart, tend, tname) if args.check_splice else True
+                                          transcript_to_unique_bounds) if args.stringent or len(exoninfo) == 1 else True
+        #only run if spliced transcript
+        passessplice = check_splicesites(coveredpos, exoninfo, tstart, tend, tname) if args.check_splice and len(exoninfo) > 1 else True
         passesfusion = check_fusionbp(coveredpos, exoninfo, tstart, tend, tname, transcript_to_bp_ss_index) if args.fusion_breakpoints else True
         if tname == testtname:
             print(tname, passesstringent, passessplice)
@@ -284,10 +285,11 @@ def check_stringentandsplice(args, exoninfo, tname, coveredpos, tlen, blockstart
 
 testtname = 'none'
 
-def identify_corrected_ends(exoninfo, startpos, endpos, gtstrand):
+def identify_corrected_ends(exoninfo, startpos, endpos, transcript_to_genomic_ends, tname, output_endpos):
     left_intron_index, left_dist, right_intron_index, right_dist = None, None, None, None
     #Can only correct read ends if assigned to spliced transcript
-    if len(exoninfo) > 1:
+    if output_endpos and len(exoninfo) > 1:
+        gtstrand = transcript_to_genomic_ends[tname][2]
         currpos = 0
         for i in range(len(exoninfo)-1):
             elen = exoninfo[i]
@@ -327,7 +329,7 @@ def get_best_transcript(tinfo, args, transcript_to_exons, transcript_to_bp_ss_in
             print('indel', indel_detected)
         if not indel_detected and (not args.trimmedreads or genomicclipping == None or sum(queryclipping) <= genomicclipping+args.soft_clipping_buffer):
             if check_stringentandsplice(args, exoninfo, thist.name, coveredpos, thist.tlen, blockstarts, blocksizes, thist.startpos, tendpos, transcript_to_bp_ss_index, transcript_to_unique_bounds):
-                left_intron_index, left_dist, right_intron_index, right_dist = identify_corrected_ends(exoninfo, thist.startpos, tendpos, transcript_to_genomic_ends[tname][2])
+                left_intron_index, left_dist, right_intron_index, right_dist = identify_corrected_ends(exoninfo, thist.startpos, tendpos, transcript_to_genomic_ends, tname, args.output_endpos)
                 passingtranscripts.append([-1 * thist.alignscore, -1 * sum(matchvals), sum(queryclipping), thist.tlen, tname, (left_intron_index, left_dist), (right_intron_index, right_dist)])
 
 

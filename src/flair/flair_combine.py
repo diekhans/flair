@@ -119,7 +119,7 @@ def combine():
         genetoreads, isotoreads = {}, {}
         if mapfiles[i] != '':
             for line in open(mapfiles[i]):
-                iso, reads = line.split('\t', 1)
+                iso, reads = line.rstrip().split('\t', 1)
                 gene = iso.split('_')[-1]
                 numreads = len(reads.split(','))
                 if gene not in genetoreads:

@@ -5,7 +5,7 @@ import sys, os
 def get_iso_to_reads(readmapfile):
     isoreadsup = {}
     for line in open(readmapfile):
-        line = line.split('\t')
+        line = line.rstrip().split('\t')
         reads = line[1].split(',')
         isoreadsup[line[0]] = set(reads)
     return isoreadsup
@@ -202,7 +202,7 @@ def convert_synthetic_isos(annotgtf, isoformsbed, readmapfile, readsfile, breakp
     freadsfinal = set()
     out = open(outname, 'w')
     for line in open(isoformsbed):
-        line = line.split('\t')
+        line = line.rstrip().split('\t')
         iso, start, esizes, estarts = line[3], int(line[1]), [int(x) for x in line[10].rstrip(',').split(',')], [int(x) for x in line[11].rstrip(',').split(',')]
         fusionchr = line[0]
         synthinfo = [x.split('..') for x in synthchrtoinfo[fusionchr].split('--')]

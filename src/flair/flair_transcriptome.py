@@ -545,11 +545,13 @@ def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, cl
         count_cmd.extend(['--trimmedreads', clipping_file])
     if map_file:
         count_cmd.extend(['--generate_map', map_file])
-    if args.end_norm_dist or args.output_endpos:
+    if args.end_norm_dist or args.output_endpos or is_annot:
         count_cmd.extend(['--output_endpos', output_name.split('.counts.tsv')[0] + '.ends.tsv',
                           '--end_norm_dist', args.end_norm_dist])
-    if not args.no_stringent or is_annot:
-        count_cmd.extend(['--stringent', '--allow_UTR_indels'])
+    if not is_annot and not args.no_stringent:
+        count_cmd.extend(['--stringent'])
+    if is_annot:
+        count_cmd.extend(['--allow_UTR_indels'])
     if args.output_bam:
         count_cmd.extend(['--output_bam', output_name.split('.counts.tsv')[0] + '.bam'])
     if not args.no_check_splice:
@@ -1076,9 +1078,10 @@ def generate_transcriptome_reference(temp_prefix, annots, chrom, genome,
 
 def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
     # FIXME: refactor
-    good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs = [], set(), {}
+    # good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs = [], set(), {}
     if not args.no_align_to_annot and len(annots.transcripts) > 0:
         logging.info('generating transcriptome reference')
+        ##this part generates the fasta file for the annotation
         if args.end_norm_dist is not None:
             transcript_to_strand, transcript_to_new_exons = \
                 generate_transcriptome_reference(temp_prefix, annots, chrom, genome,
@@ -1098,30 +1101,34 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
                                       clipping_file,
                                       temp_prefix + '.annotated_transcripts_uniquebound.txt')
         logging.info('processing good matches')
-        with open(temp_prefix + '.matchannot.bed', 'w') as annot_bed_fh:
-            # FIXME: make this a TSV
-            for line in open(temp_prefix + '.matchannot.read.map.txt'):
-                striso, reads = line.rstrip().split('\t', 1)
-                reads = reads.split(',')
-                if len(reads) >= args.sjc_support:
-                    good_align_to_annot.extend(reads)
-                    transcript_id = '_'.join(striso.split('_')[:-1])
-                    gene_id = striso.split('_')[-1]
-                    if (transcript_id, gene_id) in annots.transcript_to_exons:
-                        if (transcript_id, gene_id) in transcript_to_new_exons:
-                            exons = transcript_to_new_exons[(transcript_id, gene_id)]
-                        else:
-                            exons = annots.transcript_to_exons[(transcript_id, gene_id)]
-                        start, end = exons[0].start, exons[-1].end
-                        exon_starts = [e.start - start for e in exons]
-                        exon_sizes = [e.end - e.start for e in exons]
-                        strand = transcript_to_strand[(transcript_id, gene_id)]
-                        bed_line = [chrom, start, end, transcript_id + '_' + gene_id, len(reads), strand, start, end, '0',
-                                    len(exons), ','.join([str(x) for x in exon_sizes]), ','.join([str(x) for x in exon_starts])]
-                        annot_bed_fh.write('\t'.join([str(x) for x in bed_line]) + '\n')
-                        firstpass_SE.update(set(exons))
-                        annot_juncs = exons_to_juncs(exons)
-                        sup_annot_transcript_to_juncs[(transcript_id, gene_id)] = (len(reads), annot_juncs)
+        read_to_transcript = {}
+        for line in open(temp_prefix + '.matchannot.ends.tsv'):
+            line = line.rstrip().split('\t')
+            read, transcript = line[:2]
+            startindex, startdist, endindex, enddist = [int(x) for x in line[2:]]
+            read_to_transcript[read] = (transcript, startindex, startdist, endindex, enddist)
+
+        # for line in open(temp_prefix + '.matchannot.read.map.txt'):
+        #     striso, reads = line.rstrip().split('\t', 1)
+        #     reads = reads.split(',')
+        #     if len(reads) >= args.sjc_support:
+        #         good_align_to_annot.extend(reads)
+                # transcript_id = '_'.join(striso.split('_')[:-1])
+                # gene_id = striso.split('_')[-1]
+                # if (transcript_id, gene_id) in annots.transcript_to_exons:
+                #     if (transcript_id, gene_id) in transcript_to_new_exons:
+                #         exons = transcript_to_new_exons[(transcript_id, gene_id)]
+                #     else:
+                #         exons = annots.transcript_to_exons[(transcript_id, gene_id)]
+                #     start, end = exons[0].start, exons[-1].end
+                #     exon_starts = [e.start - start for e in exons]
+                #     exon_sizes = [e.end - e.start for e in exons]
+                #     strand = transcript_to_strand[(transcript_id, gene_id)]
+                #     bed_line = [chrom, start, end, transcript_id + '_' + gene_id, len(reads), strand, start, end, '0',
+                #                 len(exons), ','.join([str(x) for x in exon_sizes]), ','.join([str(x) for x in exon_starts])]
+                #     firstpass_SE.update(set(exons))
+                #     annot_juncs = exons_to_juncs(exons)
+                #     sup_annot_transcript_to_juncs[(transcript_id, gene_id)] = (len(reads), annot_juncs)
     else:
         # create empty output files
         # FIXME: why doesn't this create all of them?
@@ -1133,8 +1140,9 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
         if args.output_endpos:
             with open(temp_prefix + '.ends.tsv', 'w') as _:
                 pass
-    good_align_to_annot = set(good_align_to_annot)
-    return good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs
+    # good_align_to_annot = set(good_align_to_annot)
+    # return good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs
+    return read_to_transcript
 
 
 def _should_process_read(read, region, keep_sup, allow_secondary):
@@ -1171,19 +1179,19 @@ def _add_corrected_read_to_groups(corrected_read, sj_to_ends):
                                          corrected_read.bed.strand, corrected_read.bed.name))
 
 
-def _write_reads_fasta(bam_file, region, good_align_to_annot, keep_sup, fasta_path):
-    """Write non-annotation-matched reads to FASTA file"""
-    with open(fasta_path, 'w') as fasta_fh:
-        for read in bam_file.fetch(region.name, region.start, region.end):
-            if _should_process_read(read, region, keep_sup, allow_secondary=False):
-                if read.query_name not in good_align_to_annot:
-                    fasta_fh.write('>' + read.query_name + '\n')
-                    fasta_fh.write(read.get_forward_sequence() + '\n')
+# def _write_reads_fasta(bam_file, region, good_align_to_annot, keep_sup, fasta_path):
+#     """Write non-annotation-matched reads to FASTA file"""
+#     with open(fasta_path, 'w') as fasta_fh:
+#         for read in bam_file.fetch(region.name, region.start, region.end):
+#             if _should_process_read(read, region, keep_sup, allow_secondary=False):
+#                 if read.query_name not in good_align_to_annot:
+#                     fasta_fh.write('>' + read.query_name + '\n')
+#                     fasta_fh.write(read.get_forward_sequence() + '\n')
 
 
-def filter_correct_group_reads(args, temp_prefix, region, bam_file, good_align_to_annot,
+def filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_annot_transcript, annots,
                                junction_corrector, generate_fasta=True, sj_to_ends=None,
-                               return_used_reads=False, allow_secondary=False):
+                               allow_secondary=False):
     """Filter reads, correct splice junctions, and group by junction chain.
 
     Args:
@@ -1203,30 +1211,43 @@ def filter_correct_group_reads(args, temp_prefix, region, bam_file, good_align_t
     """
     if sj_to_ends is None:
         sj_to_ends = {}
-    used_reads = set()
 
-    if generate_fasta:
-        _write_reads_fasta(bam_file, region, good_align_to_annot, args.keep_sup,
-                           temp_prefix + 'reads.notannotmatch.fasta')
+    # if generate_fasta:
+    #     _write_reads_fasta(bam_file, region, good_align_to_annot, args.keep_sup,
+    #                        temp_prefix + 'reads.notannotmatch.fasta')
 
     # for chrom in junction_corrector._corrector.intron_support.coords_maps:
     #     for intron in junction_corrector._corrector.intron_support.coords_maps[chrom]:
     #         print(chrom, intron)#intron.start, intron.end, intron.strand)
     # print(test, junction_corrector._corrector.intron_support.overlap_introns(chrom, start, end, flank_window=8))
-
+    
+    
     for read in bam_file.fetch(region.name, region.start, region.end):
         if not _should_process_read(read, region, args.keep_sup, allow_secondary):
-            continue
-        if read.query_name in good_align_to_annot:
             continue
         if read.mapping_quality < args.quality:
             continue
 
-        used_reads.add(read.query_name)
-        bed_read = _convert_read_to_bedread(read)
-        corrected_read = junction_corrector.correct_read(bed_read)
-        if corrected_read:
-            _add_corrected_read_to_groups(corrected_read, sj_to_ends)
+        is_annot_match = False
+        if read.query_name in read_to_annot_transcript:
+            transcript, startindex, startdist, endindex, enddist = read_to_annot_transcript[read.query_name]
+            transcript, gene = transcript.split('_')
+            exons = annots.transcript_to_exons[(transcript, gene)][1]
+            juncs = [(exons[x].end, exons[x+1].start) for x in range(len(exons)-1)]
+            #ignore unspliced transcripts
+            if len(juncs) > 0:
+                is_annot_match = True
+                newstart = juncs[startindex][0] - startdist
+                newend = juncs[endindex][1] + enddist
+                juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex+1]])
+                # corrected_read = ft.BedRead.from_junctions(read.reference_name, newstart, newend,
+                #                                            read.query_name, read.mapping_quality, 
+                #                                            strand, juncs)
+        if not is_annot_match:
+            
+            corrected_read = junction_corrector.correct_read(bed_read)
+            if corrected_read:
+                _add_corrected_read_to_groups(corrected_read, sj_to_ends)
 
     if return_used_reads:
         return sj_to_ends, used_reads
@@ -1903,7 +1924,7 @@ def run_for_region(listofargs):
     # aligning to reference transcriptome, then identifying reads that match well to reference transcripts
     # with filter_transcriptome_align
     logging.info('identifying good match to annot')
-    good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs = \
+    read_to_annot_transcript = \
         identify_good_match_to_annot(args, temp_prefix, region.name, annots, genome)
 
     # load splice junctions for chrom
@@ -1913,7 +1934,7 @@ def run_for_region(listofargs):
 
     # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
     # this also handles read strandedness if necessary
-    sj_to_ends = filter_correct_group_reads(args, temp_prefix, region, bam_file, good_align_to_annot,
+    sj_to_ends = filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_annot_transcript, annots,
                                             junction_corrector)
     bam_file.close()
     # logging.info('generating isoforms')

@@ -1217,8 +1217,6 @@ def filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_anno
         if read.mapping_quality < args.quality:
             continue
 
-        is_annot_match = False
-        corrected_read = None
         if read.query_name in read_to_annot_transcript:
             transcript, startindex, startdist, endindex, enddist = read_to_annot_transcript[read.query_name]
             transcript, gene = transcript.split('_')
@@ -1226,17 +1224,17 @@ def filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_anno
             juncs = [(exons[x].end, exons[x+1].start) for x in range(len(exons)-1)]
             #ignore unspliced transcripts
             if len(juncs) > 0:
-                is_annot_match = True
                 newstart = juncs[startindex][0] - startdist
                 newend = juncs[endindex][1] + enddist
                 juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex+1]])
                 strand = '-' if read.is_reverse else '+'
                 corrected_read = BedRead.from_junctions(read.reference_name, newstart, newend,
-                                                        read.query_name, read.mapping_quality, 
+                                                        read.query_name, read.mapping_quality,
                                                         strand, juncs)
-        if not is_annot_match:
-            bed_read = _convert_read_to_bedread(read)
-            corrected_read = junction_corrector.correct_read(bed_read)
+            else:
+                corrected_read = junction_corrector.correct_read(_convert_read_to_bedread(read))
+        else:
+            corrected_read = junction_corrector.correct_read(_convert_read_to_bedread(read))
         if corrected_read:
             _add_corrected_read_to_groups(corrected_read, sj_to_ends)
 
@@ -1357,10 +1355,7 @@ def filter_single_exon_iso(args, grouped_iso, curr_group, firstpass_unfiltered):
                         expression_comp_with_superset.append(True)
                     else:
                         expression_comp_with_superset.append(False)
-    if not is_contained and all(expression_comp_with_superset):
-        return True
-    else:
-        return False
+    return not is_contained and all(expression_comp_with_superset)
 
 
 def filter_single_exon_group(args, curr_group, firstpass_unfiltered, firstpass):
@@ -1477,9 +1472,8 @@ def get_spliced_exon_overlaps(strand, exons, annots):
                 gene_hits.append([len(covered_pos), annot_gene, strand])
     return gene_hits
 
-def get_gene_name_firstpass(iso_name, iso_bedread, annots, annot_name_to_used_counts, novel_gene_isos_to_group, iso_to_info):
-    # Adjust name based on annotation
-    transcript_id, gene_id = iso_bedread.bed.name, None
+def _get_transcript_gene_from_annot(iso_bedread, annots, annot_name_to_used_counts):
+    """Return (transcript_id, gene_id) if iso matches an annotated junction chain, else (None, None)."""
     if iso_bedread.juncs != () and iso_bedread.juncs in annots.juncchain_to_transcript:
         transcript_id, gene_id = annots.juncchain_to_transcript[iso_bedread.juncs]
         if transcript_id in annot_name_to_used_counts:
@@ -1487,27 +1481,40 @@ def get_gene_name_firstpass(iso_name, iso_bedread, annots, annot_name_to_used_co
             transcript_id = transcript_id + '-endvar' + str(annot_name_to_used_counts[transcript_id])
         else:
             annot_name_to_used_counts[transcript_id] = 1
+        return transcript_id, gene_id
     else:
-        if iso_bedread.juncs != ():
-            gene_hits = get_genes_with_shared_juncs(iso_bedread.juncs, annots)
+        return None, None
+
+
+def _find_gene_id_by_overlap(iso_bedread, annots):
+    """Find gene_id for an isoform without a matching junction chain, using junction or exon overlap."""
+    if iso_bedread.juncs != ():
+        gene_hits = get_genes_with_shared_juncs(iso_bedread.juncs, annots)
+    else:
+        gene_hits = get_single_exon_gene_overlaps(iso_bedread, annots)
+    if gene_hits:
+        return sorted(gene_hits.items(), key=lambda x: x[1], reverse=True)[0][0]
+    else:
+        # look for exon overlap
+        if iso_bedread.bed.strand != 'ambig':
+            gene_hits = get_spliced_exon_overlaps(iso_bedread.bed.strand, iso_bedread.exons, annots)
         else:
-            gene_hits = get_single_exon_gene_overlaps(iso_bedread, annots)
+            gene_hits = (get_spliced_exon_overlaps('+', iso_bedread.exons, annots) +
+                         get_spliced_exon_overlaps('-', iso_bedread.exons, annots))
         if gene_hits:
-            sorted_genes = sorted(gene_hits.items(), key=lambda x: x[1], reverse=True)
-            gene_id = sorted_genes[0][0]
+            gene_hits.sort(reverse=True)
+            if iso_bedread.bed.strand == 'ambig':
+                iso_bedread.bed.strand = gene_hits[0][2]
+            return gene_hits[0][1]
         else:
-            # look for exon overlap
-            gene_hits = []
-            if iso_bedread.bed.strand != 'ambig':
-                gene_hits += get_spliced_exon_overlaps(iso_bedread.bed.strand, iso_bedread.exons, annots)
-            else:
-                gene_hits += get_spliced_exon_overlaps('+', iso_bedread.exons, annots)
-                gene_hits += get_spliced_exon_overlaps('-', iso_bedread.exons, annots)
-            if len(gene_hits) > 0:
-                gene_hits.sort(reverse=True)
-                gene_id = gene_hits[0][1]
-                if iso_bedread.bed.strand == 'ambig':
-                    iso_bedread.bed.strand = gene_hits[0][2]
+            return None
+
+
+def get_gene_name_firstpass(iso_name, iso_bedread, annots, annot_name_to_used_counts, novel_gene_isos_to_group, iso_to_info):
+    transcript_id, gene_id = _get_transcript_gene_from_annot(iso_bedread, annots, annot_name_to_used_counts)
+    if transcript_id is None:
+        transcript_id = iso_bedread.bed.name
+        gene_id = _find_gene_id_by_overlap(iso_bedread, annots)
     if gene_id is not None:
         strand = annots.gene_to_strand[gene_id]
     else:
@@ -1632,13 +1639,11 @@ def process_detected_iso(args, iso_bed, gene_id, iso_id_src, og_iso_to_reads, en
     start, end = iso_bed.chromStart, iso_bed.chromEnd
     juncs = bed_to_junctions(iso_bed)
 
-    if args.end_norm_dist:
-        if ends_file:
-            if iso_bed.name in iso_to_ends:
-                start, end = iso_to_ends[iso_bed.name]
-        elif len(juncs) > 0:
-            start += args.end_norm_dist
-            end -= args.end_norm_dist
+    if args.end_norm_dist and ends_file and iso_bed.name in iso_to_ends:
+        start, end = iso_to_ends[iso_bed.name]
+    elif args.end_norm_dist and not ends_file and len(juncs) > 0:
+        start += args.end_norm_dist
+        end -= args.end_norm_dist
 
     if gene_id not in gene_to_juncs_to_ends:
         gene_to_juncs_to_ends[gene_id] = GeneIsoformData(gene_id)

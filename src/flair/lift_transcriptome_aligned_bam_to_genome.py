@@ -72,7 +72,8 @@ def generate_new_segment(s=None, newname=None, newseq=None, newquals=None, newfl
     a.cigartuples = newcigart if newcigart != None else s.cigartuples
     return a
 
-compbase = {'A':'T', 'T':'A', 'C':'G', 'G':'C', 'N':'N'}
+compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N', 
+                'R':'Y', 'Y':'R','K':'M','M':'K','S':'S','W':'W', 'B':'V','V':'B','D':'H','H':'D'}
 def revcomp(seq):
     newseq = []
     for base in seq.upper(): newseq.append(compbase[base])

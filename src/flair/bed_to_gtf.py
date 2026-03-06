@@ -44,6 +44,8 @@ def split_iso_gene(iso_gene):
 
 def bed_to_gtf(query, outputfile, force=False, reference_transcript_id=False, useCDS=True):
     outfile = open(outputfile, 'w')
+    gene_to_transcript_lines = {}
+    gene_to_chrom_strand = {}
     for line in open(query):
         line = line.rstrip().split('\t')
         start = int(line[1])
@@ -66,31 +68,25 @@ def bed_to_gtf(query, outputfile, force=False, reference_transcript_id=False, us
         else:
             transcript_id, gene_id = split_iso_gene(name)
 
-        attributes = 'gene_id \"{}\"; transcript_id \"{}\";'\
-                                .format(gene_id, transcript_id)
+        if gene_id not in gene_to_transcript_lines:
+            gene_to_transcript_lines[gene_id] = []
+            gene_to_chrom_strand[gene_id] = (chrom, strand)
+
+        attributes = f'gene_id "{gene_id}"; transcript_id "{transcript_id}";'
         if reference_transcript_id and '-referencetranscript' in transcript_id:
             trimmed_transcript_id = transcript_id[:transcript_id.find('-referencetranscript')]
-            attributes = 'gene_id \"{}\"; transcript_id \"{}\"; reference_transcript_id \"{}\";'\
-                    .format(gene_id, trimmed_transcript_id, trimmed_transcript_id)
-        print('\t'.join([chrom, 'FLAIR', 'transcript', str(start+1), str(tstarts[-1]+bsizes[-1]), '.', strand, '.',
-                attributes]), file=outfile)
+            attributes = f'gene_id "{gene_id}"; transcript_id "{trimmed_transcript_id}"; reference_transcript_id "{trimmed_transcript_id}";'
+        gene_to_transcript_lines[gene_id].append([chrom, 'FLAIR', 'transcript', start+1, tstarts[-1]+bsizes[-1], '.', strand, '.', attributes])
         if thick_start != thick_end and (thick_start != start or thick_end != end) and useCDS:
-            print('\t'.join([chrom, 'FLAIR', 'CDS', str(thick_start+1), str(thick_end), '.', strand, '.',
-            attributes]), file=outfile)
+            gene_to_transcript_lines[gene_id].append([chrom, 'FLAIR', 'CDS', thick_start+1, thick_end, '.', strand, '.', attributes])
             if strand == '+':
-                print('\t'.join([chrom, 'FLAIR', 'start_codon', str(thick_start+1), str(thick_start+3), '.', strand, '.',
-                attributes]), file=outfile)
-                print('\t'.join([chrom, 'FLAIR', '5UTR', str(start+1), str(thick_start+1), '.', strand, '.',
-                attributes]), file=outfile)
-                print('\t'.join([chrom, 'FLAIR', '3UTR', str(thick_end), str(tstarts[-1]+bsizes[-1]), '.', strand, '.',
-                attributes]), file=outfile)
+                gene_to_transcript_lines[gene_id].append([chrom, 'FLAIR', 'start_codon', thick_start+1, thick_start+3, '.', strand, '.', attributes])
+                gene_to_transcript_lines[gene_id].append([chrom, 'FLAIR', '5UTR', start+1, thick_start+1, '.', strand, '.', attributes])
+                gene_to_transcript_lines[gene_id].append([chrom, 'FLAIR', '3UTR', thick_end, tstarts[-1]+bsizes[-1], '.', strand, '.', attributes])
             elif strand == '-':
-                print('\t'.join([chrom, 'FLAIR', 'start_codon', str(thick_end-2), str(thick_end), '.', strand, '.',
-                attributes]), file=outfile)
-                print('\t'.join([chrom, 'FLAIR', '3UTR', str(start+1), str(thick_start+1), '.', strand, '.',
-                attributes]), file=outfile)
-                print('\t'.join([chrom, 'FLAIR', '5UTR', str(thick_end), str(tstarts[-1]+bsizes[-1]), '.', strand, '.',
-                attributes]), file=outfile)
+                gene_to_transcript_lines[gene_id].append([chrom, 'FLAIR', 'start_codon', thick_end-2, thick_end, '.', strand, '.', attributes])
+                gene_to_transcript_lines[gene_id].append([chrom, 'FLAIR', '3UTR', start+1, thick_start+1, '.', strand, '.', attributes])
+                gene_to_transcript_lines[gene_id].append([chrom, 'FLAIR', '5UTR', thick_end, tstarts[-1]+bsizes[-1], '.', strand, '.', attributes])
         # if strand == '-':  # to list exons in 5'->3'
         #       for b in range(len(tstarts)):  # exon number
         #               bi = len(tstarts) - 1 - b  # block index
@@ -100,13 +96,20 @@ def bed_to_gtf(query, outputfile, force=False, reference_transcript_id=False, us
         #                       str(tstarts[bi]+bsizes[bi]), '.', strand, '.', attributes]))
         # else:
         for b in range(len(tstarts)):
-            attributes = 'gene_id \"{}\"; transcript_id \"{}\"; exon_number \"{}\";'\
-                    .format(gene_id, transcript_id, b)
+            attributes = f'gene_id "{gene_id}"; transcript_id "{transcript_id}"; exon_number "{b}";'
             if reference_transcript_id and '-referencetranscript' in transcript_id:
-                attributes = 'gene_id \"{}\"; transcript_id \"{}\"; exon_number \"{}\"; reference_transcript_id \"{}\";'\
-                        .format(gene_id, trimmed_transcript_id, b, trimmed_transcript_id)
-            print('\t'.join([chrom, 'FLAIR', 'exon', str(tstarts[b]+1),
-                    str(tstarts[b]+bsizes[b]), '.', strand, '.', attributes]), file=outfile)
+                attributes = f'gene_id "{gene_id}"; transcript_id "{trimmed_transcript_id}"; exon_number "{b}"; reference_transcript_id "{trimmed_transcript_id}";'
+            gene_to_transcript_lines[gene_id].append([chrom, 'FLAIR', 'exon', tstarts[b]+1, tstarts[b]+bsizes[b], '.', strand, '.', attributes])
+    for gene_id in gene_to_transcript_lines:
+        attributes = f'gene_id "{gene_id}";'
+        chrom, strand = gene_to_chrom_strand[gene_id]
+        tlines = gene_to_transcript_lines[gene_id]
+        gene_line = [chrom, 'FLAIR', 'gene', min([x[3] for x in tlines]), max([x[4] for x in tlines]), '.', strand, '.', attributes]
+        outfile.write('\t'.join([str(x) for x in gene_line]) + '\n')
+        for line in tlines:
+            outfile.write('\t'.join([str(x) for x in line]) + '\n')
+    outfile.close()
+        
 
 if __name__ == "__main__":
     main()

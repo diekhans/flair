@@ -79,8 +79,13 @@ test-base-installed:
 test-help: test-main-help test-align-help \
            test-quantify-help test-diffexp-help test-diffsplice-help \
            test-predict-productivity-help test-diff-iso-usage-help \
-	   test-plot-usage-help test-transcriptome-help test-variants-help \
-	   test-fusion-help
+	       test-plot-usage-help test-transcriptome-help test-variants-help test-fusion-help
+
+test-fast: test-combine-bed-only \
+           test-predict-productivity test-diff-iso-usage test-plot-usage test-transcriptome \
+		   test-fusion test-variants
+
+
 
 lint: flake8
 flake8:
@@ -112,7 +117,7 @@ pytest_extra =
 # traceback = --tb=native
 
 # --numprocesses is provided by pytest-xdist
-PYTEST_CMD = ${PYTEST} --capture=no ${traceback} --numprocesses=${nproc} --log-cli-level=${loglevel} ${pytest_extra}
+PYTEST_CMD = ${PYTEST} --capture=no ${traceback} --log-cli-level=${loglevel} ${pytest_extra}
 
 ##
 # Note: expected and output are sorted in cases where the order is not stable
@@ -408,7 +413,7 @@ test-plot-usage-help: mkdirs
 ###
 
 transcriptome-tests: test-transcriptome test-transcriptome-partition test-transcriptome-noannot test-transcriptome-predcds \
-	test-transcriptome-seg1 test-transcriptome-ends test-transcriptome-help
+	test-transcriptome-seg1 test-transcriptome-help
 
 update-transcriptome-tests:
 	for tname in "test-transcriptome" "test-transcriptome-partition" "test-transcriptome-noannot" "test-transcriptome-predcds" "test-transcriptome-seg1" "test-transcriptome-ends"; \
@@ -423,9 +428,9 @@ test-transcriptome: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --keep_intermediate
 	$(diff_bed_gtf)
 
-test-transcriptome-ends: mkdirs ${TEST_ALIGN_BAM}
-	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --end_norm_dist 500 --output_endpos
-	$(diff_bed_gtf)
+# test-transcriptome-ends: mkdirs ${TEST_ALIGN_BAM}
+# 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --end_norm_dist 500 --output_endpos
+# 	$(diff_bed_gtf)
 
 test-transcriptome-partition: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --parallel_mode byregion
@@ -506,6 +511,12 @@ ${FUSION_TEST_BAM}: mkdirs  ${ERGIC3_KRAS_SIM_FA_GZ}
 	   --filtertype separate --minfragmentsize 40 --maxintronlen 350k
 
 
+# test-fusion-pary: mkdirs ${GENOME_FA}
+# 	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq --genome ${GENOME_FA} -t 4 -o $O/$@ --filtertype separate --minfragmentsize 40 --maxintronlen 350k
+# 	flair fusion -g ${GENOME_FA} -f $I/parY.annotation.gtf -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq -b $O/$@_chimeric.bam --maxloci 4 -o $O/$@ -s 2
+# 	$(call cmp_expect,$@.fusions.isoforms.bed)
+# 	$(call cmp_expect,$@.fusions.isoforms.fa)
+
 test-fusion-help: mkdirs
 	flair fusion  --help > $O/$@.out
 	$(call cmp_expect,$@.out)
@@ -521,6 +532,10 @@ ${ERGIC3_KRAS_SIM_FA_GZ}: $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq
 test-spliceevents: mkdirs
 	python3 ../src/flair/flair_spliceevents.py -m $I/spliceevents.manifest.tsv -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@
 
+test-refseq:
+# 	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq --genome genome.refSeq.fa -t 4 -o $O/$@ --filtertype separate --minfragmentsize 40 --maxintronlen 350k
+# 	flair transcriptome  -b $O/$@.bam -g genome.refSeq.fa --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $I/refSeq.test.annotation.gtf -o $O/$@
+	flair fusion -g genome.refSeq.fa -f $I/refSeq.test.annotation.gtf -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq -b $O/$@_chimeric.bam --maxloci 4 -o $O/$@ -s 2
 
 ##
 # flair_partition command

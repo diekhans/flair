@@ -272,7 +272,7 @@ def detectfusions():
     # only include junction if any where found
     junc_bed = args.output + '.syntheticAligned.SJ.bed'
     if os.path.getsize(junc_bed) > 0:
-        transcriptome_command.exptend(['--junction_bed', junc_bed])
+        transcriptome_command.extend(['--junction_bed', junc_bed])
 
     pipettor.run([faidxcommand])
     print('synth genome made')

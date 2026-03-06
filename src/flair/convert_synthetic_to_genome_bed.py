@@ -5,7 +5,7 @@ import sys, os
 def get_iso_to_reads(readmapfile):
     isoreadsup = {}
     for line in open(readmapfile):
-        line = line.split('\t')
+        line = line.rstrip().split('\t')
         reads = line[1].split(',')
         isoreadsup[line[0]] = set(reads)
     return isoreadsup
@@ -41,7 +41,10 @@ def get_gene_name_conv(annotgtf):
             line = line.split('\t', 3)
             if line[2] == 'gene':
                 geneid = line[-1].split('gene_id "')[1].split('"')[0]
-                genename = line[-1].split('gene_name "')[1].split('"')[0]
+                if 'gene_name' in line[-1]:
+                    genename = line[-1].split('gene_name "')[1].split('"')[0]
+                else:
+                    genename = geneid
                 genetoname[geneid.split('.')[0]] = genename
     return genetoname
 
@@ -199,7 +202,7 @@ def convert_synthetic_isos(annotgtf, isoformsbed, readmapfile, readsfile, breakp
     freadsfinal = set()
     out = open(outname, 'w')
     for line in open(isoformsbed):
-        line = line.split('\t')
+        line = line.rstrip().split('\t')
         iso, start, esizes, estarts = line[3], int(line[1]), [int(x) for x in line[10].rstrip(',').split(',')], [int(x) for x in line[11].rstrip(',').split(',')]
         fusionchr = line[0]
         synthinfo = [x.split('..') for x in synthchrtoinfo[fusionchr].split('--')]

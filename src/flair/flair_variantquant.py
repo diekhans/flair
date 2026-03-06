@@ -7,7 +7,8 @@ import math
 import flair.flair_variantmodels as fv
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
-compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
+compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N', 
+                'R':'Y', 'Y':'R','K':'M','M':'K','S':'S','W':'W', 'B':'V','V':'B','D':'H','H':'D'}
 
 
 def parse_var_args():
@@ -50,7 +51,7 @@ def _add_vcf_var(vcfvars, chrom, ref, alts, tpos2, name):
 
 def _get_correct_vcf_vars(vcfvars, refname, startpos, endpos):
     myvcfvars = {}
-    for roundedpos in range(math.floor(startpos / (10 ** 6)) * 10 ** 6, math.floor(endpos / (10 ** 6)) * 10 ** 6, 10**6):
+    for roundedpos in range(math.floor(startpos / (10 ** 6)) * 10 ** 6, math.ceil(endpos / (10 ** 6)) * 10 ** 6, 10**6):
         if (refname, roundedpos) in vcfvars:
             myvcfvars.update(vcfvars[(refname, roundedpos)])
     return myvcfvars
@@ -101,14 +102,35 @@ def _parse_single_bam_read(s, tempdir, vcfvars, sampleindex, tempfilename): ##ad
 def read_vars_to_genome_pos_counts(tempfilenames, tempdir, outprefix, mode, sampledata, threshold, output_all):
     samplenames = [x[0] for x in sampledata]
 
-    with open(f'{outprefix}.{mode}.var.counts.tsv', 'w') as out:
+    with open(f'{outprefix}.{mode}.var.counts.tsv', 'w') as out, open(f'{outprefix}.{mode}.vargroup.counts.tsv', 'w') as out2:
         out.write('\t'.join(['varpos', 'gene', 'transcript'] + samplenames) + '\n')
         vartocounts = {}
+        vargroup_to_data = {}
         for tf in tempfilenames:
             with open(tempdir + tf + '.txt', 'r') as mutstringfile:
                 for line in mutstringfile:
                     refname, readname, mutstring = line.rstrip('\n').split('\t')
                     allmuts = [x.split(',') for x in mutstring.split(';')]
+
+                    allgenes = []
+                    for x in allmuts:
+                        for i in range(1, len(x)-1):
+                            if x[i] != '':
+                                allgenes.append(x[i])
+                    
+                    if len(allgenes) > 0: ###only use reads that overlap annotated genes
+                        mygene = max(set(allgenes), key=allgenes.count)
+                        
+                        varpos = [x[0] for x in allmuts]
+                        varkey = ','.join(varpos)
+                        key = (refname, mygene, varkey)
+                        # print(allmuts)
+                        modinfo = tuple([int(x[-1]) for x in allmuts])
+
+                        if key not in vargroup_to_data:
+                            vargroup_to_data[key] = []
+                        vargroup_to_data[key].append(modinfo)
+
                     # each mut: position, varname (may be chrom:pos or gene), varstatus
                     sampleindex = int(readname.split('__')[0])
                     for m in allmuts:
@@ -124,6 +146,17 @@ def read_vars_to_genome_pos_counts(tempfilenames, tempdir, outprefix, mode, samp
                         if var not in vartocounts:
                             vartocounts[var] = [[0, 0] for x in range(len(samplenames))]  # [unmod counts, mod counts]
                         vartocounts[var][sampleindex][int(m[-1])] += 1
+
+        for chrom, gene, varpos in vargroup_to_data:
+            readinfo = vargroup_to_data[(chrom, gene, varpos)]
+            outmods = []
+            totpos = len(varpos.split(','))
+            for readmods in readinfo:
+                totmods = len([x for x in readmods if x == 1])
+                outmods.append(str(totmods))
+            outline = [chrom, gene, str(len(outmods)), str(totpos), ','.join(outmods), varpos]
+            out2.write('\t'.join(outline) + '\n')
+        
         for var in vartocounts:
             if any([x[0] + x[1] >= threshold for x in vartocounts[var]]) and (any([x[1] > 0 for x in vartocounts[var]]) or output_all):  # any modified reads in any sample
                 varcounts = [f'{x[0]};{x[1]}' for x in vartocounts[var]]
@@ -162,11 +195,12 @@ def quantvarpos():
             sampledata = [['sample', args.input_bam]]
     else:
         raise ValueError("please provide either manifest or bam and vcf")
-    isotoblocks, genetoiso, chrregiontogenes, genestoboundaries = fv.get_bedisoform_info(args.bedisoforms)
+    
     print('done loading annot')
 
     vcfvars = {}
     if args.manifest or args.vcf:
+        isotoblocks, genetoiso, chrregiontogenes, genestoboundaries = fv.get_bedisoform_info(args.bedisoforms)
         vartoalt = fv.combine_vcf_files([x[2] for x in sampledata if len(x) > 2])
         print('done combining vcfs')
         if args.mode == 'transcriptomic':

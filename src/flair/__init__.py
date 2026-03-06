@@ -3,7 +3,7 @@ from collections import namedtuple
 from types import NoneType
 from flair.pycbio import NoStackError
 
-VERSION = "3.0.0b1"
+VERSION = "3.0.0+dev"
 
 # Fixed minimum and maximums size for an intron sizes
 # This could be configurable at some point, especially

@@ -442,7 +442,7 @@ def main():
                 if not int(bedCols[1]) < start < int(bedCols[2]) and not int(bedCols[1]) < end < int(bedCols[2]):
                     bedCols[6],bedCols[7] = bedCols[1], bedCols[1]
                 else:
-                    if isoObj.strand == "+":
+                    if bedCols[5] == '+':
                         if int(bedCols[1]) < start < int(bedCols[2]): bedCols[6] = str(start)
                         if int(bedCols[1]) < end < int(bedCols[2]): bedCols[7] = str(end)
                     else:

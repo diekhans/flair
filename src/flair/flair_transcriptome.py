@@ -15,8 +15,8 @@ from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
 from flair.pycbio.hgdata.bed import Bed, BedReader
-from bed_to_sequence import bed_to_sequence
-from bed_to_gtf import bed_to_gtf
+from flair.bed_to_sequence import bed_to_sequence
+from flair.bed_to_gtf import bed_to_gtf
 
 # FIXME: temporarily disabled C901 (too complex) in .flake8
 # FIXME: add object for all file names
@@ -348,8 +348,13 @@ class BedRead:
         intron_blocks = []
         has_match = False
         for block in read.cigartuples:
-            if block[0] == 3 and has_match:  # intron
-                intron_blocks.append([ref_pos, ref_pos + block[1]])
+            if block[0] == 3:  # intron
+                if has_match:
+                    intron_blocks.append([ref_pos, ref_pos + block[1]])
+                #this fixes weird bug if there's an intron, then an insertion, then another intron???
+                elif len(intron_blocks) > 0:
+                    intron_blocks[-1][1] += block[1]
+                has_match = False
                 ref_pos += block[1]
             elif block[0] in {0, 7, 8, 2}:  # consumes reference
                 ref_pos += block[1]

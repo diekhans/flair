@@ -13,7 +13,7 @@ import multiprocessing.pool
 from flair import FlairInputDataError
 import flair.flair_transcriptome as ft
 from statistics import median
-from bed_to_sequence import bed_to_sequence
+from flair.bed_to_sequence import bed_to_sequence
 from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
@@ -908,7 +908,7 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                                             etype_to_sig[event.eventtype][all_these_juncs] = {}
                                         etype_to_sig[event.eventtype][all_these_juncs][s] = outline
                 if any([event.other[s] > 0 for s in allsamples]):
-                    outinfo = [f'other_{ename}', event.eventtype, event.gene, '', '', '']
+                    outinfo = [f'other_{ename}', event.eventtype, event.gene, '', '', '', '']
                     write_counts_psi(outinfo, event.other, event.totjunc, event.totoverlap, allsamples, outcounts, outpsijunc, outpsitot, event_support)
     if outoutlier != None:          
         sig_events.sort(reverse=True, key=lambda x:x[::-1])
@@ -1100,7 +1100,7 @@ def get_juncs_single_sample(listofargs):
     temp_prefix = temp_prefix + '_' + sample
 
 
-    # print(region.name, region.start, region.end, sample, 'getting annot match')
+    print(region.name, region.start, region.end, sample, 'getting annot match')
     bam_file = pysam.AlignmentFile(bamfile_name, 'rb')
     clipping_file = ft.generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
     bam_file.close()
@@ -1114,13 +1114,13 @@ def get_juncs_single_sample(listofargs):
         startindex, startdist, endindex, enddist = [int(x) for x in line[2:]]
         read_to_transcript[read] = (transcript, startindex, startdist, endindex, enddist)
     
-    # print(region.name, region.start, region.end, sample, 'correcting reads')
+    print(region.name, region.start, region.end, sample, 'correcting reads')
     
     sj_to_ends = {}
     bamfile = pysam.AlignmentFile(bamfile_name, 'rb')
     c, d, e, f = 0, 0, 0, 0
     for read in bamfile.fetch(region.name, region.start, region.end):
-        if not ft._should_process_read(read, region, False, False):
+        if not ft._should_process_read(read, region, args.keep_sup, False):
             continue
         if read.mapping_quality < args.quality:
             continue

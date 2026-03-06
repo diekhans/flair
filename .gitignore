@@ -11,3 +11,5 @@ test/output/
 *.bai
 *.gz
 /dist/
+.claude.bak/
+.claude/

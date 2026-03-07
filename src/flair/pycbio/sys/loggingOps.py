@@ -10,31 +10,32 @@ from logging.handlers import SysLogHandler
 def getFacilityNames():
     return tuple(SysLogHandler.facility_names.keys())
 
-
 def getLevelNames():
-    return tuple(sorted(logging._nameToLevel.keys()))
-
+    return tuple(logging.getLevelNamesMapping().keys())
 
 def parseFacility(facilityStr):
     """Convert case-insensitive facility string to a facility number."""
     facility = SysLogHandler.facility_names.get(facilityStr.lower())
     if facility is None:
-        raise ValueError("invalid syslog facility: \"{}\"".format(facilityStr))
+        raise ValueError(f"invalid syslog facility: '{facilityStr}")
     return facility
 
-
-def parseLevel(levelStr):
-    "convert a log level string to numeric value"
-    level = logging._nameToLevel.get(levelStr.upper())
+def parseLevel(levelSpec):
+    "Convert a log level string, integer, to string integer to numeric value"
+    try:
+        return int(levelSpec)
+    except ValueError:
+        pass
+    level = logging.getLevelNamesMapping().get(levelSpec.upper())
     if level is None:
-        raise ValueError("invalid logging level: \"{}\"".format(levelStr))
+        raise ValueError(f"invalid logging level: `{levelSpec.upper()}', expected one of: "
+                         f"{', '.join(logging.getLevelNamesMapping())}")
     return level
 
 
 def _convertFacility(facility):
     """convert facility from string to number, if not already a number"""
     return facility if isinstance(facility, int) else parseFacility(facility)
-
 
 def _convertLevel(level):
     """convert level from string to number, if not already a number"""
@@ -48,10 +49,14 @@ def _loggerBySpec(logger):
     return logger
 
 def setupLogger(logger, handler, level=logging.INFO, *, formatter=None):
-    """add handle to logger and set logger level to the minimum of it's current
+    """Add handler to logger and set logger level to the minimum of it's current
     and the handler level.  Logger maybe a logger, logger name, or None for
-    default logger, returns the logger.
+    default logger. A symbolic, integer, or integer string value maybe specific for level.
 
+    Additional level names maybe added with logging.addLevelName(level, levelName)
+    before calling this function.  All of the names should be uppercase.
+
+    Returns the logger.
     """
     logger = _loggerBySpec(logger)
     if level is not None:
@@ -95,7 +100,7 @@ def setupSyslogLogger(logger, facility, level, *, prog=None, address=None, forma
     handler = SysLogHandler(address=address, facility=facility)
     # add a formatter that includes the program name as the syslog ident
     if prog is not None:
-        handler.setFormatter(logging.Formatter(fmt="{} %(message)s".format(prog)))
+        handler.setFormatter(logging.Formatter(fmt=f"{prog} %(message)s"))
     handler.setLevel(level)
     return setupLogger(logger, handler, formatter=formatter)
 
@@ -121,28 +126,36 @@ def addCmdOptions(parser, *, defaultLevel=logging.INFO, inclSyslog=False):
         parseFacility(facilityStr)
         return facilityStr
 
-    def validateLevel(levelStr):
-        parseLevel(levelStr)
-        return levelStr
+    def validateLevel(levelSpec):
+        parseLevel(levelSpec)
+        return levelSpec
     if inclSyslog:
         parser.add_argument("--syslog-facility", type=validateFacility,
                             help="Set syslog facility to case-insensitive symbolic value, if not specified, logging is not done to stderr, "
-                            " one of {}".format(", ".join(getFacilityNames())))
+                            " one of: " + ", ".join(getFacilityNames()))
     parser.add_argument("--log-stderr", action="store_true",
                         help="also log to stderr, even when logging to syslog")
     parser.add_argument("--log-level", type=validateLevel, default=defaultLevel,
-                        help="Set level to case-insensitive symbolic value, one of {}".format(", ".join(getLevelNames())))
+                        help="Set level to integer or case-insensitive symbolic value, one of: " + ", ".join(getLevelNames()))
     parser.add_argument("--log-conf",
                         help="Python logging configuration file, see logging.config.fileConfig()")
     parser.add_argument("--log-debug", action="store_true",
                         help="short-cut that that sets --log-stderr and --log-level=DEBUG")
 
+def haveCmdOptions(parser):
+    """Check if an logging options have been added to this parser."""
+    return "--log-debug" in parser._option_string_actions
+
 def setupFromCmd(args, *, logger=None, prog=None):
     """configure logging based on command options. Prog is used it to set the
-    syslog program name. If prog is not specified, it is obtained from sys.arg.
-    Logger maybe a logger, logger name, or None for default logger, returns the logger.
+    syslog program name. If prog is not specified, it is obtained from
+    sys.arg.  Logger maybe a logger, logger name, or None for default logger,
+    returns the logger.
 
     Will log to stderr if not other login option is specified.
+
+    Additional level names maybe added with logging.addLevelName(level, levelName)
+    before calling this function.  All of the names should be uppercase.
 
     N.B: logging must be initialized after daemonization
     """

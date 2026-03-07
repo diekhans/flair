@@ -16,6 +16,8 @@ FIXME_NOT_WORKING =\
 
 
 FLAKE8_TEST = \
-	test_correct_lib.py
+	test_correct_lib.py \
+	test_gtf_io.py \
+	bin/gtf_io_perf
 
 FLAKE8_CHECK = ${FLAKE8_SRC:%=src/flair/%} ${FLAKE8_TEST:%=test/%}

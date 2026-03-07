@@ -17,7 +17,7 @@ FILTERS = (FILTER_KEEPSUP, FILTER_REMOVESUP, FILTER_SEPARATE)
 
 def parse_args():
     desc = "FLAIR align outputs an unfiltered bam file and a filtered bed file for use in the downstream pipeline"
-    parser = cli.ArgumentParserExtras(description=desc)
+    parser = argparse.ArgumentParser(description=desc)
 
     reads = parser.add_argument_group('required named arguments')
     reads.add_argument('-r', '--reads', nargs='+', type=str, required=True,
@@ -55,7 +55,7 @@ def parse_args():
                         help='number of bases that are at least 75%% As required to call read as internal priming')
     parser.add_argument('--remove_singleexon', default=False, action='store_true',
                         help='specify if want to remove unspliced reads')
-    args = parser.parse_args()
+    args = cli.parseArgsWithLogging(parser)
 
     reads = []
     for rfiles in args.reads:
@@ -94,13 +94,13 @@ def inferMM2JuncStrand(read):
             juncDir = "ambig"
         elif ("T" * 10 in s1 and left[0] == 4 and left[1] >= 10):
             # maps to positive strand but has a rev comp polyA
-            juncDir = '-' 
+            juncDir = '-'
         elif ("A" * 10 in s2 and right[0] == 4 and right[1] >= 10):
             # maps to positive strand but has a sense polyA
             juncDir = "+"
         else:
             juncDir = "ambig"
-        
+
     else: # only executes for processing ts tag strand
         if orientation == 0 and juncDir == "+":
             juncDir = "+"

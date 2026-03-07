@@ -151,6 +151,11 @@ BASIC_DIFFSPLICE_BED = $I/test-collapse-annot.isoforms.bed
 BASIC_ISOFORMS_FA = $E/test-collapse-annot.isoforms.fa
 BASIC_ISOFORMS_BED = $E/test-collapse-annot.isoforms.bed
 
+# copy so *.fai does end up in expect directory
+BASIC_ISOFORMS_OUT_FA = $O/test-collapse-annot.isoforms.fa
+BASIC_ISOFORMS_OUT_FAI = $O/test-collapse-annot.isoforms.fa.fai
+
+
 ##
 # Files generate by tests that are used by other tests.
 # These enfoce files being create in the right order.
@@ -302,9 +307,9 @@ test-combine-bed-fa-map: mkdirs
 ###
 quantify-tests: test-quantify test-quantify-nobam test-quantify-help
 
-test-quantify: mkdirs
+test-quantify: mkdirs ${BASIC_ISOFORMS_OUT_FAI}
 	rm -rf $O/$@.tmp
-	flair quantify -r $(BASIC_READS_MANIFEST) -i $(BASIC_ISOFORMS_FA) --isoform_bed $(BASIC_ISOFORMS_BED) --generate_map --temp_dir $O/$@.tmp --tpm --sample_id_only -o $O/$@ --output_bam
+	flair quantify -r $(BASIC_READS_MANIFEST) -i $(BASIC_ISOFORMS_OUT_FA) --isoform_bed $(BASIC_ISOFORMS_BED) --generate_map --temp_dir $O/$@.tmp --tpm --sample_id_only -o $O/$@ --output_bam
 	samtools view $O/$@.A1.A.flair.aligned.bam | cut -f 1,3 > $O/$@.A1.A.flair.aligned.readtotranscript.txt
 	$(call cmp_expect,$@.counts.tsv)
 	$(call cmp_expect_sort,$@.A1.A.flair.aligned.readtotranscript.txt)
@@ -313,9 +318,9 @@ test-quantify: mkdirs
 ${TEST_QUANTIFY_B1_BAM}: test-quantify
 
 # without map or bam outputs
-test-quantify-nobam : mkdirs
+test-quantify-nobam : mkdirs ${BASIC_ISOFORMS_OUT_FAI}
 	rm -rf $O/$@.tmp
-	flair quantify -r $(BASIC_READS_MANIFEST) -i $(BASIC_ISOFORMS_FA) --isoform_bed $(BASIC_ISOFORMS_BED) --temp_dir $O/$@.tmp --tpm --sample_id_only -o $O/$@
+	flair quantify -r $(BASIC_READS_MANIFEST) -i $(BASIC_ISOFORMS_OUT_FA) --isoform_bed $(BASIC_ISOFORMS_BED) --temp_dir $O/$@.tmp --tpm --sample_id_only -o $O/$@
 	$(call cmp_expect,$@.counts.tsv)
 	$(call cmp_expect,$@.tpm.tsv)
 
@@ -465,13 +470,12 @@ variants-tests:  test-variants test-variants-help
 have_longshot := $(shell which longshot >/dev/null 2>&1 && echo yes || echo no)
 
 ifeq (${have_longshot},yes)
-test-variants: mkdirs ${GENOME_FA} ${TEST_QUANTIFY_B1_BAM}
+test-variants: mkdirs ${GENOME_FA} ${TEST_QUANTIFY_B1_BAM} ${BASIC_ISOFORMS_OUT_FAI}
 	minimap2 -ax map-ont --secondary=no ${GENOME_FA} input/basic.reads.4.fa | samtools view -hb - | samtools sort - > $O/$@.genomealigned.bam
 	samtools index $O/$@.genomealigned.bam
-	samtools faidx $(BASIC_ISOFORMS_FA)
 	longshot --force_overwrite --bam $O/$@.genomealigned.bam --ref ${GENOME_FA} --out $O/$@.genomealigned.longshot.vcf --min_cov 3 --min_alt_count 3 --strand_bias_pvalue_cutoff 0.000001
 	echo 's1    ${TEST_QUANTIFY_B1_BAM}   $O/$@.genomealigned.longshot.vcf' > $O/$@.varmanifest.tsv
-	flair variants -m $O/$@.varmanifest.tsv -i $(BASIC_ISOFORMS_FA) -b $(BASIC_ISOFORMS_BED) -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@
+	flair variants -m $O/$@.varmanifest.tsv -i $(BASIC_ISOFORMS_OUT_FA) -b $(BASIC_ISOFORMS_BED) -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@
 	$(call cmp_expect,$@.isoswithvars.counts.tsv)
 	$(call cmp_expect,$@.aaseq.counts.tsv)
 else
@@ -585,6 +589,13 @@ ${GENOME_FA}:
 	zcat chr12.fa.gz chr17.fa.gz chr20.fa.gz > $@
 	rm chr12.fa.gz chr17.fa.gz chr20.fa.gz
 	samtools faidx $@
+
+${BASIC_ISOFORMS_OUT_FA}: ${BASIC_ISOFORMS_FA}
+	mkdir -p $(dir $@)
+	cp -f $< $@
+
+${BASIC_ISOFORMS_OUT_FAI}: ${BASIC_ISOFORMS_OUT_FA}
+	samtools faidx --output $@ $<
 
 mkdirs:
 	@mkdir -p $O

@@ -21,14 +21,14 @@ def parse_args():
 
     desc = '''Run a FLAIR module.  This program is the main entry point
     for running FLAIR analysis.'''
-    parser = cli.ArgumentParserExtras(description=desc)
+    parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('--version', action='version', version='FLAIR ' + VERSION,
                         help="print FLAIR version")
     parser.add_argument("module", choices=VALID_MODULES, type=str.lower,
                         help="name of module to run")
     parser.add_argument('module_args', nargs=argparse.REMAINDER,
                         help="arguments to module")
-    return parser.parse_opts_args()
+    return cli.parseOptsArgsWithLogging(parser)
 
 def move_opts_to_argv(opts, module_argv):
     """move options back to module_argv for modules that have been converted

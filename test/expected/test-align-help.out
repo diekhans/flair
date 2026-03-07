@@ -52,9 +52,9 @@ options:
   --remove_singleexon   specify if want to remove unspliced reads
   --log-stderr          also log to stderr, even when logging to syslog
   --log-level LOG_LEVEL
-                        Set level to case-insensitive symbolic value, one of
-                        CRITICAL, DEBUG, ERROR, FATAL, INFO, NOTSET, WARN,
-                        WARNING
+                        Set level to integer or case-insensitive symbolic
+                        value, one of: CRITICAL, FATAL, ERROR, WARN, WARNING,
+                        INFO, DEBUG, NOTSET
   --log-conf LOG_CONF   Python logging configuration file, see
                         logging.config.fileConfig()
   --log-debug           short-cut that that sets --log-stderr and --log-

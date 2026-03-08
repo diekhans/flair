@@ -5,12 +5,12 @@ FLAKE8_SRC = \
 	flair_cli.py \
 	flair_partition.py \
         flair_transcriptome.py \
-        flair_variantmodels.py \
 	intron_support.py \
 	filter_transcriptome_align.py \
 	gtf_io.py
 
 FIXME_NOT_WORKING =\
+        flair_variantmodels.py \
 	flair_spliceevents.py \
         flair_variantquant.py
 

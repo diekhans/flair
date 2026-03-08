@@ -9,7 +9,12 @@ from flair.pycbio.sys import fileOps
 from flair import SeqRange
 
 StrNone = Optional[str]
+StrSetNone = Optional[set[str]]
 Attrs = dict[str, str]
+
+# Match both quoted values and unquoted values
+# Pattern: key "quoted value" OR key unquoted_value
+ATTR_RE = re.compile(r'(\w+)\s+(?:"([^"]*)"|([^;\s]+))')
 
 class GtfParseError(Exception):
     """Error parsing GTF record."""
@@ -21,7 +26,8 @@ class GtfIdError(KeyError):
 
 class GtfRecord:
     """Base GTF record.  Text columns of '.' are set to None.  Repeated attributes
-    are converted to list of values
+    are converted to list of values.  If attrs is specified, ownership is passed
+    to this object.
     """
     def __init__(self, chrom: str, source: str, feature: str,
                  start: int, end: int, score: str, strand: str, frame: str, *,
@@ -38,7 +44,7 @@ class GtfRecord:
         self.frame = frame
 
         # Make a copy of attrs and add optional parameters
-        self.attrs = attrs.copy() if attrs is not None else {}
+        self.attrs = attrs if attrs is not None else {}
         if gene_id is not None:
             self.attrs['gene_id'] = gene_id
         if gene_name is not None:
@@ -189,10 +195,8 @@ class GtfData:
 def _parse_attribute_match(match: re.Match) -> tuple[str, str | int | float]:
     """Parse a single attribute match into key-value pair, converting
     unquote values to int or float if possible"""
-    key = match.group(1)
-    quoted_value = match.group(2)
-    unquoted_value = match.group(3)
 
+    key, quoted_value, unquoted_value = match.groups()
     if quoted_value is not None:
         return key, quoted_value
     else:
@@ -207,26 +211,17 @@ def _parse_attribute_match(match: re.Match) -> tuple[str, str | int | float]:
             # If conversion fails, keep as string
             return key, unquoted_value
 
-def _parse_attribute(attr_str: str, attrs) -> None:
-    key, value = _parse_attribute_match(attr_str)
-    if key in attrs:
+def _parse_attributes(attrs_str: str) -> Attrs:
+    """Parse GTF attributes string into dict."""
+    attrs = {}
+    for attr_str in ATTR_RE.finditer(attrs_str):
+        key, value = _parse_attribute_match(attr_str)
         if key in attrs:
             if not isinstance(attrs[key], list):
                 attrs[key] = [attrs[key]]  # convert to list
             attrs[key].append(value)
-    else:
-        attrs[key] = value
-
-def _parse_attributes(attrs_str: str) -> Attrs:
-    """Parse GTF attributes string into dict."""
-    attrs = {}
-
-    # Match both quoted values and unquoted values
-    # Pattern: key "quoted value" OR key unquoted_value
-    pattern = r'(\w+)\s+(?:"([^"]*)"|([^;\s]+))'
-
-    for attr_str in re.finditer(pattern, attrs_str):
-        _parse_attribute(attr_str, attrs)
+        else:
+            attrs[key] = value
 
     return attrs
 
@@ -285,11 +280,18 @@ def _gtf_record_class(feature):
     else:
         return GtfRecord
 
-def _parse_gtf_line(line: str) -> GtfRecord:
+def _parse_gtf_line(line: str, feature_filter: StrSetNone) -> GtfRecord:
     """Parse a single GTF line into a GtfRecord or derived class."""
+    # skip empty and comments
+    line = line.rstrip()
+    if (len(line) == 0) or line.startswith('#'):
+        return None
+
     fields = line.split('\t')
     if len(fields) != 9:
         raise GtfParseError(f"Expected 9 fields, got {len(fields)}")
+    if (feature_filter is not None) and (fields[2] not in feature_filter):
+        return None
 
     start, end = _parse_coordinates(fields[3], fields[4])
     attrs = _parse_attributes(fields[8])
@@ -340,17 +342,15 @@ def _format_gtf_columns(chrom, source, feature, start, end, score, strand, frame
               _format_attrs(attrs)]
     return '\t'.join(fields)
 
-def gtf_record_parser(gtf_file: str):
+def gtf_record_parser(gtf_file: str, *, feature_filter: StrSetNone = None):
     """Parse GTF file, yields GtfRecord GtfTranscript, GtfExon, or GtfCDS objects.
     File maybe compressed"""
     with fileOps.opengz(gtf_file) as fh:
         for line_num, line in enumerate(fh, start=1):
             try:
-                line = line.rstrip()
-                if not ((len(line) == 0) or line.startswith('#')):
-                    rec = _parse_gtf_line(line)
-                    if rec is not None:
-                        yield rec
+                rec = _parse_gtf_line(line, feature_filter)
+                if rec is not None:
+                    yield rec
             except GtfParseError as exc:
                 raise GtfParseError(f"{gtf_file}:{line_num}: invalid GTF record") from exc
 

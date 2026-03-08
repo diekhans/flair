@@ -2,11 +2,13 @@
 """
 program to test gtf_io module performance
 """
+import sys
 import argparse
 import time
 import resource
 import re
 import cProfile
+import logging
 from contextlib import contextmanager
 from flair.pycbio.sys import cli
 from flair.gtf_io import gtf_record_parser, GtfExon
@@ -21,6 +23,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument("--profile",
                         help="run cProfile and save output for later reporting to this file")
+    parser.add_argument("--feature", action="append", default=None, dest="features",
+                        help="only keep these features; maybe repeated")
     parser.add_argument("which", choices=WHICH_ARGS,
                         help="which parsing algorithm")
     parser.add_argument("gtf_file",
@@ -31,18 +35,21 @@ def _get_times():
     r = resource.getrusage(resource.RUSAGE_SELF)
     return time.perf_counter(), r.ru_utime, r.ru_stime
 
-def _time_report(label, t0, u0, s0):
+def _pr_time(fh, what, time, total):
+    print(what, f"{time * 1000:.2f}", f"{100 * time / total:.1f}%")
+
+def _time_report(label, t0, u0, s0, fh=sys.stdout):
     t1, u1, s1 = _get_times()
     wall = t1 - t0
     cpu_usr = u1 - u0
     cpu_sys = s1 - s0
     cpu = cpu_usr + cpu_sys
     wait = max(wall - cpu, 0)
-    print(label)
-    print(f"  wall     : {wall * 1000:.2f} ms")
-    print(f"  cpu user : {cpu_usr * 1000:.2f} ms")
-    print(f"  cpu sys  : {cpu_sys * 1000:.2f} ms")
-    print(f"  wait     : {wait * 1000:.2f} ms  ({100 * wait / wall:.1f}% of wall)")
+    print(label, "ms", "per_total", sep='\t', file=fh)
+    _pr_time(fh, "wall", wall, wall)
+    _pr_time(fh, "cpu_user", cpu_usr, wall)
+    _pr_time(fh, "cpu_sys", cpu_sys, wall)
+    _pr_time(fh, "wait", wait, wall)
 
 @contextmanager
 def timer(label="code"):
@@ -71,31 +78,35 @@ def oldparse_trial(gtf_file):
                     txn = re.search('transcript_id "([^\"]+)"', l).group(1)
                 except Exception as ex:
                     raise Exception("** ERROR expect transcript_id in GTF format, cannot read %s" % gtf_file) from ex
-
                 key = (chrom, txn, strand)
-
                 if key not in exons:
                     exons[key] = list()
                 exons[key].append(c1)
                 exons[key].append(c2)
+    logging.info("exon ends: %d", len(exons))
 
-def newparse_trial(gtf_file):
+def newparse_trial(opts, gtf_file):
+    feature_filter = None if opts.features is None else frozenset(opts.features)
     exons = dict()
     chromosomes = set()
-    for rec in gtf_record_parser(gtf_file):
+    rec_cnt = 0
+    for rec in gtf_record_parser(gtf_file, feature_filter=feature_filter):
+        rec_cnt += 1
         if isinstance(rec, GtfExon):
             key = (rec.chrom, rec.transcript_id, rec.strand)
             if key not in exons:
                 chromosomes.add(rec.chrom)
                 exons[key] = list()
-                exons[key].append(rec.start)
-                exons[key].append(rec.end)
+            exons[key].append(rec.start)
+            exons[key].append(rec.end)
 
-def trail(which, gtf_file):
+    logging.info("exon ends: %d of %d", len(exons), rec_cnt)
+
+def trail(opts, which, gtf_file):
     if which == WHICH_OLDPARSE:
         oldparse_trial(gtf_file)
     elif which == WHICH_NEWPARSE:
-        newparse_trial(gtf_file)
+        newparse_trial(opts, gtf_file)
 
 def gtf_io_perf(opts, which, gtf_file):
     if opts.profile is not None:
@@ -103,7 +114,7 @@ def gtf_io_perf(opts, which, gtf_file):
         profiler.enable()
 
     with timer(which):
-        trail(which, gtf_file)
+        trail(opts, which, gtf_file)
 
     if opts.profile is not None:
         profiler.disable()

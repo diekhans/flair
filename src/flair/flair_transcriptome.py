@@ -11,7 +11,7 @@ import multiprocessing as mp
 from collections import Counter, namedtuple
 from flair import SeqRange, PosRange
 from flair.flair_align import intron_chain_to_exon_starts
-from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon
+from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon, GtfAttrsSet
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
 from flair.pycbio.hgdata.bed import Bed, BedReader
@@ -266,7 +266,7 @@ def setup_junction_corrector(gtf, junction_tab, junction_bed, junction_support, 
     if junction_tab is not None:
         intron_support.load_star(junction_tab, chrom_filter=chrom_filter)
     if gtf is not None:
-        gtf_data = gtf_data_parser(gtf)
+        gtf_data = gtf_data_parser(gtf, attrs=GtfAttrsSet.FLAIR)
         intron_support.load_gtf(gtf_data)  # FIXME: no chrom_filter=chrom_filter
     return NewJunctionCorrectorWrapper(JunctionCorrector(intron_support, ss_window, junction_support))
 
@@ -2140,7 +2140,7 @@ def flair_transcriptome():
     annot_gtf_data = None
     if args.annot_gtf:
         logging.info('Extracting annotation from GTF')
-        annot_gtf_data = gtf_data_parser(args.annot_gtf)
+        annot_gtf_data = gtf_data_parser(args.annot_gtf, attrs=GtfAttrsSet.FLAIR)
         regions_to_annot_data = get_annot_info(annot_gtf_data, all_regions)
 
     logging.info('splitting by chunk')

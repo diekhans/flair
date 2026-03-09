@@ -3,7 +3,9 @@ tests of gff_io module
 """
 import pytest
 from io import StringIO
-from flair.gtf_io import gtf_data_parser, GtfAttrsSet, GtfIdError, gtf_write_row, FLAIR_ATTRS
+from flair.gtf_io import (gtf_data_parser, gtf_record_parser, GtfAttrsSet, GtfExon, GtfTranscript, GtfCDS,
+                           GtfIdError, gtf_write_row, FLAIR_ATTRS,
+                           EXON_FEATURES, TRANSCRIPT_FEATURES, TRANSCRIPT_EXON_FEATURES)
 from flair import SeqRange
 
 GTF_FILE = "input/basic.annotation.gtf"
@@ -21,6 +23,40 @@ def test_gtf_data_parser_all():
         assert key in transcript.attrs
     assert 'level' in transcript.attrs
     assert 'transcript_support_level' in transcript.attrs
+
+def test_gtf_record_parser_include_exons():
+    recs = list(gtf_record_parser(GTF_FILE, include_features=EXON_FEATURES))
+    assert len(recs) > 0
+    assert all(isinstance(r, GtfExon) for r in recs)
+
+def test_gtf_record_parser_include_transcripts():
+    recs = list(gtf_record_parser(GTF_FILE, include_features=TRANSCRIPT_FEATURES))
+    assert len(recs) > 0
+    assert all(isinstance(r, GtfTranscript) for r in recs)
+
+def test_gtf_record_parser_no_filter():
+    recs = list(gtf_record_parser(GTF_FILE))
+    types = {type(r) for r in recs}
+    assert GtfExon in types
+    assert GtfTranscript in types
+
+def test_gtf_data_parser_include_features():
+    gtf_data = gtf_data_parser(GTF_FILE, include_features=TRANSCRIPT_EXON_FEATURES)
+    transcript = gtf_data.fetch_transcript(KRAS_TRANS_ID)
+    assert len(transcript.exons) == 3
+    assert len(transcript.cds_recs) == 0
+
+def test_gtf_data_exons():
+    gtf_data = gtf_data_parser(GTF_FILE)
+    transcript = gtf_data.fetch_transcript(KRAS_TRANS_ID)
+    assert len(transcript.exons) == 3
+    assert all(isinstance(e, GtfExon) for e in transcript.exons)
+
+def test_gtf_data_cds():
+    gtf_data = gtf_data_parser(GTF_FILE)
+    transcript = gtf_data.fetch_transcript(KRAS_TRANS_ID)
+    assert len(transcript.cds_recs) == 2
+    assert all(isinstance(c, GtfCDS) for c in transcript.cds_recs)
 
 def test_parse(basic_gtf_data):
     trans_ids = sorted(basic_gtf_data.iter_transcript_ids())

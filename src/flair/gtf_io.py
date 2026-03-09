@@ -13,6 +13,24 @@ StrNone = Optional[str]
 StrSetNone = Optional[set[str]]
 Attrs = dict[str, str]
 
+
+##
+# Feature names. Use sets for filters
+##
+TRANSCRIPT_FEATURES = frozenset([
+    'transcript', 'mRNA', 'lncRNA', 'miRNA',
+    'ncRNA', 'rRNA', 'tRNA', 'snRNA', 'snoRNA',
+    'processed_transcript', 'pseudogenic_transcript'
+])
+
+EXON_FEATURE = "exon"
+EXON_FEATURES = frozenset([EXON_FEATURE])
+
+CDS_FEATURE = "CDS"
+CDS_FEATURES = frozenset([CDS_FEATURE])
+
+TRANSCRIPT_EXON_FEATURES = TRANSCRIPT_FEATURES | EXON_FEATURES
+
 FLAIR_ATTRS = ('gene_id', 'gene_name', 'transcript_id')
 
 _ALL_ATTR_RE = re.compile(r'(\w+)\s+(?:"([^"]*)"|([^;\s]+))')
@@ -304,23 +322,17 @@ def _parse_frame(frame_str: str) -> str:
     return frame
 
 
-TRANSCRIPT_FEATURES = frozenset([
-    'transcript', 'mRNA', 'lncRNA', 'miRNA',
-    'ncRNA', 'rRNA', 'tRNA', 'snRNA', 'snoRNA',
-    'processed_transcript', 'pseudogenic_transcript'
-])
-
 def _gtf_record_class(feature):
     if feature in TRANSCRIPT_FEATURES:
         return GtfTranscript
-    elif feature == "exon":
+    elif feature == EXON_FEATURE:
         return GtfExon
-    elif feature == "CDS":
+    elif feature == CDS_FEATURE:
         return GtfCDS
     else:
         return GtfRecord
 
-def _parse_gtf_line(line: str, feature_filter: StrSetNone, attrs_parser=_parse_flair_attributes) -> GtfRecord:
+def _parse_gtf_line(line: str, include_features: StrSetNone, attrs_parser=_parse_flair_attributes) -> GtfRecord:
     """Parse a single GTF line into a GtfRecord or derived class."""
     # skip empty and comments
     line = line.rstrip()
@@ -330,7 +342,7 @@ def _parse_gtf_line(line: str, feature_filter: StrSetNone, attrs_parser=_parse_f
     fields = line.split('\t')
     if len(fields) != 9:
         raise GtfParseError(f"Expected 9 fields, got {len(fields)}")
-    if (feature_filter is not None) and (fields[2] not in feature_filter):
+    if (include_features is not None) and (fields[2] not in include_features):
         return None
 
     start, end = _parse_coordinates(fields[3], fields[4])
@@ -382,24 +394,24 @@ def _format_gtf_columns(chrom, source, feature, start, end, score, strand, frame
               _format_attrs(attrs)]
     return '\t'.join(fields)
 
-def _gtf_record_iter(gtf_file: str, feature_filter, attrs_parser):
+def _gtf_record_iter(gtf_file: str, include_features, attrs_parser):
     """Internal: iterate parsed GTF records using an attribute parser callable."""
     with fileOps.opengz(gtf_file) as fh:
         for line_num, line in enumerate(fh, start=1):
             try:
-                rec = _parse_gtf_line(line, feature_filter, attrs_parser)
+                rec = _parse_gtf_line(line, include_features, attrs_parser)
                 if rec is not None:
                     yield rec
             except GtfParseError as exc:
                 raise GtfParseError(f"{gtf_file}:{line_num}: invalid GTF record") from exc
 
-def gtf_record_parser(gtf_file: str, *, feature_filter: StrSetNone = None, attrs: GtfAttrsSet = GtfAttrsSet.FLAIR):
+def gtf_record_parser(gtf_file: str, *, include_features: StrSetNone = None, attrs: GtfAttrsSet = GtfAttrsSet.FLAIR):
     """Parse GTF file, yields GtfRecord GtfTranscript, GtfExon, or GtfCDS objects.
     File maybe compressed"""
-    yield from _gtf_record_iter(gtf_file, feature_filter, _ATTRS_SET_TO_PARSER[attrs])
+    yield from _gtf_record_iter(gtf_file, include_features, _ATTRS_SET_TO_PARSER[attrs])
 
-def _load_gtf_record(gtf_file, gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs, attrs_parser):
-    for rec in _gtf_record_iter(gtf_file, None, attrs_parser):
+def _load_gtf_records(gtf_file, gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs, include_features, attrs_parser):
+    for rec in _gtf_record_iter(gtf_file, include_features, attrs_parser):
         if isinstance(rec, GtfTranscript):
             gtf_data.add_transcript(rec)
         elif isinstance(rec, GtfExon):
@@ -423,14 +435,14 @@ def _resolve_gtf_records(gtf_data, transcript_id_to_exons, transcript_id_to_cds_
                       transcript_id_to_exons.get(transcript.transcript_id),
                       transcript_id_to_cds_recs.get(transcript.transcript_id))
 
-def gtf_data_parser(gtf_file, *, attrs: GtfAttrsSet = GtfAttrsSet.FLAIR):
+def gtf_data_parser(gtf_file, *, include_features: StrSetNone = None, attrs: GtfAttrsSet = GtfAttrsSet.FLAIR):
     """parse a GTF file into a GtfData object.  Use attrs=GtfAttrsSet.FLAIR
     to only parse the four attributes used by flair for faster loading."""
     # must save up exons and CDS, as sorting of GTF files is not required
     gtf_data = GtfData()
     transcript_id_to_exons = defaultdict(list)
     transcript_id_to_cds_recs = defaultdict(list)
-    _load_gtf_record(gtf_file, gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs, _ATTRS_SET_TO_PARSER[attrs])
+    _load_gtf_records(gtf_file, gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs, include_features, _ATTRS_SET_TO_PARSER[attrs])
     _resolve_gtf_records(gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs)
     return gtf_data
 

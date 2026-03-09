@@ -4,8 +4,8 @@ tests of gff_io module
 import pytest
 from io import StringIO
 from flair.gtf_io import (gtf_data_parser, gtf_record_parser, GtfAttrsSet, GtfExon, GtfTranscript, GtfCDS,
-                           GtfIdError, gtf_write_row, FLAIR_ATTRS,
-                           EXON_FEATURES, TRANSCRIPT_FEATURES, TRANSCRIPT_EXON_FEATURES)
+                          GtfIdError, gtf_write_row, FLAIR_ATTRS,
+                          EXON_FEATURES, TRANSCRIPT_FEATURES, TRANSCRIPT_EXON_FEATURES)
 from flair import SeqRange
 
 GTF_FILE = "input/basic.annotation.gtf"

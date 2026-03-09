@@ -255,9 +255,20 @@ class NewJunctionCorrectorWrapper:
         bed_read.juncs = BedRead._compute_juncs_from_blocks(corrected_bed)
         return bed_read
 
+def read_correct_to_bedread(junction_corrector, read):
+    # FIXME: remove unnecessary initial build of BedRead and make junctions from
+    # read, correct, and then make bed
+    bedread = BedRead.from_read(read)
+    corrected_bed = junction_corrector.correct_read_bed(bedread.bed)
+    if corrected_bed is None:
+        return None
+    # Update bed_read with corrected bed
+    bedread.bed = corrected_bed
+    bedread.juncs = BedRead._compute_juncs_from_blocks(corrected_bed)
+    return bedread
 
-def setup_junction_corrector(gtf, junction_tab, junction_bed, junction_support, ss_window,
-                             *, chrom_filter=None):
+def setup_junction_corrector(gtf, junction_tab, junction_bed, junction_support, ss_window, *,
+                             chrom_filter=None):
     """Create corrector with junction support evidence."""
     # FIXME: currently reloads for every partition.
     intron_support = IntronSupport()
@@ -268,7 +279,7 @@ def setup_junction_corrector(gtf, junction_tab, junction_bed, junction_support, 
     if gtf is not None:
         gtf_data = gtf_data_parser(gtf, attrs=GtfAttrsSet.FLAIR)
         intron_support.load_gtf(gtf_data)  # FIXME: no chrom_filter=chrom_filter
-    return NewJunctionCorrectorWrapper(JunctionCorrector(intron_support, ss_window, junction_support))
+    return JunctionCorrector(intron_support, ss_window, junction_support)
 
 def get_rgb(name, strand, junclen):
     # FIXME: document, this will not work for RefSeq
@@ -1143,18 +1154,6 @@ def _should_process_read(read, region, keep_sup, allow_secondary):
     return True
 
 
-def _convert_read_to_bedread(read):
-    """Convert a pysam read to BedRead, inferring strand for spliced reads"""
-    bed_read = BedRead.from_read(read)
-    # if len(bed_read.juncs) > 0:
-    #     # FIXME: carry this through for later assignment.
-    #     # FIXME: how do we know if it is a stranded experiment?
-    #     new_strand = inferMM2JuncStrand(read)
-    #     if new_strand != 'ambig':
-    #         bed_read.bed.strand = new_strand
-    return bed_read
-
-
 def _add_corrected_read_to_groups(corrected_read, sj_to_ends):
     """Add a corrected read to the junction-to-ends mapping"""
     junc_key = tuple(sorted(corrected_read.juncs))
@@ -1227,9 +1226,9 @@ def filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_anno
                                                         read.query_name, read.mapping_quality,
                                                         strand, juncs)
             else:
-                corrected_read = junction_corrector.correct_read(_convert_read_to_bedread(read))
+                corrected_read = read_correct_to_bedread(junction_corrector, read)
         else:
-            corrected_read = junction_corrector.correct_read(_convert_read_to_bedread(read))
+            corrected_read = read_correct_to_bedread(junction_corrector, read)
         if corrected_read:
             _add_corrected_read_to_groups(corrected_read, sj_to_ends)
 

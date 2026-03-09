@@ -278,6 +278,7 @@ def _parse_flair_attributes(attrs_str: str) -> Attrs:
             attrs[key] = value
     return attrs
 
+
 _ATTRS_SET_TO_PARSER = {
     GtfAttrsSet.ALL: _parse_all_attributes,
     GtfAttrsSet.FLAIR: _parse_flair_attributes,

@@ -13,12 +13,17 @@ StrNone = Optional[str]
 StrSetNone = Optional[set[str]]
 Attrs = dict[str, str]
 
+FLAIR_ATTRS = ('gene_id', 'gene_name', 'transcript_id')
+
+_ALL_ATTR_RE = re.compile(r'(\w+)\s+(?:"([^"]*)"|([^;\s]+))')
+
 class GtfAttrsSet(Enum):
     """Selects which GTF attributes to parse.
-    ALL parses every attribute; FLAIR parses only gene_id, gene_name,
-    transcript_id, and exon_number, which is faster for flair's use."""
-    ALL = re.compile(r'(\w+)\s+(?:"([^"]*)"|([^;\s]+))')
-    FLAIR = re.compile(r'(gene_id|gene_name|transcript_id|exon_number)\s+(?:"([^"]*)"|([^;\s]+))')
+    ALL parses every attribute; FLAIR parses only the attributes in FLAIR_ATTRS,
+    which is faster for flair's use."""
+    ALL = 'all'
+    FLAIR = 'flair'
+
 
 class GtfParseError(Exception):
     """Error parsing GTF record."""
@@ -215,7 +220,7 @@ def _parse_attribute_match(match: re.Match) -> tuple[str, str | int | float]:
             # If conversion fails, keep as string
             return key, unquoted_value
 
-def _parse_attributes(attrs_str: str, attr_re=GtfAttrsSet.FLAIR.value) -> Attrs:
+def _parse_all_attributes(attrs_str: str, attr_re=_ALL_ATTR_RE) -> Attrs:
     """Parse GTF attributes string into dict."""
     attrs = {}
     for attr_str in attr_re.finditer(attrs_str):
@@ -228,6 +233,37 @@ def _parse_attributes(attrs_str: str, attr_re=GtfAttrsSet.FLAIR.value) -> Attrs:
             attrs[key] = value
 
     return attrs
+
+def _find_flair_attr_value(attrs_str: str, key: str):
+    """Find the quoted value of a single GTF attribute by key using str.find().
+    Returns the value as a str or None if not found."""
+    alen = len(attrs_str)
+    idx = attrs_str.find(key)
+    if idx < 0:
+        return None
+    # skip whitespace to opening quote
+    val_idx = idx + len(key)
+    while val_idx < alen and attrs_str[val_idx] == ' ':
+        val_idx += 1
+    if val_idx >= alen or attrs_str[val_idx] != '"':
+        return None
+    val_start = val_idx + 1
+    val_end = attrs_str.find('"', val_start)
+    return attrs_str[val_start:val_end] if val_end >= 0 else None
+
+def _parse_flair_attributes(attrs_str: str) -> Attrs:
+    """Fast-path parser for FLAIR_ATTRS using str.find() instead of regex."""
+    attrs = {}
+    for key in FLAIR_ATTRS:
+        value = _find_flair_attr_value(attrs_str, key)
+        if value is not None:
+            attrs[key] = value
+    return attrs
+
+_ATTRS_SET_TO_PARSER = {
+    GtfAttrsSet.ALL: _parse_all_attributes,
+    GtfAttrsSet.FLAIR: _parse_flair_attributes,
+}
 
 
 def _parse_coordinates(start_str: str, end_str: str) -> tuple[int, int]:
@@ -284,7 +320,7 @@ def _gtf_record_class(feature):
     else:
         return GtfRecord
 
-def _parse_gtf_line(line: str, feature_filter: StrSetNone, attr_re=GtfAttrsSet.FLAIR.value) -> GtfRecord:
+def _parse_gtf_line(line: str, feature_filter: StrSetNone, attrs_parser=_parse_flair_attributes) -> GtfRecord:
     """Parse a single GTF line into a GtfRecord or derived class."""
     # skip empty and comments
     line = line.rstrip()
@@ -298,7 +334,7 @@ def _parse_gtf_line(line: str, feature_filter: StrSetNone, attr_re=GtfAttrsSet.F
         return None
 
     start, end = _parse_coordinates(fields[3], fields[4])
-    attrs = _parse_attributes(fields[8], attr_re)
+    attrs = attrs_parser(fields[8])
 
     cls = _gtf_record_class(fields[2])
     return cls(chrom=fields[0],
@@ -346,12 +382,12 @@ def _format_gtf_columns(chrom, source, feature, start, end, score, strand, frame
               _format_attrs(attrs)]
     return '\t'.join(fields)
 
-def _gtf_record_iter(gtf_file: str, feature_filter, attr_re):
-    """Internal: iterate parsed GTF records using a pre-compiled attribute regex."""
+def _gtf_record_iter(gtf_file: str, feature_filter, attrs_parser):
+    """Internal: iterate parsed GTF records using an attribute parser callable."""
     with fileOps.opengz(gtf_file) as fh:
         for line_num, line in enumerate(fh, start=1):
             try:
-                rec = _parse_gtf_line(line, feature_filter, attr_re)
+                rec = _parse_gtf_line(line, feature_filter, attrs_parser)
                 if rec is not None:
                     yield rec
             except GtfParseError as exc:
@@ -360,10 +396,10 @@ def _gtf_record_iter(gtf_file: str, feature_filter, attr_re):
 def gtf_record_parser(gtf_file: str, *, feature_filter: StrSetNone = None, attrs: GtfAttrsSet = GtfAttrsSet.FLAIR):
     """Parse GTF file, yields GtfRecord GtfTranscript, GtfExon, or GtfCDS objects.
     File maybe compressed"""
-    yield from _gtf_record_iter(gtf_file, feature_filter, attrs.value)
+    yield from _gtf_record_iter(gtf_file, feature_filter, _ATTRS_SET_TO_PARSER[attrs])
 
-def _load_gtf_record(gtf_file, gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs, attr_re):
-    for rec in _gtf_record_iter(gtf_file, None, attr_re):
+def _load_gtf_record(gtf_file, gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs, attrs_parser):
+    for rec in _gtf_record_iter(gtf_file, None, attrs_parser):
         if isinstance(rec, GtfTranscript):
             gtf_data.add_transcript(rec)
         elif isinstance(rec, GtfExon):
@@ -394,7 +430,7 @@ def gtf_data_parser(gtf_file, *, attrs: GtfAttrsSet = GtfAttrsSet.FLAIR):
     gtf_data = GtfData()
     transcript_id_to_exons = defaultdict(list)
     transcript_id_to_cds_recs = defaultdict(list)
-    _load_gtf_record(gtf_file, gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs, attrs.value)
+    _load_gtf_record(gtf_file, gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs, _ATTRS_SET_TO_PARSER[attrs])
     _resolve_gtf_records(gtf_data, transcript_id_to_exons, transcript_id_to_cds_recs)
     return gtf_data
 

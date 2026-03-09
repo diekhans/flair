@@ -11,7 +11,7 @@ import cProfile
 import logging
 from contextlib import contextmanager
 from flair.pycbio.sys import cli
-from flair.gtf_io import gtf_record_parser, GtfExon
+from flair.gtf_io import GtfAttrsSet, gtf_record_parser, GtfExon
 
 WHICH_OLDPARSE = "oldparse"
 WHICH_NEWPARSE = "newparse"
@@ -25,6 +25,8 @@ def parse_args():
                         help="run cProfile and save output for later reporting to this file")
     parser.add_argument("--feature", action="append", default=None, dest="features",
                         help="only keep these features; maybe repeated")
+    parser.add_argument("--attrs", type=GtfAttrsSet, choices=GtfAttrsSet, default=GtfAttrsSet.FLAIR,
+                        help="which set of attributes to parse")
     parser.add_argument("which", choices=WHICH_ARGS,
                         help="which parsing algorithm")
     parser.add_argument("gtf_file",
@@ -83,14 +85,15 @@ def oldparse_trial(gtf_file):
                     exons[key] = list()
                 exons[key].append(c1)
                 exons[key].append(c2)
-    logging.info("exon ends: %d", len(exons))
+    logging.debug("exon ends: %d", len(exons))
 
 def newparse_trial(opts, gtf_file):
     feature_filter = None if opts.features is None else frozenset(opts.features)
     exons = dict()
     chromosomes = set()
     rec_cnt = 0
-    for rec in gtf_record_parser(gtf_file, feature_filter=feature_filter):
+    for rec in gtf_record_parser(gtf_file, feature_filter=feature_filter,
+                                 attrs=opts.attrs):
         rec_cnt += 1
         if isinstance(rec, GtfExon):
             key = (rec.chrom, rec.transcript_id, rec.strand)
@@ -100,7 +103,7 @@ def newparse_trial(opts, gtf_file):
             exons[key].append(rec.start)
             exons[key].append(rec.end)
 
-    logging.info("exon ends: %d of %d", len(exons), rec_cnt)
+    logging.debug("exon ends: %d of %d", len(exons), rec_cnt)
 
 def trail(opts, which, gtf_file):
     if which == WHICH_OLDPARSE:

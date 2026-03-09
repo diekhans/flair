@@ -509,7 +509,7 @@ test-fusion-pary: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_BAM
 	$(call cmp_expect_sort,$@.fusions.isoforms.bed)
 	$(call cmp_expect_sort,$@.fusions.isoforms.fa)
 
-${FUSION_TEST_BAM}: mkdirs  ${ERGIC3_KRAS_SIM_FA_GZ}
+${FUSION_TEST_BAM}: mkdirs  ${ERGIC3_KRAS_SIM_FA_GZ} ${GENOME_FA}
 	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq \
 	   --genome ${GENOME_FA} -t 4 -o ${FUSION_TEST_SHARED_OUT} \
 	   --filtertype separate --minfragmentsize 40 --maxintronlen 350k

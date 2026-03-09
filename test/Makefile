@@ -514,13 +514,6 @@ ${FUSION_TEST_BAM}: mkdirs  ${ERGIC3_KRAS_SIM_FA_GZ} ${GENOME_FA}
 	   --genome ${GENOME_FA} -t 4 -o ${FUSION_TEST_SHARED_OUT} \
 	   --filtertype separate --minfragmentsize 40 --maxintronlen 350k
 
-
-# test-fusion-pary: mkdirs ${GENOME_FA}
-# 	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq --genome ${GENOME_FA} -t 4 -o $O/$@ --filtertype separate --minfragmentsize 40 --maxintronlen 350k
-# 	flair fusion -g ${GENOME_FA} -f $I/parY.annotation.gtf -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq -b $O/$@_chimeric.bam --maxloci 4 -o $O/$@ -s 2
-# 	$(call cmp_expect,$@.fusions.isoforms.bed)
-# 	$(call cmp_expect,$@.fusions.isoforms.fa)
-
 test-fusion-help: mkdirs
 	flair fusion  --help > $O/$@.out
 	$(call cmp_expect,$@.out)
@@ -536,9 +529,7 @@ ${ERGIC3_KRAS_SIM_FA_GZ}: $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq
 test-spliceevents: mkdirs
 	python3 ../src/flair/flair_spliceevents.py -m $I/spliceevents.manifest.tsv -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@
 
-test-refseq:
-# 	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq --genome genome.refSeq.fa -t 4 -o $O/$@ --filtertype separate --minfragmentsize 40 --maxintronlen 350k
-# 	flair transcriptome  -b $O/$@.bam -g genome.refSeq.fa --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $I/refSeq.test.annotation.gtf -o $O/$@
+test-refseq: mkdirs
 	flair fusion -g genome.refSeq.fa -f $I/refSeq.test.annotation.gtf -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq -b $O/$@_chimeric.bam --maxloci 4 -o $O/$@ -s 2
 
 ##

@@ -1,13 +1,8 @@
 usage: align [-h] -r READS [READS ...] [-g GENOME] [--mm_index MM_INDEX]
              [-o OUTPUT] [-t THREADS] [--junction_bed JUNCTION_BED] [--nvrna]
-             [--quality QUALITY] [--minfragmentsize MINFRAGMENTSIZE]
-             [--maxintronlen MAXINTRONLEN]
-             [--filtertype {keepsup,removesup,separate}] [--quiet]
-             [--remove_internal_priming] [-f GTF]
-             [--intprimingthreshold INTPRIMINGTHRESHOLD]
-             [--intprimingfracAs INTPRIMINGFRACAS] [--remove_singleexon]
-             [--log-stderr] [--log-level LOG_LEVEL] [--log-conf LOG_CONF]
-             [--log-debug]
+             [--minfragmentsize MINFRAGMENTSIZE] [--maxintronlen MAXINTRONLEN]
+             [--quiet] [--log-stderr] [--log-level LOG_LEVEL]
+             [--log-conf LOG_CONF] [--log-debug]
 
 FLAIR align outputs an unfiltered bam file and a filtered bed file for use in
 the downstream pipeline
@@ -23,38 +18,19 @@ options:
                         guided minimap2 genomic alignment
   --nvrna               specify this flag to use native-RNA specific alignment
                         parameters for minimap2
-  --quality QUALITY     minimum MAPQ of read alignment to the genome (0)
   --minfragmentsize MINFRAGMENTSIZE
                         minimum size of alignment kept, used in minimap -s.
                         More important when doing downstream fusion detection
   --maxintronlen MAXINTRONLEN
                         maximum intron length in genomic alignment. Longer can
                         help recover more novel isoforms with long introns
-  --filtertype {keepsup,removesup,separate}
-                        method of filtering chimeric alignments (potential
-                        fusion reads). Options: removesup (default), separate
-                        (required for downstream work with fusions), keepsup
-                        (keeps supplementary alignments for isoform detection,
-                        does not allow gene fusion detection)
   --quiet               Suppress minimap progress statements from being
                         printed
-  --remove_internal_priming
-                        specify if want to remove reads with internal priming
-  -f GTF, --gtf GTF     reference annotation, only used if
-                        --remove_internal_priming is specified, recommended if
-                        so
-  --intprimingthreshold INTPRIMINGTHRESHOLD
-                        number of bases that are at leas 75% As required to
-                        call read as internal priming
-  --intprimingfracAs INTPRIMINGFRACAS
-                        number of bases that are at least 75% As required to
-                        call read as internal priming
-  --remove_singleexon   specify if want to remove unspliced reads
   --log-stderr          also log to stderr, even when logging to syslog
   --log-level LOG_LEVEL
-                        Set level to case-insensitive symbolic value, one of
-                        CRITICAL, DEBUG, ERROR, FATAL, INFO, NOTSET, WARN,
-                        WARNING
+                        Set level to integer or case-insensitive symbolic
+                        value, one of: CRITICAL, FATAL, ERROR, WARN, WARNING,
+                        INFO, DEBUG, NOTSET
   --log-conf LOG_CONF   Python logging configuration file, see
                         logging.config.fileConfig()
   --log-debug           short-cut that that sets --log-stderr and --log-

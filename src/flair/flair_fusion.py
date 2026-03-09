@@ -271,7 +271,7 @@ def detectfusions():
                              '--output', args.output + '.syntheticAligned.flair',]
     # only include junction if any where found
     junc_bed = args.output + '.syntheticAligned.SJ.bed'
-    if os.path.getsize(junc_bed) > 0:
+    if os.path.exists(junc_bed) and (os.path.getsize(junc_bed) > 0):
         transcriptome_command.extend(['--junction_bed', junc_bed])
 
     pipettor.run([faidxcommand])

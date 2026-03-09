@@ -154,8 +154,7 @@ class IntronSupport:
         if cnt == 0:
             self._no_introns_loaded_error(bed_file, "BED", chrom_filter)
         return cnt
-    
-    
+
     def _load_annot_bed(self, bed, chrom_filter):
         if (chrom_filter is not None) and (bed.chrom != chrom_filter):
             return False
@@ -165,8 +164,8 @@ class IntronSupport:
             raise FlairInputDataError(f"annot BED must have 12 columns, found {bed.numStdCols}")
         if bed.strand not in ('+', '-'):
             raise FlairInputDataError(f"Invalid strand `{bed.strand}' in BED must be `+' or `-'")
-        for i in range(len(bed.blocks)-1):
-            self.add_support(bed.chrom, bed.blocks[i].end, bed.blocks[i+1].start, bed.strand, None)
+        for i in range(len(bed.blocks) - 1):
+            self.add_support(bed.chrom, bed.blocks[i].end, bed.blocks[i + 1].start, bed.strand, None)
         return True
 
     def load_annot_bed(self, bed_file, *, chrom_filter=None):

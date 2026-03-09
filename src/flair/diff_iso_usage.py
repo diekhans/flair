@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import sys
 import csv
 import os
@@ -12,7 +13,7 @@ def parse_args():
     desc = """Calculates the usage of each isoform as a fraction of the total expression
     of the gene and compares this between samples."""
 
-    parser = cli.ArgumentParserExtras(description=desc)
+    parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('counts_matrix_tsv',
                         help='counts matrix TSV from flair-quantify')
     parser.add_argument('colname1',
@@ -22,7 +23,7 @@ def parse_args():
     parser.add_argument('outfile',
                         help='output filename containing the p-value associated with differential '
                         'isoform usage for each isoform')
-    return parser.parse_args()
+    return cli.parseArgsWithLogging(parser)
 
 def split_iso_gene(iso_gene):
     if '_chr' in iso_gene:
@@ -96,9 +97,9 @@ def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):
                     if s1PSI != 'NA' and s2PSI != 'NA':
                         deltaPSI = round(s2PSI-s1PSI, 3)
                     psi_data = [s1PSI, s2PSI, deltaPSI]
-                    
+
                     generes.append([gene, iso, sps.fisher_exact(ctable)[1]] + ctable[0] + ctable[1] + psi_data)
-            
+
 
             # if not generes:
             #     writer.writerow([gene, iso, 'NA'] + ctable[0] + ctable[1] + psi_data)

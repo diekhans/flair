@@ -3,8 +3,60 @@ tests of gff_io module
 """
 import pytest
 from io import StringIO
-from flair.gtf_io import gtf_data_parser, GtfIdError, gtf_write_row
+from flair.gtf_io import (gtf_data_parser, gtf_record_parser, GtfAttrsSet, GtfExon, GtfTranscript, GtfCDS,
+                          GtfIdError, gtf_write_row, FLAIR_ATTRS,
+                          EXON_FEATURES, TRANSCRIPT_FEATURES, TRANSCRIPT_EXON_FEATURES)
 from flair import SeqRange
+
+GTF_FILE = "input/basic.annotation.gtf"
+KRAS_TRANS_ID = 'ENST00000556131.1'
+
+def test_gtf_data_parser_flair():
+    gtf_data = gtf_data_parser(GTF_FILE, attrs=GtfAttrsSet.FLAIR)
+    transcript = gtf_data.fetch_transcript(KRAS_TRANS_ID)
+    assert set(transcript.attrs.keys()) == set(FLAIR_ATTRS)
+
+def test_gtf_data_parser_all():
+    gtf_data = gtf_data_parser(GTF_FILE, attrs=GtfAttrsSet.ALL)
+    transcript = gtf_data.fetch_transcript(KRAS_TRANS_ID)
+    for key in FLAIR_ATTRS:
+        assert key in transcript.attrs
+    assert 'level' in transcript.attrs
+    assert 'transcript_support_level' in transcript.attrs
+
+def test_gtf_record_parser_include_exons():
+    recs = list(gtf_record_parser(GTF_FILE, include_features=EXON_FEATURES))
+    assert len(recs) > 0
+    assert all(isinstance(r, GtfExon) for r in recs)
+
+def test_gtf_record_parser_include_transcripts():
+    recs = list(gtf_record_parser(GTF_FILE, include_features=TRANSCRIPT_FEATURES))
+    assert len(recs) > 0
+    assert all(isinstance(r, GtfTranscript) for r in recs)
+
+def test_gtf_record_parser_no_filter():
+    recs = list(gtf_record_parser(GTF_FILE))
+    types = {type(r) for r in recs}
+    assert GtfExon in types
+    assert GtfTranscript in types
+
+def test_gtf_data_parser_include_features():
+    gtf_data = gtf_data_parser(GTF_FILE, include_features=TRANSCRIPT_EXON_FEATURES)
+    transcript = gtf_data.fetch_transcript(KRAS_TRANS_ID)
+    assert len(transcript.exons) == 3
+    assert len(transcript.cds_recs) == 0
+
+def test_gtf_data_exons():
+    gtf_data = gtf_data_parser(GTF_FILE)
+    transcript = gtf_data.fetch_transcript(KRAS_TRANS_ID)
+    assert len(transcript.exons) == 3
+    assert all(isinstance(e, GtfExon) for e in transcript.exons)
+
+def test_gtf_data_cds():
+    gtf_data = gtf_data_parser(GTF_FILE)
+    transcript = gtf_data.fetch_transcript(KRAS_TRANS_ID)
+    assert len(transcript.cds_recs) == 2
+    assert all(isinstance(c, GtfCDS) for c in transcript.cds_recs)
 
 def test_parse(basic_gtf_data):
     trans_ids = sorted(basic_gtf_data.iter_transcript_ids())
@@ -12,8 +64,18 @@ def test_parse(basic_gtf_data):
     assert trans_ids[0:10] == ['ENST00000225792.10', 'ENST00000256078.9', 'ENST00000279052.10', 'ENST00000311936.8', 'ENST00000348547.6',
                                'ENST00000357394.8', 'ENST00000411577.5', 'ENST00000413587.5', 'ENST00000416206.5', 'ENST00000438317.5']
 
-def test_trans_lookup(basic_gtf_data):
+def test_trans_lookup_flair(basic_gtf_data):
     transcript = basic_gtf_data.get_transcript('ENST00000556131.1')
+    assert transcript is not None
+    assert transcript.transcript_id == 'ENST00000556131.1'
+    assert transcript.gene_id == "ENSG00000133703.12"
+    assert transcript.gene_name == "KRAS"
+    assert transcript.coords == SeqRange(name='chr12', start=25233818, end=25250929, strand='-')
+    assert transcript.coords_no_strand == SeqRange(name='chr12', start=25233818, end=25250929)
+    assert set(transcript.attrs.keys()) == set(FLAIR_ATTRS)
+
+def test_trans_lookup_all(basic_gtf_data_all):
+    transcript = basic_gtf_data_all.get_transcript('ENST00000556131.1')
     assert transcript is not None
     assert transcript.transcript_id == 'ENST00000556131.1'
     assert transcript.gene_id == "ENSG00000133703.12"
@@ -55,8 +117,8 @@ def test_iter_overlap_other_strand(basic_gtf_data):
                         for t in basic_gtf_data.iter_overlap_transcripts_sr(seq_range)])
     assert trans_ids == []
 
-def test_rec_str(basic_gtf_data):
-    trans_str = str(basic_gtf_data.fetch_transcript("ENST00000256078.9"))
+def test_rec_str(basic_gtf_data_all):
+    trans_str = str(basic_gtf_data_all.fetch_transcript("ENST00000256078.9"))
     assert trans_str == ('chr12\tHAVANA\ttranscript\t25205246\t25250929\t.\t-\t.\t'
                          'gene_id "ENSG00000133703.12"; transcript_id "ENST00000256078.9"; gene_type "protein_coding"; '
                          'gene_name "KRAS"; transcript_type "protein_coding"; transcript_name "KRAS-201"; level 2; '

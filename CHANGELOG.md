@@ -4,6 +4,7 @@
 * Incompatibles
   * Removed flair correct and collapse modules, the functionality is replaced
     by flair transcriptome.
+  * Remove flair align options that are no longer need without flair correct.
     
 
 ## [v3.0.0b1] 2025-11-27 (beta 1)

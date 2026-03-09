@@ -209,25 +209,20 @@ test-main-help: mkdirs
 # FLAIR ALIGN
 ###
 
-align-tests: test-align test-align-intpriming test-align-seg1 test-align-separate test-align-help
+align-tests: test-align test-align-seg1 test-align-help
 
+# just checks bed4 to make sure we are getting alignments
 test-align : mkdirs ${GENOME_FA}
 	flair align -r $(BASIC_READS_FA) --genome ${GENOME_FA} -t 4 -o $O/$@
+	bedtools bamtobed -i $O/$@.bam > $O/$@.bed
 	$(call cmp_expect,$@.bed)
 
 ${TEST_ALIGN_BAM}: test-align
 ${SEG1_ALIGN_BAM}: test-align-seg1
 
-test-align-separate : mkdirs ${GENOME_FA}
-	flair align -r $(BASIC_READS_FA) --genome ${GENOME_FA} -t 4 -o $O/$@ --filtertype separate
-	$(call cmp_expect,$@.bed)
-
-test-align-intpriming : mkdirs ${GENOME_FA}
-	flair align -r $(BASIC_READS_FA) --genome ${GENOME_FA} -t 4 -o $O/$@ --remove_internal_priming -f $(BASIC_ANNOTATION) --remove_singleexon
-	$(call cmp_expect,$@.bed)
-
 test-align-seg1 : mkdirs ${GENOME_FA}
 	flair align -r ${SEG1_READS_FQ} --genome ${GENOME_FA} -t 4 -o $O/$@
+	bedtools bamtobed -i $O/$@.bam > $O/$@.bed
 	$(call cmp_expect,$@.bed)
 
 test-align-help: mkdirs

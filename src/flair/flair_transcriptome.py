@@ -581,7 +581,7 @@ def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, cl
         count_cmd += ['--fusion_breakpoints', args.fusion_breakpoints]
     if args.allow_paralogs:
         count_cmd += ['--allow_paralogs']
-    print(' '.join([str(x) for x in count_cmd]))
+    # print(' '.join([str(x) for x in count_cmd]))
     return count_cmd
 
 
@@ -1322,7 +1322,9 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, chrom, sj_to_ends, firstp
                 firstpass_unfiltered[read_end_info.read_id] = iso_bedread
                 iso_fh.write('\t'.join(iso_bedread.get_bed_line()) + '\n')
                 if juncs == ():
-                    firstpass_SE.add((iso_bedread.exons[0][0], iso_bedread.exons[0][1], iso_bedread.bed.name))
+                    my_exon = iso_bedread.exons[0].copy()
+                    my_exon.name = iso_bedread.bed.name
+                    firstpass_SE.add(my_exon)
                 else:
                     for j in juncs:
                         if j not in firstpass_junc_to_name:
@@ -1336,22 +1338,22 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, chrom, sj_to_ends, firstp
 ####
 # single-exon transcript processing
 ####
-def filter_single_exon_iso(args, grouped_iso, curr_group, firstpass_unfiltered):
+def filter_single_exon_iso(args, single_exon, curr_group, firstpass_unfiltered):
     # FIXME: make object: grouped_iso (32186479, 32188247, '99bfe5c4-0f3a-4f4d-b5c9-bac459c45e5c')
     # FIXME: curr_group is a list of these
-    iso_bedread = firstpass_unfiltered[grouped_iso[2]]
+    iso_bedread = firstpass_unfiltered[single_exon.name]
     # FIXME: what does 'comp_' mean?
     expression_comp_with_superset = []
     is_contained = False
-    for comp_iso in curr_group:
-        if comp_iso != grouped_iso:
-            if ((comp_iso[0] - SINGLE_EXON_OVERLAP_MARGIN) <= grouped_iso[0] and
-                    grouped_iso[1] <= (comp_iso[1] + SINGLE_EXON_OVERLAP_MARGIN)):
-                if len(comp_iso) == 2 or args.filter == 'nosubset':  # is exon from spliced transcript
+    for exon in curr_group:
+        if exon != single_exon:
+            if ((exon.start - SINGLE_EXON_OVERLAP_MARGIN) <= single_exon.start and
+                    single_exon.end <= (exon.end + SINGLE_EXON_OVERLAP_MARGIN)):
+                if exon.name != None or args.filter == 'nosubset':  # is exon from spliced transcript
                     is_contained = True
                     break  # filter out
                 else:  # is other single exon - check relative expression
-                    other_score = firstpass_unfiltered[comp_iso[2]].bed.score
+                    other_score = firstpass_unfiltered[exon.name].bed.score
                     score = iso_bedread.bed.score
                     if score >= args.sjc_support and other_score * SINGLE_EXON_EXPRESSION_RATIO < score:
                         expression_comp_with_superset.append(True)
@@ -1364,10 +1366,13 @@ def filter_single_exon_iso(args, grouped_iso, curr_group, firstpass_unfiltered):
 
 
 def filter_single_exon_group(args, curr_group, firstpass_unfiltered, firstpass):
-    for grouped_iso in curr_group:
-        if len(grouped_iso) == 3:  # is single exon with name
-            if filter_single_exon_iso(args, grouped_iso, curr_group, firstpass_unfiltered):
-                firstpass[grouped_iso[2]] = firstpass_unfiltered[grouped_iso[2]]
+    #grouping single exon isoforms with exons from spliced isoform, using spliced isoform exons to filter single exon isoform
+    for exon in curr_group:
+        if exon.name != None:  # is single exon with name
+            print(exon)
+            print(exon.name in firstpass_unfiltered)
+            if filter_single_exon_iso(args, exon,  curr_group, firstpass_unfiltered):
+                firstpass[exon.name] = firstpass_unfiltered[exon.name]
     return firstpass
 
 
@@ -1376,17 +1381,16 @@ def filter_all_single_exon(args, firstpass_SE, firstpass_unfiltered, firstpass):
     last_end = 0
     curr_group = []
 
-    for iso_info in firstpass_SE:
-        start, end = iso_info[0], iso_info[1]
-        if start < last_end:
-            curr_group.append(iso_info)
+    for exon in firstpass_SE:
+        if exon.start < last_end:
+            curr_group.append(exon)
         else:
             if len(curr_group) > 0:
                 firstpass = filter_single_exon_group(args, curr_group, firstpass_unfiltered, firstpass)
-            curr_group = [iso_info]
+            curr_group = [exon]
             # group_start = start
-        if end > last_end:
-            last_end = end
+        if exon.end > last_end:
+            last_end = exon.end
     if len(curr_group) > 0:
         firstpass = filter_single_exon_group(args, curr_group, firstpass_unfiltered, firstpass)
 

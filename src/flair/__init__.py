@@ -45,9 +45,9 @@ class PosRange(namedtuple("PosRange",
                           ("start", "end"))):
     """0-base, 1/2 open range of sequence positions"""
 
-    def __new__(cls, start, end):
+    def __new__(cls, start, end, name=None):
         assert start <= end  # allows zero length
-        return super(PosRange, cls).__new__(cls, start, end)
+        return super(PosRange, cls).__new__(cls, start, end, name)
 
     def __len__(self):
         return self.end - self.start

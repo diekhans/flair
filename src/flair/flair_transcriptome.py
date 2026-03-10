@@ -157,9 +157,15 @@ class Junc(PosRange):
     """Stores start, end, just adds a type name to SeqRange for clearer code and error messages"""
     pass
 
-class Exon(PosRange):
-    """Stores start, end, just adds a type name to SeqRange for clearer code and error messages"""
-    pass
+class Exon(namedtuple("Exon",("start", "end", "name"))):
+    def __new__(cls, start, end, name=None):
+        assert start <= end
+        if name == None:
+            name = ''
+        return super(Exon, cls).__new__(cls, start, end, name)
+    
+    def __len__(self):
+        return self.end - self.start
 
 def exons_to_juncs(exons):
     """Convert exon ranges to junctions"""
@@ -1313,7 +1319,7 @@ def filter_single_exon_iso(args, single_exon, curr_group, firstpass_unfiltered):
         if exon != single_exon:
             if ((exon.start - SINGLE_EXON_OVERLAP_MARGIN) <= single_exon.start and
                     single_exon.end <= (exon.end + SINGLE_EXON_OVERLAP_MARGIN)):
-                if exon.name != None or args.filter == 'nosubset':  # is exon from spliced transcript
+                if exon.name != '' or args.filter == 'nosubset':  # is exon from spliced transcript
                     is_contained = True
                     break  # filter out
                 else:  # is other single exon - check relative expression
@@ -1329,7 +1335,7 @@ def filter_single_exon_iso(args, single_exon, curr_group, firstpass_unfiltered):
 def filter_single_exon_group(args, curr_group, firstpass_unfiltered, firstpass):
     #grouping single exon isoforms with exons from spliced isoform, using spliced isoform exons to filter single exon isoform
     for exon in curr_group:
-        if exon.name != None:  # is single exon with name
+        if exon.name != '':  # is single exon with name
             if filter_single_exon_iso(args, exon,  curr_group, firstpass_unfiltered):
                 firstpass[exon.name] = firstpass_unfiltered[exon.name]
     return firstpass

@@ -16,11 +16,8 @@
 # Hot Imports & Global Variable
 ########################################################################
 
-
-import sys
 import pipettor
 import os
-from pycbio.sys import fileOps
 from flair import FlairInputDataError
 ########################################################################
 # CommandLine
@@ -102,7 +99,7 @@ class Isoform(object):
 
 def getStarts(gtf):
     # starts = list()
-    starts = fileOps.tmpFileGet('predictProd_starts', suffix='.bed')
+    starts = 'predictProd_starts_intermediate.bed'
     scount = 0
     out = open(starts, 'w')
     tnamenmdexcep = set()

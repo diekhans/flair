@@ -8,9 +8,9 @@ import logging
 import shutil
 from flair.count_sam_transcripts import parse_args, check_args, get_annot_info, IsoAln, get_best_transcript, write_output
 from flair.remove_internal_priming import removeinternalpriming
-from flair.pycbio.sys import fileOps
 import multiprocessing as mp
 from flair import FlairInputDataError
+from flair.flair_transcriptome import make_temp_dir
 
 
 def generate_alignment_obj_for_read(args, genome, transcript_to_exons, transcriptaligns, header):
@@ -128,7 +128,8 @@ def bam_to_read_aligns(samfile, chunksize, temp_dir, transcript_to_exons, transc
 def process_alignments(args, transcript_to_exons, transcript_to_bp_ss_index, transcript_to_genomic_ends, transcript_to_unique_bounds):
     logging.info('processing alignments')
     samfile = pysam.AlignmentFile(args.sam, 'r')
-    temp_dir = fileOps.tmpDirGet()
+    prefix = args.output.split('.txt')[0]
+    temp_dir = make_temp_dir(prefix)
     headeroutfilename = temp_dir + 'headerfile.bam'
     hfile = pysam.AlignmentFile(headeroutfilename, 'wb', template=samfile)
     hfile.close()

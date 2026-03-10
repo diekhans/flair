@@ -11,7 +11,7 @@ import multiprocessing as mp
 from collections import Counter, namedtuple
 from flair import SeqRange, PosRange
 from flair.flair_align import intron_chain_to_exon_starts
-from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon, GtfAttrsSet
+from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
 from flair.pycbio.hgdata.bed import Bed, BedReader
@@ -558,6 +558,7 @@ def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, cl
     # count sam transcripts ; the dash at the end means STDIN
     # use 1 thread in because this is already multithreaded here
     count_cmd = ['filter_transcriptome_align.py', '--sam', '-',
+    # count_cmd = ['count_sam_transcripts.py', '--sam', '-',
                  '-o', output_name, '-t', 1,]
     if clipping_file:
         count_cmd.extend(['--trimmedreads', clipping_file])
@@ -1267,8 +1268,7 @@ def _add_end_to_firstpass(chrom, juncs, read_end_info, firstpass_unfiltered, fir
     firstpass_unfiltered[read_end_info.read_id] = iso_bedread
     iso_fh.write('\t'.join(iso_bedread.get_bed_line()) + '\n')
     if juncs == ():
-        my_exon = iso_bedread.exons[0].copy()
-        my_exon.name = iso_bedread.bed.name
+        my_exon = Exon(iso_bedread.exons[0].start, iso_bedread.exons[0].end, iso_bedread.bed.name)
         firstpass_SE.add(my_exon)
     else:
         for j in juncs:
@@ -1330,8 +1330,6 @@ def filter_single_exon_group(args, curr_group, firstpass_unfiltered, firstpass):
     #grouping single exon isoforms with exons from spliced isoform, using spliced isoform exons to filter single exon isoform
     for exon in curr_group:
         if exon.name != None:  # is single exon with name
-            print(exon)
-            print(exon.name in firstpass_unfiltered)
             if filter_single_exon_iso(args, exon,  curr_group, firstpass_unfiltered):
                 firstpass[exon.name] = firstpass_unfiltered[exon.name]
     return firstpass
@@ -1432,13 +1430,13 @@ def get_spliced_exon_overlaps(strand, exons, annots):
         annot_exons = sorted(list(annots.spliced_exons[strand][annot_gene]))
         # check if there is overlap in the genes
         # FIXME: not clear how this checks for overlap
-        if (min((annot_exons[-1][1], exons[-1][1])) > max((annot_exons[0][0], exons[0][0]))):
+        if (min((annot_exons[-1].end, exons[-1].end)) > max((annot_exons[0].start, exons[0].start))):
             covered_pos = set()
-            for s, e in exons:
-                for ast, ae in annot_exons:
-                    for p in range(max((ast, s)), min((ae, e))):
+            for ex in exons:
+                for aex in annot_exons:
+                    for p in range(max((aex.start, ex.start)), min((aex.end, ex.end))):
                         covered_pos.add(p)
-            if len(covered_pos) > sum([x[1] - x[0] for x in exons]) * 0.5:
+            if len(covered_pos) > sum([x.end - x.start for x in exons]) * 0.5:
                 gene_hits.append([len(covered_pos), annot_gene, strand])
     return gene_hits
 
@@ -2005,7 +2003,7 @@ def decide_parallel_mode(parallel_mode, genome_aligned_bam):
         else:
             return 'bychrom'
 
-def partition_input_by_chrom(genome, genome_aligned_bam):
+def partition_input_by_chrom(genome):
     return [SeqRange(chrom, 0, genome.get_reference_length(chrom))
             for chrom in genome.references]
 
@@ -2023,7 +2021,7 @@ def partition_input_by_region(genome_aligned_bam, annot_gtf, threads):
 
 def partition_input(parallel_mode, genome, genome_aligned_bam, gtf, threads):
     if decide_parallel_mode(parallel_mode, genome_aligned_bam) == 'bychrom':
-        return partition_input_by_chrom(genome, genome_aligned_bam)
+        return partition_input_by_chrom(genome)
     else:
         return partition_input_by_region(genome_aligned_bam, gtf, threads)
 
@@ -2115,7 +2113,7 @@ def flair_transcriptome():
     annot_gtf_data = None
     if args.annot_gtf:
         logging.info('Extracting annotation from GTF')
-        annot_gtf_data = gtf_data_parser(args.annot_gtf, attrs=GtfAttrsSet.FLAIR)
+        annot_gtf_data = gtf_data_parser(args.annot_gtf, attrs=GtfAttrsSet.FLAIR, include_features=TRANSCRIPT_EXON_FEATURES)
         regions_to_annot_data = get_annot_info(annot_gtf_data, all_regions)
 
     logging.info('splitting by chunk')

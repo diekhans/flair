@@ -42,11 +42,13 @@ def set_unix_path():
 
 
 class PosRange(namedtuple("PosRange",
-                          ("start", "end"))):
+                          ("start", "end", "name"))):
     """0-base, 1/2 open range of sequence positions"""
 
     def __new__(cls, start, end, name=None):
         assert start <= end  # allows zero length
+        if name == None:
+            name = ''
         return super(PosRange, cls).__new__(cls, start, end, name)
 
     def __len__(self):

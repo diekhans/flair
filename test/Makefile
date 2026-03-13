@@ -428,9 +428,10 @@ test-transcriptome: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --keep_intermediate
 	$(diff_bed_gtf)
 
-# test-transcriptome-ends: mkdirs ${TEST_ALIGN_BAM}
-# 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --end_norm_dist 500 --output_endpos
-# 	$(diff_bed_gtf)
+# FIXME: doesn't currently work
+test-transcriptome-ends: mkdirs ${TEST_ALIGN_BAM}
+	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --end_norm_dist 500 --output_endpos
+	$(diff_bed_gtf)
 
 test-transcriptome-partition: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --parallel_mode byregion
@@ -445,7 +446,6 @@ test-transcriptome-predcds: mkdirs ${TEST_ALIGN_BAM}
 	$(diff_bed_gtf)
 	$(call cmp_expect,$@.isoforms.CDS.bed)
 
-# FIXME: doesn't work, returns nothing. Need to debug later
 test-transcriptome-seg1: mkdirs  ${SEG1_ALIGN_BAM}
 	flair transcriptome -b ${SEG1_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(SEG1_ANNOTATION) -o $O/$@
 	$(diff_bed_gtf)

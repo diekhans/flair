@@ -235,26 +235,6 @@ def bed_to_junctions(bed):
 ####
 # splice junction correction
 ####
-class NewJunctionCorrectorWrapper:
-    """Wrapper to provide correct_read(BedRead) interface for new JunctionCorrector."""
-
-    def __init__(self, junction_corrector):
-        self._corrector = junction_corrector
-
-    @property
-    def chroms(self):
-        return self._corrector.chroms
-
-    def correct_read(self, bed_read):
-        """Correct a BedRead using new correction logic."""
-        corrected_bed = self._corrector.correct_read_bed(bed_read.bed)
-        if corrected_bed is None:
-            return None
-        # Update bed_read with corrected bed
-        bed_read.bed = corrected_bed
-        bed_read.juncs = BedRead._compute_juncs_from_blocks(corrected_bed)
-        return bed_read
-
 def read_correct_to_bedread(junction_corrector, read):
     # FIXME: remove unnecessary initial build of BedRead and make junctions from
     # read, correct, and then make bed

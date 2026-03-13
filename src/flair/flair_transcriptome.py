@@ -1102,7 +1102,7 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
     # good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs = [], set(), {}
     read_to_transcript = {}
     if not args.no_align_to_annot and len(annots.transcripts) > 0:
-        logging.info('generating transcriptome reference')
+        # logging.info('generating transcriptome reference')
         # this part generates the fasta file for the annotation
         if args.end_norm_dist is not None:
             transcript_to_strand, transcript_to_new_exons = \
@@ -1143,7 +1143,7 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
     return read_to_transcript
 
 
-def _should_process_read(read, region, min_quality, keep_sup, allow_secondary):
+def _should_process_read(read, region, min_quality, keep_sup, allow_secondary, allow_outside_range=False):
     """Check if read passes filtering criteria for processing"""
     if read.mapping_quality < min_quality:
         return False
@@ -1153,7 +1153,7 @@ def _should_process_read(read, region, min_quality, keep_sup, allow_secondary):
         return False
     if read.reference_name != region.name:
         return False
-    if not (region.start <= read.reference_start and read.reference_end <= region.end):
+    if not (region.start <= read.reference_start and read.reference_end <= region.end) and not allow_outside_range:
         return False
     return True
 
@@ -1895,17 +1895,17 @@ def run_for_region(listofargs):
     # in order to check whether transcriptome alignment is comparable to or better than genomic alignment,
     # which can be considered to support isoform.
     # used in filter_transcriptome_align
-    logging.info('generating genomic clipping reference')
+    # logging.info('generating genomic clipping reference')
     generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
 
     # aligning to reference transcriptome, then identifying reads that match well to reference transcripts
     # with filter_transcriptome_align
-    logging.info('identifying good match to annot')
+    # logging.info('identifying good match to annot')
     read_to_annot_transcript = \
         identify_good_match_to_annot(args, temp_prefix, region.name, annots, genome)
 
     # load splice junctions for chrom
-    logging.info('correcting splice junctions')
+    # logging.info('correcting splice junctions')
     junction_corrector = setup_junction_corrector(args.annot_gtf, args.junction_tab, args.junction_bed, args.junction_support,
                                                   args.ss_window)
 
@@ -1934,7 +1934,7 @@ def run_for_region(listofargs):
     firstpass, iso_to_unique_bound = filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE,
                                                            annots, {})
     if len(firstpass.keys()) > 0:
-        logging.info('getting gene names and writing firstpass')
+        # logging.info('getting gene names and writing firstpass')
         # this section identifies annotated gene and isoform names (primarily based on splice junction matching, secondarily by exon overlap)
         # also adjusts isoform strand, determines novel isoform and gene names
         # also normalizes transcript ends (temporarily extends ends so that transcript end alignment does not drive transcript assignment during transcriptome alignment)
@@ -1944,7 +1944,7 @@ def run_for_region(listofargs):
                                                normalize_ends=True, add_length_at_ends=args.end_norm_dist, unique_bound=iso_to_unique_bound)
         else:
             get_gene_names_and_write_firstpass(temp_prefix, region.name, firstpass, annots, genome, unique_bound=iso_to_unique_bound)
-            logging.info('identifying good match to firstpass')
+            # logging.info('identifying good match to firstpass')
 
         # aligns to firstpass transcriptome, identifies best read -> isoform alignment for each read, then gets read counts per isoform
         clipping_file = temp_prefix + '.reads.genomicclipping.txt'  # if args.trimmedreads else None

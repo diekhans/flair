@@ -9,8 +9,13 @@ import logging
 from flair.pycbio.sys import cli
 from flair import FlairInputDataError
 
+FILTER_KEEPSUP = 'keepsup'
+FILTER_REMOVESUP = 'removesup'
+FILTER_SEPARATE = 'separate'
+FILTERS = (FILTER_KEEPSUP, FILTER_REMOVESUP, FILTER_SEPARATE)
+
 def parse_args():
-    desc = "FLAIR align outputs an unfiltered bam file and a filtered bed file for use in the downstream pipeline"
+    desc = "FLAIR align outputs an unfiltered bam file and a filtered bam file for use in the downstream pipeline"
     parser = argparse.ArgumentParser(description=desc)
 
     reads = parser.add_argument_group('required named arguments')
@@ -29,6 +34,10 @@ def parse_args():
                         help='annotated isoforms/junctions bed file for splice site-guided minimap2 genomic alignment')
     parser.add_argument('--nvrna', action='store_true', default=False,
                         help='specify this flag to use native-RNA specific alignment parameters for minimap2')
+    parser.add_argument('--quality', type=int, default=0,
+                        help='minimum MAPQ of read alignment to the genome (0)')
+    parser.add_argument('--filtertype', type=str, choices=FILTERS, default=FILTER_REMOVESUP,
+                        help='method of filtering chimeric alignments (potential fusion reads). Options: removesup (default), separate (required for downstream work with fusions), keepsup (keeps supplementary alignments for isoform detection, does not allow gene fusion detection)')
     parser.add_argument('--minfragmentsize', type=int, default=80,
                         help='minimum size of alignment kept, used in minimap -s. More important when doing downstream fusion detection')
     parser.add_argument('--maxintronlen', default='200k',
@@ -93,39 +102,6 @@ def inferMM2JuncStrand(read):
     # print(read.query_name, orientation, ogjuncdir, juncDir)
     return juncDir
 
-def bed_from_cigar(alignstart, is_reverse, cigartuples, readname, referencename, qualscore, juncDirection):
-    positiveTxn = "27,158,119"  # green
-    negativeTxn = "217,95,2"  # orange
-    unknownTxn = "99,99,99"
-    refpos = alignstart
-    intronblocks = []
-    hasmatch = False
-    for block in cigartuples:
-        if block[0] == pysam.CIGAR_OPS.CREF_SKIP and hasmatch:
-            # intron
-            intronblocks.append([refpos, refpos + block[1]])
-            refpos += block[1]
-        elif block[0] in frozenset((pysam.CIGAR_OPS.CMATCH,
-                                    pysam.CIGAR_OPS.CEQUAL,
-                                    pysam.CIGAR_OPS.CDIFF,
-                                    pysam.CIGAR_OPS.CDEL)):
-            # consumes reference
-            refpos += block[1]
-            if block[0] in frozenset((pysam.CIGAR_OPS.CMATCH,
-                                      pysam.CIGAR_OPS.CEQUAL,
-                                      pysam.CIGAR_OPS.CDIFF)):
-                hasmatch = True
-    esizes, estarts = intron_chain_to_exon_starts(intronblocks,alignstart, refpos)
-    rgbcolor = unknownTxn
-    if juncDirection == "+":
-        rgbcolor = positiveTxn
-    elif juncDirection == "-":
-        rgbcolor = negativeTxn
-    else:
-        juncDirection = "-" if is_reverse else "+"
-    outline = [referencename, str(alignstart), str(refpos), readname, str(qualscore), juncDirection, str(alignstart), str(refpos), rgbcolor, str(len(intronblocks) + 1), ','.join([str(x) for x in esizes]) + ',', ','.join([str(x) for x in estarts]) + ',']
-    return outline
-
 def doalignment(args):
     # minimap
     mm2_cmd = ['minimap2', '-ax', 'splice', '-s', str(args.minfragmentsize),
@@ -146,9 +122,48 @@ def doalignment(args):
     pipettor.run([mm2_cmd, samtools_sort_cmd])
     pipettor.run([samtools_index_cmd])
 
+def dofiltering(args, inbam):
+    samfile = pysam.AlignmentFile(inbam, 'rb')
+    outbam = pysam.AlignmentFile(args.output + '.filtered.bam', "wb", template=samfile)
+    withsup = None
+    if args.filtertype == FILTER_SEPARATE:
+        withsup = pysam.AlignmentFile(args.output + '_chimeric.bam', "wb", template=samfile)
+    totalalignments, mappednotsec, supplementary, primary = 0, 0, 0, 0
+    for read in samfile.fetch():
+        totalalignments += 1
+        if read.is_mapped and not read.is_secondary:
+            mappednotsec += 1
+            if read.mapping_quality < args.quality:
+                continue
+            if read.is_supplementary:
+                supplementary += 1
+                if args.filtertype == FILTER_SEPARATE:
+                    withsup.write(read)
+                elif args.filtertype == FILTER_KEEPSUP:
+                    outbam.write(read)
+                # removesup: drop supplementary
+            else:
+                primary += 1
+                if read.has_tag('SA') and args.filtertype == FILTER_SEPARATE:
+                    withsup.write(read)
+                else:
+                    outbam.write(read)
+    logging.info(f'total alignments in bam file (includes unaligned reads): {totalalignments}')
+    logging.info(f'total non-secondary alignments: {mappednotsec}')
+    logging.info(f'total primary alignments with quality >= {args.quality}: {primary}')
+    logging.info(f'total supplementary alignments with quality >= {args.quality}: {supplementary}')
+    samfile.close()
+    outbam.close()
+    pysam.index(args.output + '.filtered.bam')
+    if withsup is not None:
+        withsup.close()
+        pysam.index(args.output + '_chimeric.bam')
+
+
 def align():
     args = parse_args()
     doalignment(args)
+    dofiltering(args, args.output + '.bam')
 
 def main():
     align()

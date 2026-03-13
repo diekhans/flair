@@ -6,14 +6,13 @@ import pipettor
 import shutil
 import pysam
 import logging
-import re
-import multiprocessing as mp
 from collections import Counter, namedtuple
-from flair import SeqRange, PosRange
+from flair import PosRange
 from flair.flair_align import intron_chain_to_exon_starts
 from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon, GtfAttrsSet
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
+from flair.partition_runner import parallel_mode_parse, partition_runner_factory
 from flair.pycbio.hgdata.bed import Bed, BedReader
 from flair.bed_to_sequence import bed_to_sequence
 from flair.bed_to_gtf import bed_to_gtf
@@ -28,20 +27,6 @@ from flair.bed_to_gtf import bed_to_gtf
 #        this out in correct.  Another might have a polymorphic different with the reference
 #        that changes splice junctions.  Should this be discarded if multiple long-reads
 #        support it, but it isn't annotated.  Maybe these can be identified.
-
-def parse_parallel_mode(parser, parallel_mode):
-    "values: auto:10GB, bychrom, or byregion"
-
-    match = re.match(r'^(auto):(\d+)GB$|^(bychrom|byregion)$', "bychrom")
-    if match is None:
-        parser.error(f"Invalid value for --parallel_mode: '{parallel_mode}', expected auto:10GB, bychrom, or byregion")
-    if match.group(1) is not None:
-        size = int(match.group(2))
-        if size < 1:
-            parser.error("auto parallel_mode must have a size greater than zero")
-        return (match.group(1), size)
-    else:
-        return (match.group(3), None)
 
 def get_args():
     parser = argparse.ArgumentParser(description='generates confident transcript models directly from a bam file '
@@ -138,7 +123,7 @@ def get_args():
     parser.add_argument('--generate_map', default=False, action='store_true',
                         help='''specify this argument to generate a txt file of read-isoform assignments''')
     args = parser.parse_args()
-    args.parallel_mode = parse_parallel_mode(parser, args.parallel_mode)
+    args.parallel_mode = parallel_mode_parse(parser, args.parallel_mode)
     args.trust_ends = False
     args.remove_internal_priming = False
 
@@ -247,18 +232,19 @@ def read_correct_to_bedread(junction_corrector, read):
     bedread.juncs = BedRead._compute_juncs_from_blocks(corrected_bed)
     return bedread
 
-def setup_junction_corrector(gtf, junction_tab, junction_bed, junction_support, ss_window, *,
-                             chrom_filter=None):
-    """Create corrector with junction support evidence."""
-    # FIXME: currently reloads for every partition.
-    intron_support = IntronSupport()
+def build_intron_support(gtf_file, junction_tab, junction_bed):
+    """Build IntronSupport from all available sources."""
+    is_db = IntronSupport()
     if junction_bed is not None:
-        intron_support.load_introns_bed(junction_bed, chrom_filter=chrom_filter)
+        is_db.load_introns_bed(junction_bed)
     if junction_tab is not None:
-        intron_support.load_star(junction_tab, chrom_filter=chrom_filter)
-    if gtf is not None:
-        gtf_data = gtf_data_parser(gtf, attrs=GtfAttrsSet.FLAIR)
-        intron_support.load_gtf(gtf_data)  # FIXME: no chrom_filter=chrom_filter
+        is_db.load_star(junction_tab)
+    if gtf_file is not None:
+        is_db.load_gtf(gtf_data_parser(gtf_file, attrs=GtfAttrsSet.FLAIR))
+    return is_db
+
+def setup_junction_corrector(intron_support, ss_window, junction_support):
+    """Create a JunctionCorrector from a pre-built IntronSupport."""
     return JunctionCorrector(intron_support, ss_window, junction_support)
 
 def get_rgb(name, strand, junclen):
@@ -453,33 +439,22 @@ class AnnotData(object):
         self.gene_to_strand = {}
 
 
-def generate_region_dict(all_regions):
-    chrom_to_regions, regions_to_annot_data = {}, {}
-    for region in all_regions:
-        if region.name not in chrom_to_regions:
-            chrom_to_regions[region.name] = []
-        chrom_to_regions[region.name].append(region)
-        regions_to_annot_data[region] = AnnotData()
-    return chrom_to_regions, regions_to_annot_data
-
-def get_t_name_to_exons(annot_gtf_data):
-    # FIXME: make  chrom_to_transcript_to_exons a class or do something with less data transforms
-    chrom_to_transcript_to_exons = {}
-    for trans in annot_gtf_data.transcripts:
-        if trans.chrom not in chrom_to_transcript_to_exons:
-            chrom_to_transcript_to_exons[trans.chrom] = {}
-        if (trans.transcript_id, trans.gene_id) not in chrom_to_transcript_to_exons[trans.chrom]:
-            entry = [(trans.start, trans.end, trans.strand),
-                     [Exon(exon.start, exon.end) for exon in trans.exons]]
-            chrom_to_transcript_to_exons[trans.chrom][(trans.transcript_id, trans.gene_id)] = entry
-    return chrom_to_transcript_to_exons
-
-def get_annot_t_ends(tinfo):
-    t_start, t_end, strand = tinfo[0]
-    if t_start is None:
-        t_start = min([x[0] for x in tinfo[1]])
-        t_end = max([x[1] for x in tinfo[1]])
-    return t_start, t_end, strand
+def annot_data_from_gtf(gtf_data, region):
+    """Build AnnotData for a region from a pre-partitioned GtfData."""
+    annots = AnnotData()
+    if gtf_data is None:
+        return annots
+    region_map = {region: annots}
+    for trans in gtf_data.transcripts:
+        exons = [Exon(exon.start, exon.end) for exon in trans.exons]
+        if not exons:
+            continue
+        sorted_exons = sorted(exons)
+        t_start = sorted_exons[0].start
+        t_end = sorted_exons[-1].end
+        save_transcript_annot_to_region(trans.transcript_id, trans.gene_id, region,
+                                        region_map, t_start, t_end, trans.strand, sorted_exons)
+    return annots
 
 def save_transcript_annot_to_region(transcript_id, gene_id, region, regions_to_annot_data, t_start, t_end, strand, t_exons):
     # regions is tuple of ('chr20', 0, 64444167)
@@ -507,27 +482,6 @@ def save_transcript_annot_to_region(transcript_id, gene_id, region, regions_to_a
             annots.junc_to_gene[j].add((transcript_id, gene_id))
             annots.gene_to_annot_juncs[gene_id].add(j)
     annots.all_annot_SE = sorted(annots.all_annot_SE)  # FIXME: make set?
-
-def get_annot_for_chrom(chrom_regions, region_chrom, chrom_transcript_to_exons, regions_to_annot_data):
-    for transcript_id, gene_id in chrom_transcript_to_exons:
-        tinfo = chrom_transcript_to_exons[(transcript_id, gene_id)]
-        t_start, t_end, strand = get_annot_t_ends(tinfo)
-        for region in chrom_regions:
-            # FIXME: this weird way to code comparison
-            if region.start < t_start < region.end or region.start < t_end < region.end:
-                save_transcript_annot_to_region(transcript_id, gene_id, region, regions_to_annot_data,
-                                                t_start, t_end, strand, tinfo[1])
-    return regions_to_annot_data
-
-
-def get_annot_info(annot_gtf_data, all_regions):
-    chrom_to_regions, regions_to_annot_data = generate_region_dict(all_regions)
-    chrom_to_transcript_to_exons = get_t_name_to_exons(annot_gtf_data)
-
-    for region_chrom in chrom_to_transcript_to_exons:
-        if region_chrom in chrom_to_regions:
-            get_annot_for_chrom(chrom_to_regions[region_chrom], region_chrom, chrom_to_transcript_to_exons[region_chrom], regions_to_annot_data)
-    return regions_to_annot_data
 
 
 def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound):
@@ -1847,15 +1801,14 @@ def _iso_passes_support_filter(args, iso, num_exons, iso_to_counts, gene_to_tot)
         return (count >= min_support) and (count / gene_to_tot[iso.split('_')[-1]]) >= args.frac_support
 
 
-def run_for_region(listofargs):
-    args, region, temp_prefix, splice_site_annot_chrom, annots = listofargs
-
-    # annots is passed in from chunk_split; if no GTF was provided, it will be empty AnnotData
+def _run_region(*, partition, gtf_data, intron_support, args):
+    region = partition.region
+    annots = annot_data_from_gtf(gtf_data, region)
 
     # first extract reads for region as fasta
     pipettor.run([('samtools', 'view', '-h', args.genome_aligned_bam, region.name + ':' + str(region.start) + '-' + str(region.end)),
                   ('samtools', 'fasta', '-')],
-                 stdout=temp_prefix + '.reads.fasta')
+                 stdout=partition.output_path('reads.fasta'))
 
     # then align reads to transcriptome and run count_sam_transcripts
     genome = pysam.FastaFile(args.genome)
@@ -1868,35 +1821,32 @@ def run_for_region(listofargs):
     # which can be considered to support isoform.
     # used in filter_transcriptome_align
     logging.info('generating genomic clipping reference')
-    generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
+    generate_genomic_alignment_read_to_clipping_file(partition.file_prefix, bam_file, region)
 
     # aligning to reference transcriptome, then identifying reads that match well to reference transcripts
     # with filter_transcriptome_align
     logging.info('identifying good match to annot')
     read_to_annot_transcript = \
-        identify_good_match_to_annot(args, temp_prefix, region.name, annots, genome)
+        identify_good_match_to_annot(args, partition.file_prefix, region.name, annots, genome)
 
     # load splice junctions for chrom
     logging.info('correcting splice junctions')
-    junction_corrector = setup_junction_corrector(args.annot_gtf, args.junction_tab, args.junction_bed, args.junction_support,
-                                                  args.ss_window)
+    junction_corrector = setup_junction_corrector(intron_support, args.ss_window, args.junction_support)
 
     # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
     # this also handles read strandedness if necessary
-    sj_to_ends = filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_annot_transcript, annots,
+    sj_to_ends = filter_correct_group_reads(args, partition.file_prefix, region, bam_file, read_to_annot_transcript, annots,
                                             junction_corrector)
     bam_file.close()
-    # logging.info('generating isoforms')
 
     # for each junction chain, clusters ends - generates junction chain x ends
     # firstpass objects then does initial filtering by read support and
     # redundant ends also separates single exon isoforms from spliced isoforms
     # (because they're handled differently in future step for identifying
     # annotated gene/isoform names)
-    firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE = process_juncs_to_firstpass_isos(args, temp_prefix,
+    firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE = process_juncs_to_firstpass_isos(args, partition.file_prefix,
                                                                                                  region.name, sj_to_ends,
                                                                                                  set())
-    # logging.info('filtering isoforms')
 
     # - filter isoforms - remove any that represent a subset of another
     # - identified isoform - based on what args.filter is set to also generate
@@ -1912,146 +1862,53 @@ def run_for_region(listofargs):
         # also normalizes transcript ends (temporarily extends ends so that transcript end alignment does not drive transcript assignment during transcriptome alignment)
         # writes out bed and fa files
         if args.end_norm_dist is not None:
-            get_gene_names_and_write_firstpass(temp_prefix, region.name, firstpass, annots, genome,
+            get_gene_names_and_write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome,
                                                normalize_ends=True, add_length_at_ends=args.end_norm_dist, unique_bound=iso_to_unique_bound)
         else:
-            get_gene_names_and_write_firstpass(temp_prefix, region.name, firstpass, annots, genome, unique_bound=iso_to_unique_bound)
+            get_gene_names_and_write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome, unique_bound=iso_to_unique_bound)
             logging.info('identifying good match to firstpass')
 
         # aligns to firstpass transcriptome, identifies best read -> isoform alignment for each read, then gets read counts per isoform
-        clipping_file = temp_prefix + '.reads.genomicclipping.txt'  # if args.trimmedreads else None
-        transcriptome_align_and_count(args, temp_prefix + '.reads.fasta',
-                                      temp_prefix + '.firstpass.fa',
-                                      temp_prefix + '.firstpass.bed',
-                                      temp_prefix + '.isoform.counts.txt',
-                                      temp_prefix + '.isoform.read.map.txt', False, clipping_file, temp_prefix + '.firstpass.uniquebound.txt')
+        transcriptome_align_and_count(args, partition.output_path('reads.fasta'),
+                                      partition.output_path('firstpass.fa'),
+                                      partition.output_path('firstpass.bed'),
+                                      partition.output_path('isoform.counts.txt'),
+                                      partition.output_path('isoform.read.map.txt'), False,
+                                      partition.output_path('reads.genomicclipping.txt'),
+                                      partition.output_path('firstpass.uniquebound.txt'))
     else:
         # create empty files
-        with open(temp_prefix + '.firstpass.fa', 'w') as _, \
-             open(temp_prefix + '.firstpass.bed', 'w') as _, \
-             open(temp_prefix + '.isoform.counts.txt', 'w') as _, \
-             open(temp_prefix + '.isoform.read.map.txt', 'w') as _:
+        with open(partition.output_path('firstpass.fa'), 'w') as _, \
+             open(partition.output_path('firstpass.bed'), 'w') as _, \
+             open(partition.output_path('isoform.counts.txt'), 'w') as _, \
+             open(partition.output_path('isoform.read.map.txt'), 'w') as _:
             pass
         if args.output_endpos:
-            with open(temp_prefix + '.ends.tsv', 'w') as _:
+            with open(partition.output_path('ends.tsv'), 'w') as _:
                 pass
 
     iso_to_counts = {}
     gene_to_tot = {}
-    for line in open(temp_prefix + '.isoform.counts.txt'):
+    for line in open(partition.output_path('isoform.counts.txt')):
         iso, counts = line.rstrip().split('\t')
         gene = iso.split('_')[-1]
         if gene not in gene_to_tot:
             gene_to_tot[gene] = 0
         gene_to_tot[gene] += int(counts)
         iso_to_counts[iso] = int(counts)
-    with open(temp_prefix + '.isoforms.bed', 'w') as out:
-        for line in open(temp_prefix + '.firstpass.bed'):
+    with open(partition.output_path('isoforms.bed'), 'w') as out:
+        for line in open(partition.output_path('firstpass.bed')):
             temp = line.split('\t')
             iso = temp[3]
             num_exons = int(temp[-3])
             if _iso_passes_support_filter(args, iso, num_exons, iso_to_counts, gene_to_tot):
                 out.write(line)
-    bed_to_gtf(temp_prefix + '.isoforms.bed', temp_prefix + '.isoforms.gtf')
-    bed_to_sequence(temp_prefix + '.isoforms.bed', args.genome, temp_prefix + '.isoforms.fa')
-
-    # this loads in both the annot match and firstpass transcriptomes
-    # uses read support from read map files to filter to only supported isoforms
-    # gene_to_juncs_to_ends = isoform_processing(args, temp_prefix)
-
-    # this combines annot and novel isoforms by junction chain - makes sure we still don't exceed max_ends per junction chain
-    # also writes bed, fa, gtf files
-    # combine_annot_w_novel_and_write_files(args, temp_prefix, gene_to_juncs_to_ends, genome)
+    bed_to_gtf(partition.output_path('isoforms.bed'), partition.output_path('isoforms.gtf'))
+    bed_to_sequence(partition.output_path('isoforms.bed'), args.genome, partition.output_path('isoforms.fa'))
 
     genome.close()
 
-####
-# partition of genome
-####
-
-def decide_parallel_mode(parallel_mode, genome_aligned_bam):
-    # parallel_option format already validated in option validation method
-    if parallel_mode[0] in ('bychrom', 'byregion'):
-        return parallel_mode[0]
-    else:
-        # auto
-        file_size_GB = os.path.getsize(genome_aligned_bam) / 1e+9
-        if file_size_GB > parallel_mode[1]:
-            return 'byregion'
-        else:
-            return 'bychrom'
-
-def partition_input_by_chrom(genome, genome_aligned_bam):
-    return [SeqRange(chrom, 0, genome.get_reference_length(chrom))
-            for chrom in genome.references]
-
-def partition_input_by_region(genome_aligned_bam, annot_gtf, threads):
-    cmd = ['flair_partition',
-           '--min_partition_items=1000',
-           f'--threads={threads}',
-           f'--bam={genome_aligned_bam}']
-    if annot_gtf is not None:
-        cmd += [f'--gtf={annot_gtf}']
-    cmd += ['/dev/stdout']
-    with pipettor.Popen(cmd) as part_fh:
-        return [SeqRange(bed.chrom, bed.chromStart, bed.chromEnd)
-                for bed in BedReader(part_fh)]
-
-def partition_input(parallel_mode, genome, genome_aligned_bam, gtf, threads):
-    if decide_parallel_mode(parallel_mode, genome_aligned_bam) == 'bychrom':
-        return partition_input_by_chrom(genome, genome_aligned_bam)
-    else:
-        return partition_input_by_region(genome_aligned_bam, gtf, threads)
-
-####
-# Splitting input data by partition and running in parallel
-###
-def chunk_split_region(args, region, gtf, regions_to_annot_data, annotation_files,
-                       temp_dir, chunk_cmds, temp_prefixes):
-    # FIXME: pickle junctions and GTF by region
-    if gtf:
-        annots = regions_to_annot_data[region]
-    else:
-        annots = AnnotData()
-
-    # annotation_files is only used for old corrector path
-    if annotation_files is not None and region.name in annotation_files:
-        splice_site_annot_chrom = annotation_files[region.name]
-    else:
-        splice_site_annot_chrom = None
-    temp_prefix = temp_dir + '-'.join([region.name, str(region.start), str(region.end)])
-    chunk_cmds.append([args, region, temp_prefix, splice_site_annot_chrom, annots])
-    temp_prefixes.append(temp_prefix)
-
-def chunk_split(args, all_regions, gtf, junction_corrector,
-                regions_to_annot_data, temp_dir):
-    chunk_cmds = []
-    temp_prefixes = []
-    # Get annotation_files from old corrector, None for new corrector
-    annotation_files = getattr(junction_corrector, 'annotation_files', None)
-    for region in all_regions:
-        if region.name in junction_corrector.chroms:  # FIXME: handled in all_regions?
-            chunk_split_region(args, region, gtf, regions_to_annot_data, annotation_files,
-                               temp_dir, chunk_cmds, temp_prefixes)
-    return chunk_cmds, temp_prefixes
-
-def flair_transcriptome_region(threads, chunk_cmds):
-    mp.set_start_method('fork')
-    p = mp.Pool(threads)
-    child_errs = set()
-    c = 1
-    # FIXME: switch to starmap_async to get position arguments and parallelism, maybe error_callback
-    for i in p.imap(run_for_region, chunk_cmds):
-        logging.info(f'\rdone running chunk {c} of {len(chunk_cmds)}')
-        child_errs.add(i)
-        c += 1
-    p.close()
-    p.join()
-    if len(child_errs) > 1:
-        # FIXME need validate that this produces reasonable errors
-        raise ValueError('\n'.join(child_errs))
-
-def combine_chunks(args, output, temp_prefixes):
+def combine_chunks(args, output, partitions):
     files_to_combine = ['.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed', '.firstpass.bed',
                         '.isoforms.bed',
                         '.isoform.read.map.txt', '.isoforms.gtf', '.isoforms.fa', '.isoform.counts.txt']
@@ -2061,7 +1918,7 @@ def combine_chunks(args, output, temp_prefixes):
     #     files_to_combine.append('.isoforms.CDS.bed')
     if not args.no_align_to_annot:
         files_to_combine.extend(['.matchannot.counts.txt', '.matchannot.read.map.txt'])
-    combine_temp_files_by_suffix(output, temp_prefixes, files_to_combine)
+    combine_temp_files_by_suffix(output, [p.file_prefix for p in partitions], files_to_combine)
 
 ####
 # main
@@ -2078,29 +1935,23 @@ def flair_transcriptome():
 
     temp_dir = make_temp_dir(args.output)
 
-    logging.info('Getting regions')
-    all_regions = partition_input(args.parallel_mode, genome, args.genome_aligned_bam,
-                                  args.annot_gtf, args.threads)
-    logging.info(f'Number of regions {len(all_regions)}')
+    logging.info('building intron support database')
+    is_db = build_intron_support(args.annot_gtf, args.junction_tab, args.junction_bed)
 
-    logging.info('Generating splice site database')
-    junction_corrector = setup_junction_corrector(args.annot_gtf, args.junction_tab, args.junction_bed, args.junction_support,
-                                                  args.ss_window)
-
-    regions_to_annot_data = {}
     annot_gtf_data = None
     if args.annot_gtf:
-        logging.info('Extracting annotation from GTF')
+        logging.info('loading annotation GTF')
         annot_gtf_data = gtf_data_parser(args.annot_gtf, attrs=GtfAttrsSet.FLAIR)
-        regions_to_annot_data = get_annot_info(annot_gtf_data, all_regions)
 
-    logging.info('splitting by chunk')
-    chunk_cmds, temp_prefixes = chunk_split(args, all_regions, args.annot_gtf, junction_corrector,
-                                            regions_to_annot_data, temp_dir)
+    logging.info('partitioning genome')
+    runner = partition_runner_factory(args.parallel_mode, genome, args.genome_aligned_bam,
+                                      temp_dir, args.annot_gtf, args.threads,
+                                      gtf_data=annot_gtf_data, intron_support=is_db)
+    logging.info(f'number of partitions: {len(runner)}')
 
-    logging.info('running by chunk')
-    flair_transcriptome_region(args.threads, chunk_cmds)
-    combine_chunks(args, args.output, temp_prefixes)
+    logging.info('running partitions')
+    runner.run(_run_region, args=args)
+    combine_chunks(args, args.output, runner.partitions)
 
     # this needs to be done here outside of chunking because needs to load whole annotation gtf, which should only be done once
     if args.predict_cds:

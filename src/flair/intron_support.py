@@ -117,6 +117,19 @@ class IntronSupport:
                 yield entry.data
                 seen.add(id(entry.data))
 
+    def subset_for_region(self, chrom, start, end):
+        """Return a new IntronSupport with introns overlapping [start, end) on chrom.
+        Intron support counts and flags are copied."""
+        sub = IntronSupport(min_intron_size=self.min_intron_size, max_intron_size=self.max_intron_size)
+        if chrom in self.chroms:
+            for intron in self.introns(chrom):
+                if intron.end > start and intron.start < end:
+                    new_intron = sub._add_intron(intron.chrom, intron.start, intron.end, intron.strand)
+                    new_intron.annot_supported = intron.annot_supported
+                    new_intron.read_supported = intron.read_supported
+                    new_intron.read_support_cnt = intron.read_support_cnt
+        return sub
+
     def dump(self, fh=sys.stderr):
         print("IntronSupport:", file=fh)
         for chrom, entry in self.entries():

@@ -7,6 +7,7 @@ FLAKE8_SRC = \
         flair_transcriptome.py \
 	intron_support.py \
 	filter_transcriptome_align.py \
+	partition_runner.py \
 	gtf_io.py
 
 FIXME_NOT_WORKING =\

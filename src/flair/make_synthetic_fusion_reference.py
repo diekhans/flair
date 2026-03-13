@@ -47,7 +47,7 @@ for line in open(args.chimbp):#'31-01-2023DRR059313-transcriptomeChimericBreakpo
         fgenes[gene][2] = max(end, fgenes[gene][2])
 
 genome=pysam.FastaFile(args.g)
-print('loaded genome')
+# print('loaded genome')
 
 ####To make synthetic transcriptome:
 ####DONE Get transcript/exon annotation for fusion genes
@@ -62,7 +62,7 @@ for line in open(args.a):#'/private/groups/brookslab/reference_annotations/genco
         line = line.split('\t')
         if line[2] == 'gene' or line[2] == 'exon' or line[2] == 'start_codon':
             genename = line[8].split('gene_id "')[1].split('"')[0]
-            genename = genename.replace('_','-')
+            genename = genename.replace('_','-').split('.')[0]
             # genename += '*' + line[8].split('gene_id "')[1].split('"')[0]
             if genename in fgenes:
                 if line[2] == 'gene':
@@ -74,13 +74,14 @@ for line in open(args.a):#'/private/groups/brookslab/reference_annotations/genco
                     if line[6] == '+': transcripts[genename][tname].append((int(line[3])-1, int(line[4]), line[2]))
                     else: transcripts[genename][tname].insert(0,(int(line[3])-1, int(line[4]), line[2]))
 # print(transcripts)
-print('loaded transcripts')
+# print('loaded transcripts')
 
 out = open(prefix + '-syntheticFusionGenome.fa', 'w')#'syntheticFusionGenomeAttempt4.fa', 'w')
 annoOut = open(prefix + '-syntheticReferenceAnno.gtf', 'w')#'syntheticReferenceAnnoAttempt1.gtf', 'w')
 # sjOut = open(prefix + '-syntheticReferenceSJ.bed', 'w')#'syntheticReferenceAnnoAttempt1.gtf', 'w')
 bpOut = open(prefix + '-syntheticBreakpointLoc.bed', 'w')#'syntheticFusionBreakpointLoc.bed', 'w')
 c = 0
+isocount = 1
 for fusion in allBP:
     # print(fusion)
     allisochunks = []
@@ -126,40 +127,49 @@ for fusion in allBP:
         allstartloc.append(startLoc)
         startLoc = startLoc + abs(rightbound-leftbound)
         seqlen = len(''.join(sequence))
-        # print(order, isochunks)
         allisochunks.append(isochunks)
-    finalisochunks = [[] for x in range(len(fusion))]
+    # finalisochunks = [[] for x in range(len(fusion))]
+    finalisochunks = []
     for order in range(len(fusion)):
         seen = []
         for iso in list(allisochunks[order].keys()):
-            if not(allisochunks[order][iso] == [] or allisochunks[order][iso] in seen):
-                # allisochunks[order].pop(iso)
-                finalisochunks[order].append([iso, allisochunks[order][iso]])
+            if allisochunks[order][iso] != [] and len([x for x in allisochunks[order][iso] if x[2] == 'exon']) > 1 and allisochunks[order][iso] not in seen:
+                # finalisochunks[order].append([iso, allisochunks[order][iso]])
+                finalisochunks.append([iso, allisochunks[order][iso]])
                 seen.append(allisochunks[order][iso])
-        # print(order, len(finalisochunks[order]), finalisochunks[order])
 
     fusionname = '--'.join(labels)
     geneid = '--'.join(fusion)
     fusionchrname = '--'.join(['..'.join(x.split('*')) for x in fusion])
-    # print(fusion)
-    # print(fusionchrname)
     out.write('>' + fusionchrname + '\n')
     out.write(''.join(sequence) + '\n')
     for s in range(1, len(fusion)):
         bpOut.write('\t'.join([fusionchrname, str(allstartloc[s]), str(allstartloc[s]), 'breakpoint-' + str(s) + '--' + fusionname]) + '\n')
     annoOut.write('\t'.join([fusionchrname, 'SYNTHFUSION', 'gene', '1', str(len(''.join(sequence))), '.', '+', '.','gene_id "' + geneid + '"']) + '\n')
 
-    finalisocomb = list(itertools.product(*finalisochunks))
-    # print(len(finalisocomb))
-    for isocomb in finalisocomb:
-        isonames = [x[0] for x in isocomb]
-        isoexons = [x[1] for x in isocomb]
-        transcriptid = '_'.join(isonames)
-        annoOut.write('\t'.join(
-            [fusionchrname, 'SYNTHFUSION', 'transcript', str(isoexons[0][0][0] + 1), str(isoexons[-1][-1][1]), '.', '+', '.', '; '.join(['gene_id "' + geneid + '"','transcript_id "' + transcriptid + '"'])]) + '\n')
-        for exonset in isoexons:
-            for exon in exonset:
-                annoOut.write('\t'.join([fusionchrname, 'SYNTHFUSION', exon[2], str(exon[0] + 1), str(exon[1]), '.', '+', '.', '; '.join(['gene_id "' + geneid + '"','transcript_id "' + transcriptid + '"'])]) + '\n')
+    # finalisocomb = list(itertools.product(*finalisochunks))
+    # for isocomb in finalisocomb:
+    #     isonames = [x[0] for x in isocomb]
+    #     isoexons = [x[1] for x in isocomb]
+    #     transcriptid = '_'.join(isonames)
+    #     annoOut.write('\t'.join(
+    #         [fusionchrname, 'SYNTHFUSION', 'transcript', str(isoexons[0][0][0] + 1), str(isoexons[-1][-1][1]), '.', '+', '.', '; '.join(['gene_id "' + geneid + '"','transcript_id "' + transcriptid + '"'])]) + '\n')
+    #     for exonset in isoexons:
+    #         for exon in exonset:
+    #             annoOut.write('\t'.join([fusionchrname, 'SYNTHFUSION', exon[2], str(exon[0] + 1), str(exon[1]), '.', '+', '.', '; '.join(['gene_id "' + geneid + '"','transcript_id "' + transcriptid + '"'])]) + '\n')
+
+    seen = set()
+    for isocomb in finalisochunks:
+        isoexons = isocomb[1]
+        transcriptid = str(isocount) + '-' + isocomb[0]
+        isocount += 1
+        # if transcriptid in seen:
+        #     print(transcriptid)
+        seen.add(transcriptid)
+        annoOut.write('\t'.join([fusionchrname, 'SYNTHFUSION', 'transcript', str(isoexons[0][0] + 1), str(isoexons[-1][1]), '.', '+', '.', '; '.join(['gene_id "' + geneid + '"','transcript_id "' + transcriptid + '"'])]) + '\n')
+        for exon in isoexons:
+            annoOut.write('\t'.join([fusionchrname, 'SYNTHFUSION', exon[2], str(exon[0] + 1), str(exon[1]), '.', '+', '.', '; '.join(['gene_id "' + geneid + '"','transcript_id "' + transcriptid + '"'])]) + '\n')
+
 
 
 out.close()

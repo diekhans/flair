@@ -122,6 +122,8 @@ def idTranscriptomicChimeras(bam, genetoinfo, intronLocs, intronToGenome, minsup
         else:
             readToAligns[rname].append(
                 [(readlen - qend, refend), (readlen - qstart, refstart), genename, genedir, refchr])
+    
+    
     print('processed bam file')
     interestingloci = {}
     for read in readToAligns:

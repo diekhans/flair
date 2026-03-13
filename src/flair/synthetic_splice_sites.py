@@ -73,10 +73,9 @@ for thisintron in introns_to_reads:
 
     
     if thisintron[1] <= fusiontobp[thischr] <= thisintron[2] or foundSJ: ##only process introns that have correct motifs OR cross the fusion breakpoint
-        doreconsider = True
+        close_ref = False
         if thischr in fusiontoannotsj:
             # closestdist, closestpos = 1000, None
-            close_ref = False
             for sj in fusiontoannotsj[thischr]:
                 d1 = abs(thisintron[1] - sj[0])
                 d2 = abs(thisintron[2] - sj[1])

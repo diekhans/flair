@@ -9,9 +9,9 @@ import logging
 import gzip
 from flair.gtf_to_bed import gtf_to_bed
 from flair.bed_to_sequence import bed_to_sequence
-from flair.convert_synthetic_to_genome_bed import convert_synthetic_isos
-from flair import transcriptomic_chimeras
-from flair import genomic_chimeras
+from flair.convert_synthetic_to_genome_bed import convert_synthetic_isos, get_paralog_ref
+# from flair import transcriptomic_chimeras
+from flair.genomic_chimeras import id_chimeras
 from collections import defaultdict
 from flair import FlairInputDataError
 
@@ -32,8 +32,8 @@ def detectfusions():
                           type=str, required=True, help='FastA of reference genome')
     parser.add_argument('-f', '--gtf',
                         type=str, required=True, help='GTF annotation file, used for renaming FLAIR isoforms to annotated isoforms and adjusting TSS/TESs')
-    required.add_argument('-r', '--reads', nargs='+',
-                          type=str, required=True, help='FastA/FastQ files of raw reads, can specify multiple files')
+    parser.add_argument('-r', '--reads', nargs='+',
+                          type=str, help='FastA/FastQ files of raw reads, can specify multiple files')
     required.add_argument('-b', '--genomechimbam',
                           type=str, required=True, help='bam file of chimeric reads from genomic alignment from flair align')
     parser.add_argument('--transcriptchimbam',
@@ -57,11 +57,14 @@ def detectfusions():
 
     args = parser.parse_args()
 
-    if ',' in args.reads[0]:
-        args.reads = args.reads[0].split(',')
-    for rfile in args.reads:
-        if not os.path.exists(rfile):
-            raise FlairInputDataError(f'Read file path does not exist: {rfile}')
+    if not (args.reads or args.transcriptchimbam):
+        raise FlairInputDataError(f'please provide either a fastq/fasta reads file or a bam file of chimeric alignments to the transcriptome')
+    if args.reads:
+        if ',' in args.reads[0]:
+            args.reads = args.reads[0].split(',')
+        for rfile in args.reads:
+            if not os.path.exists(rfile):
+                raise FlairInputDataError(f'Read file path does not exist: {rfile}')
 
     if not os.path.exists(args.genome):
         raise FlairInputDataError(f'Genome file path does not exist: {args.genome}')
@@ -74,11 +77,8 @@ def detectfusions():
 
     # if args.annotated_fa == 'generate':
     # get transcript sequences
-    args.annotated_bed = args.output + '.annotated_transcripts.bed'
-    gtf_to_bed(args.annotated_bed, args.gtf, include_gene=True)
-    args.annotated_fa = args.output + '.annotated_transcripts.fa'
-    bed_to_sequence(query=args.output + '.annotated_transcripts.bed', genome=args.genome,
-                    outfilename=args.annotated_fa)
+    
+    
 
     ####NEED TO REMEMBER THAT FUSION DETECTION RELIES ON HAVING PROPERLY STRANDED READS - need to add stranding step and/or better documentation on this
 
@@ -86,6 +86,11 @@ def detectfusions():
 
     ###align to transcriptome with --secondary=no
     if not args.transcriptchimbam:
+        args.annotated_bed = args.output + '.annotated_transcripts.bed'
+        gtf_to_bed(args.annotated_bed, args.gtf, include_gene=True)
+        args.annotated_fa = args.output + '.annotated_transcripts.fa'
+        bed_to_sequence(query=args.output + '.annotated_transcripts.bed', genome=args.genome,
+                    outfilename=args.annotated_fa)
         mm2_cmd = ['minimap2', '-a', '-s', str(args.minfragmentsize), '-t', str(args.threads), '--secondary=no',
                    args.annotated_fa] + args.reads
         mm2_cmd = tuple(mm2_cmd)
@@ -114,8 +119,10 @@ def detectfusions():
         print('aligned to transcriptome')
 
 
-    geneannot, genetoinfo, annot, genetoexons = {}, {}, {}, {}
-    genetoinfo = {}
+    print('reading gtf')
+    genetoinfo, genetoexons, genetoname = {}, {}, {}
+    chrom_to_gene_pos = {}
+    gene_to_all_exons, juncs_to_gene = {}, {}
     for line in open(args.gtf):
         if line.startswith('#'):
             continue
@@ -124,22 +131,61 @@ def detectfusions():
         if ty in {'gene', 'exon', 'transcript'}:
             gene_id = line[8].split('gene_id "')[1].split('"')[0]
             gene_id = gene_id.replace('_', '-')
+            gene_id = gene_id.split('.')[0]
             if ty == 'gene':
                 genetoinfo[gene_id] = [chrom, start, end, strand, []]
+                genename = line[-1].split('gene_name "')[1].split('"')[0]
+                genetoname[gene_id] = genename
+                if chrom not in chrom_to_gene_pos:
+                    chrom_to_gene_pos[chrom] = []
+                    chrom_to_gene_pos[chrom].append((start, end, strand, gene_id))
+                    juncs_to_gene[chrom] = {}
 
             elif ty == 'exon':
                 transcript_id = line[8].split('transcript_id "')[1].split('"')[0]
-                if gene_id not in genetoexons: genetoexons[gene_id] = {}
+                if gene_id not in genetoexons: 
+                    genetoexons[gene_id] = {}
                 if transcript_id not in genetoexons[gene_id]: genetoexons[gene_id][transcript_id] = []
                 genetoexons[gene_id][transcript_id].append((start, end))
-                if chrom not in annot: annot[chrom] = defaultdict(def_value)
-                # for i in range(round(start, -1), round(end, -1), 10):
-                for i in range(round(start, -2), round(end, -2) + 1, 100):
-                    annot[chrom][i].add((gene_id, strand))
+
+                
             elif ty == 'transcript':
                 end5 = start if strand == '+' else end
                 genetoinfo[gene_id][-1].append(end5)
-    print('read gtf')
+    
+    print('continuing to parse annot')
+    ## FOR JUNCS TO GENE, DO BY CHROM AS WELL
+    for chrom in chrom_to_gene_pos:
+        chrom_to_gene_pos[chrom] = sorted(chrom_to_gene_pos[chrom])
+
+    for gene in genetoexons:
+        gene_to_all_exons[gene] = set()
+        chrom = genetoinfo[gene][0]
+        for t in genetoexons[gene]:
+            exons = sorted(list(genetoexons[gene][t]))
+            gene_to_all_exons[gene].update(set(exons))
+            if len(exons) > 1:
+                juncs = [(exons[x][1], exons[x+1][0]) for x in range(len(exons)-1)]
+                for j in juncs:
+                    if j not in juncs_to_gene[chrom]:
+                        juncs_to_gene[chrom][j] = set()
+                    juncs_to_gene[chrom][j].add(gene)
+        allexons = sorted(list(gene_to_all_exons[gene]))
+        newexons = []
+        laststart, lastend = -1, -1
+        for s, e in allexons:
+            if s > lastend:
+                if laststart != -1:
+                    newexons.append((laststart, lastend))
+                laststart, lastend = s, e
+            else:
+                lastend = max(lastend, e)
+        if laststart != -1:
+            newexons.append((laststart, lastend))
+        gene_to_all_exons[gene] = newexons
+
+    
+    
     intronLocs, intronToGenome = {}, {}
     for g in genetoexons:
         chrom, start, end, strand, end5s = genetoinfo[g]
@@ -157,14 +203,24 @@ def detectfusions():
                 mylocs = [[runningtot - mylocs[x][0], mylocs[x][1], mylocs[x][2]] for x in range(len(mylocs))]
             intronLocs[t] = sorted([x[0] for x in mylocs])
             intronToGenome[t] = {x[0]: (x[1], x[2]) for x in mylocs}
-    print('loaded annot')
+    
 
-    tchim = transcriptomic_chimeras.idTranscriptomicChimeras(args.transcriptchimbam, genetoinfo, intronLocs, intronToGenome, args.support, maxloci=args.maxloci, reqdisttostart=15000)
-    print('done getting fusions from transcriptome')
-    # print(tchim)
-    combchim = genomic_chimeras.idGenomicChimeras(args.genomechimbam, annot, geneannot, genetoinfo, args.support, maxloci=args.maxloci, reqdisttostart=15000)
+    maxpromiscuity = 4
+
+    gene_to_paralogs = get_paralog_ref(os.path.realpath(__file__).split('flair_fusion')[0] + 'dgd_Hsa_all_v71.tsv')
+    
+    print('loading transcriptomic chimeras')
+    tchim = id_chimeras('transcriptomic', args.transcriptchimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=15000, maxpromiscuity=4, intronLocs=intronLocs, intronToGenome=intronToGenome)
+    print('loading genomic chimeras')
+    
+    combchim = id_chimeras('genomic', args.genomechimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=15000, maxpromiscuity=4)
+    
+    # tchim = transcriptomic_chimeras.idTranscriptomicChimeras(args.transcriptchimbam, genetoinfo, intronLocs, intronToGenome, args.support, maxloci=args.maxloci, reqdisttostart=15000, maxpromiscuity=maxpromiscuity)
+    # print('done getting fusions from transcriptome')
+    # # print(tchim)
+    # combchim = genomic_chimeras.idGenomicChimeras(args.genomechimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, genetoparalogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=15000, maxpromiscuity=maxpromiscuity)
     # print(combchim)
-    print('done gettting fusions from genome')
+    print('combining genomic and transcriptomic')
     #
     for f in tchim:
         if f not in combchim:
@@ -200,43 +256,30 @@ def detectfusions():
 
     bedout.close()
 
-
-    temp = args.reads[0].split('.')
-    if temp[-1] == 'gz': temp = temp[:-1]
-    freadsname = args.output + '.chimreads.' + temp[-1]
-
-
-    freads = open(freadsname, 'w')
-    for file in args.reads:
-        last = False
-        if file.split('.')[-1] == 'gz':
-            readsfile = gzip.open(file, 'rt')
-            file = file[:-3]
-        else: readsfile = open(file)
-
-        if file.split('.')[-1] == 'fasta' or file.split('.')[-1] == 'fa':
-            for line in readsfile:
-                if line[0] == '>':
-                    readname = line[1:].rstrip().split()[0]
-                    if readname in fusionreads: last = True
-                    else: last = False
-                if last: freads.write(line)
-        else:
-            linecount = 0
-            for line in readsfile:
-                if linecount % 4 == 0:
-                    readname = line[1:].rstrip().split()[0]
-                    if readname in fusionreads: last = True
-                    else: last = False
-                if last: freads.write(line)
-                linecount += 1
-    freads.close()
-    print('done processing fusion reads')
-
     if os.path.getsize(args.output + '.prelimfusions.bed') == 0:
         report_nofusions(args.output)
         return
+    
+    print('obtaining fusion reads')
 
+    seenreads = set()
+    freadsname = args.output + '.fusionreads.prelim.fa'
+    out_fa = open(freadsname, 'w')
+    bamfile = pysam.AlignmentFile(args.genomechimbam, 'rb')
+    for a in bamfile:
+        if not a.is_secondary and not a.is_supplementary and a.query_name in fusionreads:
+            out_fa.write('>' + a.query_name + '\n' + a.get_forward_sequence() + '\n')
+            seenreads.add(a.query_name)
+    bamfile.close()
+    bamfile = pysam.AlignmentFile(args.genomechimbam, 'rb')
+    for a in bamfile:
+        if not a.is_secondary and not a.is_supplementary and a.query_name in fusionreads and not a.query_name in seenreads:
+            out_fa.write('>' + a.query_name + '\n' + a.get_forward_sequence() + '\n')
+    bamfile.close()
+    out_fa.close()
+
+
+    print('generating synthetic reference')
 
     makesynthcommand = ['python3', path + 'make_synthetic_fusion_reference.py', '-a', args.gtf, '-g', args.genome,
                         '-o', args.output, '-c', args.output + '.prelimfusions.bed']
@@ -254,7 +297,7 @@ def detectfusions():
     bamtobedcmd = ('bedtools', 'bamtobed', '-bed12', '-i', args.output + '.syntheticAligned.bam')
     getsscommand = ['python3', path + 'synthetic_splice_sites.py', args.output + '.syntheticAligned.bed',
                         args.output + '-syntheticReferenceAnno.gtf', args.output + '.syntheticAligned.SJ.bed', args.output + '-syntheticBreakpointLoc.bed', '8', '2', args.output + '-syntheticFusionGenome.fa']#'15', '2']
-    transcriptome_command = ['python3', path + 'flair_transcriptome.py',
+    transcriptome_command = ['flair', 'transcriptome',
                              '--genome_aligned_bam', args.output + '.syntheticAligned.bam',
                              '--genome', args.output + '-syntheticFusionGenome.fa',
                              '--gtf', args.output + '-syntheticReferenceAnno.gtf',
@@ -264,8 +307,8 @@ def detectfusions():
                              '--sjc_support', '2',
                              '--allow_paralogs',
                              '--end_window', '300',
-                             '--no_check_splice',
-                             '--no_stringent',
+                            #  '--no_check_splice',
+                            #  '--no_stringent',
                              '--no_align_to_annot',
                              '--fusion_breakpoints', args.output + '-syntheticBreakpointLoc.bed',
                              '--output', args.output + '.syntheticAligned.flair',]
@@ -275,14 +318,16 @@ def detectfusions():
         transcriptome_command.extend(['--junction_bed', junc_bed])
 
     pipettor.run([faidxcommand])
-    print('synth genome made')
+    print('aligning to synthetic fusion genome')
     pipettor.run([mm2_cmd, samtools_filter_cmd, samtools_sort_cmd])
-    print('done aligning to synthetic fusion genome')
+    
     pipettor.run([samtools_index_cmd])
     pipettor.run([bamtobedcmd], stdout=args.output + '.syntheticAligned.bed')
+    print('getting ss')
     pipettor.run([getsscommand])
-    print('done getting ss')
-
+    
+    print('generating fusion transcriptome')
+    print(' '.join(transcriptome_command))
     pipettor.run(transcriptome_command)
 
     ##clean up isoform/gene names for args.output + '.combined.isoform.read.map.txt', '.isoforms.bed', '.isoforms.fa'
@@ -300,11 +345,12 @@ def detectfusions():
     out = open(args.output + '.syntheticAligned.isoform.read.map.txt', 'w')
     for line in open(args.output + '.syntheticAligned.flair.isoform.read.map.txt'):
         line = line.split('\t', 1)
-        line[0] = oldnametonewname[line[0]]
-        out.write('\t'.join(line))
+        if line[0] in oldnametonewname:
+            line[0] = oldnametonewname[line[0]]
+            out.write('\t'.join(line))
     out.close()
 
-    maxpromiscuity = 4
+    print('converting coordinates from synthetic to genomic')
     convert_synthetic_isos(args.gtf, args.output + '.syntheticAligned.isoforms.bed',
                       args.output + '.syntheticAligned.isoform.read.map.txt', freadsname,
                       args.output + '-syntheticBreakpointLoc.bed', args.output + '.fusions.isoforms.bed', os.path.realpath(__file__).split('flair_fusion')[0] + 'dgd_Hsa_all_v71.tsv', maxpromiscuity)

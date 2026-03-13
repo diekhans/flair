@@ -62,12 +62,11 @@ def identify_promiscuous_genes(isoformsbed, genetoparalogs):
     return locustopartners
 
 
-def identify_fusion_problems(fusionchr, locustopartners, maxpromiscuity, genetoname, genetoparalogs, synthinfo, isoreadsup_iso):
-    fgenes = set(
-        [x.split('.')[0] if x[:3] != 'chr' else x.split('-')[0] + '-' + str(round(int(x.split('-')[1]), -6)) for x in
-         fusionchr.split('--')])
-    ispromiscuous, areparalogs, areig, allnames = False, [], [], set()
+def identify_fusion_problems(fgenes, locustopartners, maxpromiscuity, genetoname, genetoparalogs, genomic_chroms, isosup):
+    
+    ispromiscuous, areparalogs, areig, allnames, gcount = False, [], [], set(), []
     for g in fgenes:
+        gcount.append(list(fgenes).count(g))
         if len(locustopartners[g]) > maxpromiscuity:
             ispromiscuous = True
         if g in genetoname:
@@ -83,7 +82,7 @@ def identify_fusion_problems(fusionchr, locustopartners, maxpromiscuity, geneton
             else:
                 areig.append(False)
         if g in genetoparalogs:
-            other = fgenes - {g, }
+            other = set(fgenes) - {g, }
             other = {genetoparalogs[g2] if g2 in genetoparalogs else g2 for g2 in other}
             if genetoparalogs[g] in other or len(other) == 0:
                 areparalogs.append(True)
@@ -91,7 +90,10 @@ def identify_fusion_problems(fusionchr, locustopartners, maxpromiscuity, geneton
                 areparalogs.append(False)
         else:
             areparalogs.append(False)
-    return len(isoreadsup_iso) >= 1 and not ispromiscuous and any(x==False for x in areparalogs) and any(x==False for x in areig) and len(allnames) > 1 and 'chrM' not in [x[1] for x in synthinfo]
+    overall = all([x==1 for x in gcount]) and isosup >= 1 and not ispromiscuous and any(x==False for x in areparalogs) and all(x==False for x in areig) and len(allnames) > 1 and 'chrM' not in genomic_chroms and all([x[:3] == 'chr' for x in genomic_chroms])
+    # if overall:
+    #     print(fgenes, 'prom', ispromiscuous, 'para', areparalogs, 'ig', areig, 'uniquenames', allnames, 'goodchroms', 'chrM' not in genomic_chroms and all([x[:3] == 'chr' for x in genomic_chroms]), 'gcount', gcount)
+    return overall
 
 def get_locus_bounds(synthinfo):
     locuslen = [abs(x[3] - x[2]) for x in synthinfo]
@@ -207,8 +209,8 @@ def convert_synthetic_isos(annotgtf, isoformsbed, readmapfile, readsfile, breakp
         fusionchr = line[0]
         synthinfo = [x.split('..') for x in synthchrtoinfo[fusionchr].split('--')]
         synthinfo = [[y[0], y[1], int(y[2]), int(y[3])] for y in synthinfo]
-
-        is_good_fusion = identify_fusion_problems(fusionchr, locustopartners, maxpromiscuity, genetoname, genetoparalogs, synthinfo, isoreadsup[iso])
+        fgenes = set([x.split('.')[0] if x[:3] != 'chr' else x.split('-')[0] + '-' + str(round(int(x.split('-')[1]), -6)) for x in fusionchr.split('--')])
+        is_good_fusion = identify_fusion_problems(fgenes, locustopartners, maxpromiscuity, genetoname, genetoparalogs, [x[1] for x in synthinfo], len(isoreadsup[iso]))
 
         if is_good_fusion:
 

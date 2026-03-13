@@ -328,8 +328,6 @@ def extract_tandem_splicing_info(sjc, alljuncs, outer_junc_to_exons, allsamples,
                     outer_right = True
             # this checks for weird junction patterns - requires outer junction to be used as an outer junction 
             if outer_left and outer_right:
-                if len(inner_juncs) == 1:
-                    print(j, inner_juncs, sjc)
                 inner_juncs = tuple(inner_juncs)
                 if inner_juncs not in outer_junc_to_exons[j]:
                     outer_junc_to_exons[j][inner_juncs] = {s: 0 for s in allsamples}
@@ -511,8 +509,6 @@ def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gen
                         my_exons = [(innerjuncs[i][1], innerjuncs[i+1][0]) for i in range(len(innerjuncs)-1)]
                         exonstring = ','.join([f'{thischrom}:{x[0]}-{x[1]}' for x in my_exons])
                         jname = f'inc-of-{exonstring}'
-                        if len(innerjuncs) == 1:
-                            print(jname, innerjuncs)
                         esizes = ','.join([str(x[1]-x[0]) for x in my_exons])
                         estarts = ','.join([str(10+x[0]-outerjunc[0]) for x in my_exons])
                         bedline = [thischrom, outerjunc[0]-10, outerjunc[1]+10, f'{jname}_{ename}', 0, strand, outerjunc[0]-10, outerjunc[1]+10, 
@@ -571,7 +567,8 @@ def process_terminal_exons(termExon, eventtype, thischrom, strand, gene, allsamp
                 if is_annot_terminal:
                     ss_to_junc_qual[termSS].append(True)
                 else:
-                    ss_to_junc_qual[termSS].append(any([termExon[termSS][termJunc][s] == alljuncs[termJunc][s] for s in allsamples]))
+                    ss_to_junc_qual[termSS].append(any([termExon[termSS][termJunc][s] == alljuncs[termJunc][s] and termExon[termSS][termJunc][s] >= min_read_support for s in allsamples]))
+
         for termSS in termExon:
             if all(ss_to_junc_qual[termSS]):
                 actual_terminal.append(termSS)
@@ -600,6 +597,7 @@ def process_terminal_exons(termExon, eventtype, thischrom, strand, gene, allsamp
                             my_juncs.add(termJunc)
                 else:
                     othercounts = add_counts_to_dict(othercounts, ss_to_counts[termSS])
+            
             ##check that the junctions involved are distant enough from each other
             if len(goodB) > 1 and len(goodBstrict) > 1 and max(goodBstrict) - min(goodBstrict) >= MIN_TERMINAL_JUNCTION_SEPARATION:
                 ename = f'{eventtype}-({strand})-{gene}'
@@ -835,7 +833,7 @@ def write_counts_psi(info, ncounts, junctot, fulltot, allsamples, outcounts, out
     juncpsi = [ncounts[s]/junctot[s] if junctot[s] >= event_support else 'NA' for s in allsamples]
     outline = info + [str(round(ncounts[s]/junctot[s], 4)) if junctot[s] >= event_support else '' for s in allsamples]
     outpsijunc.write('\t'.join(outline) + '\n')
-    outline = info + [str(round(ncounts[s]/fulltot[s], 4)) if junctot[s] >= event_support else '' for s in allsamples]
+    outline = info + [str(round(ncounts[s]/fulltot[s], 4)) if fulltot[s] >= event_support else '' for s in allsamples]
     outpsitot.write('\t'.join(outline) + '\n')
     return juncpsi
 
@@ -999,21 +997,21 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
 
 
 
-def process_gene_to_events(tempprefix, thischrom, allsamples, allgenetojuncs, genetostrand, junc_support, output_read_ends, event_frac_of_tot, junc_frac_of_event, event_support, annot_afe_ss, annot_ale_ss, check_outliers):
+def process_gene_to_events(temp_prefix, thischrom, allsamples, allgenetojuncs, genetostrand, junc_support, output_read_ends, event_frac_of_tot, junc_frac_of_event, event_support, annot_afe_ss, annot_ale_ss, check_outliers):
     etypetocolor = {'skipped_exons': '66,105,245', 'retained_introns': '144,66,245',
                     'alt3': '245,215,66', 'alt5': '43,184,39', 'tss':'255,0,0', 'tts':'0,0,255'}
     ##outends is just for writing out read ends for Harrison - he can group them more intelligently
     outends = None
     if output_read_ends:
-        outends = open(tempprefix + '.diffsplice.readends.bed', 'w')
+        outends = open(temp_prefix + '.diffsplice.readends.bed', 'w')
     
     allgenes = set.union(*[set(allgenetojuncs[s].keys()) for s in range(len(allgenetojuncs))])
     outoutlier, outolfilt = None, None
     if check_outliers:
-        outoutlier = open(tempprefix + '.diffsplice.outliers.tsv', 'w') 
-        outolfilt = open(tempprefix + '.diffsplice.outliers.filtered.tsv', 'w')
-    with open(tempprefix + '.diffsplice.bed', 'w') as outbed, open(tempprefix + '.diffsplice.counts.tsv', 'w') as outcounts, \
-         open(tempprefix + '.diffsplice.PSIjunc.tsv', 'w') as outpsijunc, open(tempprefix + '.diffsplice.PSItot.tsv', 'w') as outpsitot:
+        outoutlier = open(temp_prefix + '.diffsplice.outliers.tsv', 'w') 
+        outolfilt = open(temp_prefix + '.diffsplice.outliers.filtered.tsv', 'w')
+    with open(temp_prefix + '.diffsplice.bed', 'w') as outbed, open(temp_prefix + '.diffsplice.counts.tsv', 'w') as outcounts, \
+         open(temp_prefix + '.diffsplice.PSIjunc.tsv', 'w') as outpsijunc, open(temp_prefix + '.diffsplice.PSItot.tsv', 'w') as outpsitot:
         
         for gene in allgenes:
             
@@ -1100,7 +1098,7 @@ def get_juncs_single_sample(listofargs):
     temp_prefix = temp_prefix + '_' + sample
 
 
-    print(region.name, region.start, region.end, sample, 'getting annot match')
+    # print(region.name, region.start, region.end, sample, 'getting annot match')
     bam_file = pysam.AlignmentFile(bamfile_name, 'rb')
     clipping_file = ft.generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
     bam_file.close()
@@ -1114,49 +1112,48 @@ def get_juncs_single_sample(listofargs):
         startindex, startdist, endindex, enddist = [int(x) for x in line[2:]]
         read_to_transcript[read] = (transcript, startindex, startdist, endindex, enddist)
     
-    print(region.name, region.start, region.end, sample, 'correcting reads')
+    # print(region.name, region.start, region.end, sample, 'correcting reads')
     
     sj_to_ends = {}
     bamfile = pysam.AlignmentFile(bamfile_name, 'rb')
-    c, d, e, f = 0, 0, 0, 0
+    b, c, d, e = 0, 0, 0, 0
     for read in bamfile.fetch(region.name, region.start, region.end):
-        if not ft._should_process_read(read, region, args.keep_sup, False):
-            continue
-        if read.mapping_quality < args.quality:
-            continue
-        if read.query_name in read_to_transcript:
-            transcript, startindex, startdist, endindex, enddist = read_to_transcript[read.query_name]
-            juncs = transcript_to_sjc[transcript]
-            if len(juncs) > 0:
-                newstart = juncs[startindex][0] - startdist
-                newend = juncs[endindex][1] + enddist
-                juncs = tuple([ft.Junc(x[0], x[1]) for x in juncs[startindex:endindex+1]])
-                strand = gene_to_strand[transcript.split('_')[-1]]
-                corrected_read = ft.BedRead.from_junctions(read.reference_name, newstart, newend,
-                                                           read.query_name, read.mapping_quality, 
-                                                           strand, juncs)
-                c += 1
+        if not read.is_secondary and (not read.is_supplementary or args.keep_sup):
+            if read.query_name in read_to_transcript:
+                transcript, startindex, startdist, endindex, enddist = read_to_transcript[read.query_name]
+                juncs = transcript_to_sjc[transcript]
+                if len(juncs) > 0:
+                    newstart = juncs[startindex][0] - startdist
+                    newend = juncs[endindex][1] + enddist
+                    juncs = tuple([ft.Junc(x[0], x[1]) for x in juncs[startindex:endindex+1]])
+                    strand = gene_to_strand[transcript.split('_')[-1]]
+                    corrected_read = ft.BedRead.from_junctions(read.reference_name, newstart, newend,
+                                                            read.query_name, read.mapping_quality, 
+                                                            strand, juncs)
+                    c += 1
+                else:
+                    c += 1
+            elif read.mapping_quality >= args.quality:
+                bed_read = ft.BedRead.from_read(read)
+                corrected_read = junction_corrector.correct_read(bed_read)
+                
+                if corrected_read:
+                    d += 1
+                else:
+                    e += 1
             else:
-                c += 1
+                b += 1
         else:
-            bed_read = ft.BedRead.from_read(read)
-            corrected_read = junction_corrector.correct_read(bed_read)
-            
-            if corrected_read:
-                d += 1
-            else:
-                e += 1
+            b += 1
         if corrected_read:
             ft._add_corrected_read_to_groups(corrected_read, sj_to_ends)
     bamfile.close()
-    # print(c, 'annotated match')
-    # print(d, 'corrected reads')
-    # print(f, 'reads not loaded from annot')
-    # print(e, 'failed correction')
-
+    # print(sample, b, 'failed quality filters')
+    # print(sample, c, 'annotated match')
+    # print(sample, d, 'corrected reads')
+    # print(sample, e, 'failed correction')
 
     genetojuncs, nogenejuncs, sereads = group_juncs_by_annot_gene(sj_to_ends, sjc_to_gene, junc_to_gene, gene_to_exons, gene_to_juncs)
-    
     
     c = 0
     with open(temp_prefix + '_gene_to_juncs.txt', 'w') as out:
@@ -1167,7 +1164,7 @@ def get_juncs_single_sample(listofargs):
                     c += 1
                     outline = [gene, juncstring, str(read_info.start), str(read_info.end), read_info.strand, read_info.name]
                     out.write('\t'.join(outline) + '\n')
-    # print(c, 'final multi-junction reads')
+    # print(sample, c, 'final multi-junction reads')
     pipettor.run([('rm', f'{temp_prefix}.matchannot.counts.tsv', f'{temp_prefix}.readtoends.txt', f'{temp_prefix}.reads.fasta', f'{temp_prefix}.reads.genomicclipping.txt')])
     genome.close()
 
@@ -1186,28 +1183,28 @@ def process_bed_line(line):
 
 
 def run_by_region(listofargs):
-    args, region, tempprefix, allsamples = listofargs
-    region_bed = tempprefix + '.region.bed'
+    args, region, temp_prefix, allsamples = listofargs
+    region_bed = temp_prefix + '.region.bed'
     out = open(region_bed, 'w')
     out.write('\t'.join([region.name, str(region.start), str(region.end)]) + '\n')
     out.close()
 
-    region_annot = tempprefix + '.annotation.bed'
+    region_annot = temp_prefix + '.annotation.bed'
     pipettor.run([('bedtools', 'intersect', '-wa', '-a', args.annot, '-b', region_bed)], stdout=region_annot)
 
     if os.path.getsize(region_annot) > 0: #check if any annotated transcripts in region
         if args.annot_basic:
-            region_annot_basic = tempprefix + '.annotation.basic.bed'
+            region_annot_basic = temp_prefix + '.annotation.basic.bed'
             pipettor.run([('bedtools', 'intersect', '-wa', '-a', args.annot_basic, '-b', region_bed)], stdout=region_annot_basic)
         
         region_annot_fa = None
         if not args.noaligntoannot:
-            region_annot_fa = tempprefix + '.annotation.fa'
+            region_annot_fa = temp_prefix + '.annotation.fa'
             bed_to_sequence(region_annot, args.genome, region_annot_fa)
         
         region_juncs = None
         if args.junction_bed:
-            region_juncs = tempprefix + '.juncbed.bed'
+            region_juncs = temp_prefix + '.juncbed.bed'
             pipettor.run([('bedtools', 'intersect', '-wa', '-a', args.junction_bed, '-b', region_bed)], stdout=region_juncs)
 
         sjc_to_gene = {}
@@ -1248,10 +1245,6 @@ def run_by_region(listofargs):
                         afe_ss, ale_ss = ale_ss, afe_ss
                     annot_afe_ss[gene].add(afe_ss)
                     annot_ale_ss[gene].add(ale_ss)
-            
-            
-
-
 
         # align reads to annot [transcripts +- 1000bp], filter to only good aligns, convert to genomic coords
         # get reads from that bam file (no need to correct), save junctions - am actually doing correct, could probably remove that
@@ -1263,10 +1256,10 @@ def run_by_region(listofargs):
         for sample, bamfile in allsamples:
             c += 1
             # if True:
-            if not os.path.exists(tempprefix + '_' + sample + '_gene_to_juncs.txt'):
+            if not os.path.exists(temp_prefix + '_' + sample + '_gene_to_juncs.txt'):
                 # print(c, sample)
-                # get_juncs_single_sample(args, region, tempprefix, sample, bamfile, region_annot, region_annot_fa, region_juncs, sjc_to_gene, junc_to_gene, exon_to_gene, gene_to_exons, gene_to_juncs, transcript_to_sjc, gene_to_strand)
-                chunkcmds.append([args, region, tempprefix, sample, bamfile, region_annot, region_annot_fa, region_juncs, sjc_to_gene, junc_to_gene, exon_to_gene, gene_to_exons, gene_to_juncs, transcript_to_sjc, gene_to_strand])
+                # get_juncs_single_sample(args, region, temp_prefix, sample, bamfile, region_annot, region_annot_fa, region_juncs, sjc_to_gene, junc_to_gene, exon_to_gene, gene_to_exons, gene_to_juncs, transcript_to_sjc, gene_to_strand)
+                chunkcmds.append([args, region, temp_prefix, sample, bamfile, region_annot, region_annot_fa, region_juncs, sjc_to_gene, junc_to_gene, exon_to_gene, gene_to_exons, gene_to_juncs, transcript_to_sjc, gene_to_strand])
                 # break
 
         p = multiprocessing.Pool(4)
@@ -1285,7 +1278,7 @@ def run_by_region(listofargs):
         allgenetojuncs = []
         for sample, bamfile in allsamples:
             gene_to_juncs = {}
-            for line in open(tempprefix + '_' + sample + '_gene_to_juncs.txt'):
+            for line in open(temp_prefix + '_' + sample + '_gene_to_juncs.txt'):
                 line = line.rstrip().split('\t')
                 gene, juncstring, start, end, strand, readname = line
                 juncs = [x.split('.') for x in juncstring.split(',')]
@@ -1297,11 +1290,64 @@ def run_by_region(listofargs):
                 gene_to_juncs[gene][juncs].append(ft.ReadInfo(int(start), int(end), strand, readname))
             allgenetojuncs.append(gene_to_juncs)
         
-        process_gene_to_events(tempprefix, region.name, [x[0] for x in allsamples], allgenetojuncs, gene_to_strand, args.junc_support, args.output_read_ends, args.event_frac_of_tot, args.junc_frac_of_event, args.event_support, annot_afe_ss, annot_ale_ss, args.check_outliers)
+        process_gene_to_events(temp_prefix, region.name, [x[0] for x in allsamples], allgenetojuncs, gene_to_strand, args.junc_support, args.output_read_ends, args.event_frac_of_tot, args.junc_frac_of_event, args.event_support, annot_afe_ss, annot_ale_ss, args.check_outliers)
 
         if not args.keep_intermediate:
             for sample, bamfile in allsamples:
-                pipettor.run([('rm', tempprefix + '_' + sample + '_gene_to_juncs.txt')])
+                pipettor.run([('rm', temp_prefix + '_' + sample + '_gene_to_juncs.txt')])
+
+
+
+def preprocess_single_sample(listofargs):
+    args, region, temp_prefix, sample, bamfile_name = listofargs
+    
+    temp_prefix = temp_prefix + '_' + sample
+    
+    bamfile = pysam.AlignmentFile(bamfile_name, 'rb')
+    starts, ends = set(), set()
+    for read in bamfile.fetch(region.name, region.start, region.end):
+        if not read.is_secondary and (not read.is_supplementary or args.keep_sup) and read.mapping_quality >= args.quality:
+            starts.add(read.reference_start)
+            ends.add(read.reference_end)
+    bamfile.close()
+  
+    with open(temp_prefix + '_ends.txt', 'w') as out:
+        if len(starts) > 0:
+            out.write(f'{min(starts)}\t{max(ends)}')
+        else:
+            out.write(f'\t')
+
+
+def preprocess_by_region(listofargs):
+    args, region, temp_prefix, allsamples = listofargs
+    chunkcmds = []
+    for sample, bamfile in allsamples:
+        chunkcmds.append([args, region, temp_prefix, sample, bamfile])
+
+    p = multiprocessing.Pool(4)
+    childErrs = set()
+    for i in p.imap(preprocess_single_sample, chunkcmds):
+        childErrs.add(i)
+    p.close()
+    p.join()
+    if len(childErrs) > 1:
+        raise ValueError(childErrs)
+    
+
+    starts, ends = set(), set()
+    for sample, bamfile in allsamples:
+        for line in open(temp_prefix + '_' + sample + '_ends.txt'):
+            s, e = line.split('\t')
+            if s != '':
+                starts.add(int(s))
+                ends.add(int(e))
+        pipettor.run([('rm', temp_prefix + '_' + sample + '_ends.txt')])
+    
+    with open(temp_prefix + '_ends.txt', 'w') as out:
+        if len(starts) > 0:
+            out.write(f'{min(starts)}\t{max(ends)}')
+        else:
+            out.write(f'\t')
 
 
 
@@ -1324,6 +1370,23 @@ class NoDaemonProcessPool(multiprocessing.pool.Pool):
 
         return proc
 
+def combine_regions(regions, buffersize=0):
+    regions.sort()
+    new_regions = []
+    lastchrom, laststart, lastend = -1, -1, -1
+    for range in regions:
+        c, s, e = range.name, range.start, range.end
+        if c != lastchrom or s > lastend + buffersize:
+            if lastchrom != -1:
+                new_regions.append(ft.SeqRange(lastchrom, laststart, lastend))
+            lastchrom, laststart, lastend = c, s, e
+        else:
+            lastend = max((lastend, e))
+    if lastchrom != -1:
+        new_regions.append(ft.SeqRange(lastchrom, laststart, lastend))
+    return new_regions
+
+
 def collapsefrombam():
     logging.basicConfig(level=logging.INFO)
     args = get_args()
@@ -1333,27 +1396,56 @@ def collapsefrombam():
     
     tempDir = ft.make_temp_dir(args.output)
     print('temp directory:', tempDir)
-    
-    # logging.info('Getting regions')
-    # all_regions = ft.partition_input(args.parallel_mode, genome, args.genome_aligned_bam,
-    #                               args.annot_gtf, args.threads)
-    # logging.info(f'Number of regions {len(all_regions)}')
-    
-    ##KRAS
-    # all_regions = [ft.SeqRange('chr12', 25205212, 25251428)]
-    ## ADAR1
-    # all_regions = [ft.SeqRange('chr1', 154581700,154628050)]
-    # all_regions = [ft.SeqRange('chr12', 25205212, 25251428), ft.SeqRange('chr1', 154581700,154628050)]
-    # RB1 chr13   48303735        48599436        RB1
-    # all_regions = [ft.SeqRange('chr13', 48303735,48599436)]
-
-    # allregions = [('chr15', 78871681, 78898928)] ##MORF4L1
-    # allregions = [('chr7', 116499621, 116509151)] ##CAV2
 
     all_regions = []
     for line in open(args.region_bed):
         line = line.rstrip().split('\t')
         all_regions.append(ft.SeqRange(line[0], int(line[1]), int(line[2])))
+    print('input regions: ', len(all_regions))
+    all_regions = combine_regions(all_regions)
+
+    allsamples = []
+    for line in open(args.manifest):
+        if line[0] != '#':
+            line = line.rstrip().split('\t')
+            sample, bamfile = line
+            allsamples.append((sample, bamfile))
+
+    # chunkcmds = []
+    # for region in all_regions:
+    #     temp_prefix = tempDir + '-'.join([region.name, str(region.start), str(region.end)])
+    #     chunkcmds.append([args, region, temp_prefix, allsamples])
+
+    # multiprocessing.set_start_method('fork')
+    # print(f'running region preprocessing with {args.threads // 4} threads')
+    # p = NoDaemonProcessPool(processes=args.threads // 4)
+    # childErrs = set()
+    # c = 1
+    # for i in p.imap(preprocess_by_region, chunkcmds):
+    #     logging.info(f'\rdone running region chunk {c} of {len(chunkcmds)}')
+    #     childErrs.add(i)
+    #     c += 1
+    # p.close()
+    # p.join()
+    # if len(childErrs) > 1:
+    #     raise ValueError(childErrs)
+
+    # new_regions = []
+    # for region in all_regions:
+    #     temp_prefix = tempDir + '-'.join([region.name, str(region.start), str(region.end)])
+    #     for line in open(temp_prefix + '_ends.txt'):
+    #         s, e = line.split('\t')
+    #         if s != '':
+    #             new_regions.append(ft.SeqRange(region.name, int(s), int(e)))
+    #     pipettor.run([('rm', temp_prefix + '_ends.txt')])
+
+    # all_regions = combine_regions(new_regions)
+    # print('regions after preprocessing: ', len(all_regions))
+    # print(all_regions)
+
+    out = open(tempDir + '0000.header.diffsplice.counts.tsv', 'w')
+    out.write('\t'.join(['featureID'] + [x[0] for x in allsamples]) + '\n')
+    out.close()
 
     logging.info('pre-processing annotation')
     annot_bed = tempDir + 'annotation.bed'
@@ -1368,17 +1460,6 @@ def collapsefrombam():
 
 
     logging.info('splitting by chunk')
-    
-    allsamples = []
-    for line in open(args.manifest):
-        if line[0] != '#':
-            line = line.rstrip().split('\t')
-            sample, bamfile = line
-            allsamples.append((sample, bamfile))
-    out = open(tempDir + '0000.header.diffsplice.counts.tsv', 'w')
-    out.write('\t'.join(['featureID'] + [x[0] for x in allsamples]) + '\n')
-    out.close()
-
     chunkcmds = []
     tempprefixes = []
     for region in all_regions:
@@ -1387,7 +1468,6 @@ def collapsefrombam():
         tempprefixes.append(temp_prefix)
 
     multiprocessing.set_start_method('fork')
-    # with multiprocessing.closing(NoDaemonProcessPool(processes=args.threads // 4)) as p:
     print(f'running regions with {args.threads // 4} threads')
     p = NoDaemonProcessPool(processes=args.threads // 4)
     childErrs = set()

@@ -3,9 +3,11 @@
 import sys
 import argparse
 import os
+import logging
 import pipettor
 import pysam
 import math
+from flair import FlairInputDataError
 from flair.bed_to_gtf import bed_to_gtf
 from flair.flair_transcriptome import revcomp
 from statistics import mode
@@ -100,6 +102,11 @@ def combine():
         else:
             mapfiles.append('')
 
+    logging.debug("combining %d sample(s) from manifest", len(samples))
+    if len(samples) == 0:
+        raise FlairInputDataError(f"no samples found in manifest file {manifest}")
+
+
     generatefa = all([len(x) > 0 for x in fafiles])
 
     intronchaintoisos = {}
@@ -189,6 +196,7 @@ def combine():
                     last = cleanisoname(last)
                     sampletoseq[sample][last] = line.rstrip()
 
+    logging.debug("found %d intron chains", len(intronchaintoisos))
     finalisostosupport = {}
 
     isocount = 1
@@ -321,6 +329,8 @@ def combine():
     outbed.close()
     if generatefa:
         outfa.close()
+
+    logging.debug("found %d final isoforms", len(finalisostosupport))
 
     for newiso in isomap:
         outmap.write(newiso + '\t' + '\t'.join(isomap[newiso]) + '\n')

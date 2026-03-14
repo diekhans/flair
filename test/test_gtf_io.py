@@ -4,7 +4,7 @@ tests of gff_io module
 import pytest
 from io import StringIO
 from flair.gtf_io import (gtf_data_parser, gtf_record_parser, GtfAttrsSet, GtfExon, GtfTranscript, GtfCDS,
-                          GtfIdError, gtf_write_row, FLAIR_ATTRS,
+                          GtfIdError, GtfParseError, gtf_write_row, FLAIR_ATTRS,
                           EXON_FEATURES, TRANSCRIPT_FEATURES, TRANSCRIPT_EXON_FEATURES)
 from flair import SeqRange
 
@@ -154,3 +154,41 @@ def test_rec_str3(basic_gtf_data):
 
     assert rec_fh.getvalue() == ('chr12\tHAVANA\ttranscript\t25205247\t25250929\t100\t-\t2\t'
                                  'gene_id "ENSG00000133703.12"; transcript_id "ENST00000256078.9"; gene_name "KRAS";\n')
+
+
+##
+# Whitespace validation tests
+##
+
+def _write_gtf(path, gene_id, transcript_id):
+    """Write a minimal GTF with one transcript line to path."""
+    attrs = f'gene_id "{gene_id}"; transcript_id "{transcript_id}"; gene_name "FOO";'
+    path.write_text(f'chr1\tHAVANA\ttranscript\t1000\t2000\t.\t+\t.\t{attrs}\n')
+    return str(path)
+
+
+def test_whitespace_space_in_gene_id(tmp_path):
+    with pytest.raises(GtfParseError):
+        list(gtf_record_parser(_write_gtf(tmp_path / "test.gtf", "ENSG1 BAD", "ENST1")))
+
+
+def test_whitespace_tab_in_gene_id(tmp_path):
+    with pytest.raises(GtfParseError):
+        list(gtf_record_parser(_write_gtf(tmp_path / "test.gtf", "ENSG1\tBAD", "ENST1")))
+
+
+def test_whitespace_space_in_transcript_id(tmp_path):
+    with pytest.raises(GtfParseError):
+        list(gtf_record_parser(_write_gtf(tmp_path / "test.gtf", "ENSG1", "ENST1 BAD")))
+
+
+def test_whitespace_tab_in_transcript_id(tmp_path):
+    with pytest.raises(GtfParseError):
+        list(gtf_record_parser(_write_gtf(tmp_path / "test.gtf", "ENSG1", "ENST1\tBAD")))
+
+
+def test_no_whitespace_valid(tmp_path):
+    recs = list(gtf_record_parser(_write_gtf(tmp_path / "test.gtf", "ENSG1", "ENST1")))
+    assert len(recs) == 1
+    assert recs[0].gene_id == "ENSG1"
+    assert recs[0].transcript_id == "ENST1"

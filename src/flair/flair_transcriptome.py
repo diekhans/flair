@@ -278,6 +278,7 @@ def get_bed_exons_from_exons(exons, start):
 def get_sequence_for_exons(genome, chrom, strand, exons):
     trans_seq = ''.join([genome.fetch(chrom, e.start, e.end)
                          for e in exons])
+    # FIXME: this upper cases only if reverse strand
     if strand == '-':
         trans_seq = get_reverse_complement(trans_seq)
     return trans_seq

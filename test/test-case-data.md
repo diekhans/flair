@@ -44,3 +44,13 @@ genome is release, this can be turned into a full test case.
 
 ## Others
 * tiny.sam - A few records from test-align.bam output
+
+## KRAS simulated genomic mutation splicing
+
+Simulation of genomic splice junction mutation with reads that match
+a non-canonical acceptor
+
+* `input/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.fastq`
+* `input/KRAS_sim_genomic_mut_driven_splicing.bed`
+* `input/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.sj.bed`
+   Junctions create with intronProspector --sj-filter=all from alignments

@@ -264,7 +264,7 @@ def check_transcript_in_annot(exondict, tname):
         exoninfo = exondict[tname]
     except KeyError:
         raise Exception(
-                "The transcript names in the annotation fasta do not appear to match the ones in the isoforms file. You may be able to fix this by using gtf_to_bed and bed_to_sequence on your annotation gtf and using the resulting file as your annotation fasta input to this program")
+            f"The transcript name ({tname}) in the annotation fasta do not appear to match the ones in the isoforms file. You may be able to fix this by using gtf_to_bed and bed_to_sequence on your annotation gtf and using the resulting file as your annotation fasta input to this program")
     except Exception as ex:
         raise Exception("** check_splice FAILED for %s" % (tname)) from ex
     return exoninfo
@@ -338,7 +338,7 @@ def get_best_transcript(tinfo, args, transcript_to_exons, transcript_to_bp_ss_in
     # then order by amount of transcript covered
     if len(passingtranscripts) > 0:
         passingtranscripts.sort()
-        
+
         if len(passingtranscripts) == 1 or passingtranscripts[0][:3] != passingtranscripts[1][:3]:
             return [passingtranscripts[0][-3:], ]
         else:

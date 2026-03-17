@@ -107,7 +107,8 @@ def gtfToSSBed(gtffile, knownSS, printErr, printErrFname, verbose):
                     txn = re.search('transcript_id "([^\"]+)"', l).group(1)
                 except Exception as ex:
                     raise Exception("** ERROR expect transcript_id in GTF format, cannot read %s" % gtffile) from ex
-
+                if re.search(r'\s', txn):
+                    raise Exception(f"transcript-id may not contain white space characters: `{txn}' in {l}")
                 key = (chrom, txn, strand)
 
                 if key not in exons:

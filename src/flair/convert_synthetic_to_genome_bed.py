@@ -157,12 +157,13 @@ def convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusboun
     return genomicbounds, outlines
 
 def check_too_close(numloci, genomicbounds):
-    istooclose = False
     for i in range(numloci - 1):
-        if genomicbounds[i][0] == genomicbounds[i + 1][0] and genomicbounds[i][3] == genomicbounds[i + 1][3] and abs(
-                genomicbounds[i][2] - genomicbounds[i + 1][1]) < 350000:
-            istooclose = True
-    return istooclose
+        if genomicbounds[i][0] == genomicbounds[i + 1][0] and genomicbounds[i][3] == genomicbounds[i + 1][3]: #chrom and strand are same
+            if genomicbounds[i][3] == '+' and 0 < genomicbounds[i+1][1] - genomicbounds[i][2] < 350000:
+                return True
+            elif genomicbounds[i][3] == '-' and 0 < genomicbounds[i][1] - genomicbounds[i+1][2] < 350000:
+                return True
+    return False
 
 def write_final_fusion_reads(readsfile, freadsfinal):
     last = False
@@ -192,13 +193,9 @@ def write_final_fusion_reads(readsfile, freadsfinal):
     freads.close()
 
 
-def convert_synthetic_isos(annotgtf, isoformsbed, readmapfile, readsfile, breakpointfile, outname, paralogfile, maxpromiscuity):
-
+def convert_synthetic_isos(isoformsbed, readmapfile, readsfile, breakpointfile, outname):
     isoreadsup = get_iso_to_reads(readmapfile)
     synthchrtoinfo = get_synth_info(breakpointfile)
-    genetoparalogs = get_paralog_ref(paralogfile)
-    genetoname = get_gene_name_conv(annotgtf)
-    locustopartners = identify_promiscuous_genes(isoformsbed, genetoparalogs)
 
     freadsfinal = set()
     out = open(outname, 'w')
@@ -208,23 +205,19 @@ def convert_synthetic_isos(annotgtf, isoformsbed, readmapfile, readsfile, breakp
         fusionchr = line[0]
         synthinfo = [x.split('..') for x in synthchrtoinfo[fusionchr].split('--')]
         synthinfo = [[y[0], y[1], int(y[2]), int(y[3])] for y in synthinfo]
-        fgenes = set([x.split('.')[0] if x[:3] != 'chr' else x.split('-')[0] + '-' + str(round(int(x.split('-')[1]), -6)) for x in fusionchr.split('--')])
-        is_good_fusion = identify_fusion_problems(fgenes, locustopartners, maxpromiscuity, genetoname, genetoparalogs, [x[1] for x in synthinfo], len(isoreadsup[iso]))
 
-        if is_good_fusion:
+        locusbounds = get_locus_bounds(synthinfo)
+        if start < locusbounds[0][1] and locusbounds[-1][0] < int(line[2]):
 
-            locusbounds = get_locus_bounds(synthinfo)
-            if start < locusbounds[0][1] and locusbounds[-1][0] < int(line[2]):
+            numloci = len(synthinfo)
+            starts, exonindexes = separate_exons_by_locus(esizes, estarts, numloci, locusbounds, start)
 
-                numloci = len(synthinfo)
-                starts, exonindexes = separate_exons_by_locus(esizes, estarts, numloci, locusbounds, start)
-
-                if None not in starts:
-                    genomicbounds, outlines = convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusbounds, esizes, estarts, start, iso)
-                    if not check_too_close(numloci, genomicbounds):
-                        for l in outlines:
-                            out.write(l)
-                        freadsfinal.update(isoreadsup[iso])
+            if None not in starts:
+                genomicbounds, outlines = convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusbounds, esizes, estarts, start, iso)
+                if not check_too_close(numloci, genomicbounds):
+                    for l in outlines:
+                        out.write(l)
+                    freadsfinal.update(isoreadsup[iso])
     out.close()
     write_final_fusion_reads(readsfile, freadsfinal)
 

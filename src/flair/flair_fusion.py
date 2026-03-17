@@ -25,6 +25,15 @@ def report_nofusions(outputprefix):
         f = open(file, 'w')
         f.close()
 
+def align_to_synth_genome(genome, reads, output, additional_options):
+    mm2_cmd = ['minimap2', '-ax', 'splice'] + additional_options + [genome, reads]
+    samtools_filter_cmd = ('samtools', 'view', '-F', '2048', '-hb', '-')
+    samtools_sort_cmd = ('samtools', 'sort', '-o', output, '-')
+    samtools_index_cmd = ('samtools', 'index', output)
+    pipettor.run([mm2_cmd, samtools_filter_cmd, samtools_sort_cmd])
+    pipettor.run([samtools_index_cmd])
+
+
 def detectfusions():
     parser = argparse.ArgumentParser()
     required = parser.add_argument_group('required named arguments')
@@ -289,14 +298,94 @@ def detectfusions():
         return
 
     faidxcommand = ['samtools', 'faidx', args.output + '-syntheticFusionGenome.fa']
-    mm2_cmd = ['minimap2', '-ax', 'splice', '-s', str(args.minfragmentsize), '-t', str(args.threads), '-un',
-               '--secondary=no', '-G', '1000k', args.output + '-syntheticFusionGenome.fa', freadsname]
-    samtools_filter_cmd = ('samtools', 'view', '-F', '2048', '-hb', '-')
-    samtools_sort_cmd = ('samtools', 'sort', '-@', str(args.threads), '-o', args.output + '.syntheticAligned.bam', '-')
-    samtools_index_cmd = ('samtools', 'index', args.output + '.syntheticAligned.bam')
-    bamtobedcmd = ('bedtools', 'bamtobed', '-bed12', '-i', args.output + '.syntheticAligned.bam')
-    getsscommand = ['python3', path + 'synthetic_splice_sites.py', args.output + '.syntheticAligned.bed',
-                        args.output + '-syntheticReferenceAnno.gtf', args.output + '.syntheticAligned.SJ.bed', args.output + '-syntheticBreakpointLoc.bed', '8', '2', args.output + '-syntheticFusionGenome.fa']#'15', '2']
+    pipettor.run([faidxcommand])
+
+    print('aligning to synthetic fusion genome')
+    align_to_synth_genome(args.output + '-syntheticFusionGenome.fa', freadsname, args.output + '.syntheticAligned.nosplice.bam', 
+                          ['-s', str(args.minfragmentsize), '-t', str(args.threads), '-un', '--secondary=no', '-G', '1000k'])
+    align_to_synth_genome(args.output + '-syntheticFusionGenome.fa', freadsname, args.output + '.syntheticAligned.withsplice.bam', 
+                          ['-s', str(args.minfragmentsize), '-t', str(args.threads), '--secondary=no', '-G', '1000k'])
+    
+    rname_to_read = {}
+    with pysam.AlignmentFile(args.output + '.syntheticAligned.withsplice.bam', 'rb') as bamfile:
+        for a in bamfile:
+            if a.is_mapped and not a.is_secondary and not a.is_supplementary:
+                rname_to_read[a.query_name] = a
+    with pysam.AlignmentFile(args.output + '.syntheticAligned.nosplice.bam', 'rb') as bamfile:
+        for a in bamfile:
+            if a.is_mapped and not a.is_secondary and not a.is_supplementary:
+                if a.query_name not in rname_to_read:
+                    rname_to_read[a.query_name] = a
+                else:
+                    nosplice_match = a.get_cigar_stats()[0][0]
+                    nosplice_insert = a.get_cigar_stats()[0][1]
+                    withsplice_match = rname_to_read[a.query_name].get_cigar_stats()[0][0]
+                    withsplice_insert = rname_to_read[a.query_name].get_cigar_stats()[0][1]
+                    if nosplice_match > withsplice_match and nosplice_insert < withsplice_insert:
+                        rname_to_read[a.query_name] = a
+    template = pysam.AlignmentFile(args.output + '.syntheticAligned.withsplice.bam', 'rb')
+    outbam = pysam.AlignmentFile(args.output + '.syntheticAligned.unsorted.bam', 'wb', template=template)
+    for a in rname_to_read:
+        outbam.write(rname_to_read[a])
+    template.close()
+    outbam.close()
+
+    pipettor.run([('samtools', 'sort', '-o', args.output + '.syntheticAligned.bam', args.output + '.syntheticAligned.unsorted.bam')])
+    pipettor.run([('samtools', 'index', args.output + '.syntheticAligned.bam')])
+    pipettor.run([('rm', args.output + '.syntheticAligned.withsplice.bam', args.output + '.syntheticAligned.withsplice.bam.bai', 
+                   args.output + '.syntheticAligned.nosplice.bam', args.output + '.syntheticAligned.nosplice.bam.bai',
+                   args.output + '.syntheticAligned.unsorted.bam')])
+    
+    
+    print('getting ss')
+    # bamtobedcmd = ('bedtools', 'bamtobed', '-bed12', '-i', args.output + '.syntheticAligned.bam')
+    # getsscommand = ['python3', path + 'synthetic_splice_sites.py', args.output + '.syntheticAligned.bed',
+                        # args.output + '-syntheticReferenceAnno.gtf', args.output + '.syntheticAligned.SJ.bed', args.output + '-syntheticBreakpointLoc.bed', '8', '2', args.output + '-syntheticFusionGenome.fa']#'15', '2']
+    # pipettor.run([bamtobedcmd], stdout=args.output + '.syntheticAligned.bed')
+    # pipettor.run([getsscommand])
+    
+    ipcmd = ('intronProspector', f'--genome-fasta={args.output}-syntheticFusionGenome.fa', f'--intron-bed6={args.output}.syntheticAligned.IPSJ.bed', '-C', '0.0', '--sj-filter=all', f'{args.output}.syntheticAligned.bam')
+    pipettor.run([ipcmd])
+    
+    fusiontobp = {}
+    for line in open(f'{args.output}-syntheticBreakpointLoc.bed'):
+        line = line.rstrip().split('\t')
+        fusiontobp[line[0]] = int(line[1])
+    
+
+    fusion_to_bp_sj = {f:False for f in fusiontobp}
+    good_sj = []
+    
+    for line in open(f'{args.output}.syntheticAligned.IPSJ.bed'):
+        line = line.rstrip().split('\t')
+        fusion = line[0]
+        start, end = int(line[1]), int(line[2])
+        readsup = int(line[4])
+        sjmotif = line[3].split('_')[-1]
+        strand = line[5]
+        if readsup >= 2:
+            if sjmotif in {"GT/AG", "GC/AG", "AT/AC"} and strand == '+': #for synthetic alignment, all junctions should be '+'
+                good_sj.append(line)
+                if start < fusiontobp[fusion] < end:
+                    fusion_to_bp_sj[fusion] = True
+    
+    for line in open(f'{args.output}.syntheticAligned.IPSJ.bed'):
+        line = line.rstrip().split('\t')
+        fusion = line[0]
+        start, end = int(line[1]), int(line[2])
+        readsup = int(line[4])
+        sjmotif = line[3].split('_')[-1]
+        strand = line[5]
+        if readsup >= 2 and fusion_to_bp_sj[fusion] == False and start < fusiontobp[fusion] < end: ##no good breakpoint junctions yet
+            good_sj.append(line)
+
+
+    out = open(f'{args.output}.syntheticAligned.SJ.bed', 'w')
+    for line in good_sj:
+        out.write('\t'.join(line) + '\n')
+    out.close()
+
+
     transcriptome_command = ['flair', 'transcriptome',
                              '--genome_aligned_bam', args.output + '.syntheticAligned.bam',
                              '--genome', args.output + '-syntheticFusionGenome.fa',
@@ -316,15 +405,6 @@ def detectfusions():
     junc_bed = args.output + '.syntheticAligned.SJ.bed'
     if os.path.exists(junc_bed) and (os.path.getsize(junc_bed) > 0):
         transcriptome_command.extend(['--junction_bed', junc_bed])
-
-    pipettor.run([faidxcommand])
-    print('aligning to synthetic fusion genome')
-    pipettor.run([mm2_cmd, samtools_filter_cmd, samtools_sort_cmd])
-    
-    pipettor.run([samtools_index_cmd])
-    pipettor.run([bamtobedcmd], stdout=args.output + '.syntheticAligned.bed')
-    print('getting ss')
-    pipettor.run([getsscommand])
     
     print('generating fusion transcriptome')
     print(' '.join(transcriptome_command))
@@ -351,9 +431,9 @@ def detectfusions():
     out.close()
 
     print('converting coordinates from synthetic to genomic')
-    convert_synthetic_isos(args.gtf, args.output + '.syntheticAligned.isoforms.bed',
+    convert_synthetic_isos(args.output + '.syntheticAligned.isoforms.bed',
                       args.output + '.syntheticAligned.isoform.read.map.txt', freadsname,
-                      args.output + '-syntheticBreakpointLoc.bed', args.output + '.fusions.isoforms.bed', os.path.realpath(__file__).split('flair_fusion')[0] + 'dgd_Hsa_all_v71.tsv', maxpromiscuity)
+                      args.output + '-syntheticBreakpointLoc.bed', args.output + '.fusions.isoforms.bed')
     goodisos = set()
     for line in open(args.output + '.fusions.isoforms.bed'):
         line = line.rstrip().split('\t')

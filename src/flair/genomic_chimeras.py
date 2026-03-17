@@ -141,7 +141,7 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
             goodreads = []
             for r in interestingloci[fgenes]:
                 if len(readToAligns[r]) == numloci:
-                    alignedloci = readToAligns[r]
+                    alignedloci = sorted(readToAligns[r])
                     goodreads.append(r)
                     for i in range(numloci - 1):
                         qdist[i].append(alignedloci[i][1][0] - alignedloci[i + 1][0][0])
@@ -195,25 +195,14 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
                         for i in range(1, len(qdistlist)):
                             simscore.append(qdistlist[i] - qdistlist[i-1])
                         simscores.append(median(simscore))
-
                     if max([abs(median(x)) for x in qdist]) <= 10 \
                     or (max([abs(min(x)) for x in qdist]) <= 10 and max(simscores) <= 3): ###alignments have to either have few gaps or be very consistent
-                        ###['fusionName', 'geneName', 'orderInFusion', 'geneChr', 'leftCoord', 'rightCoord', 'readSupport']
                         fname = '__'.join(fgenes)
                         fusiontoinfo[fname] = {'reads': set(goodreads), 'disttostart':[mindisttostart], 'qdist':qdist}
                         for i in range(numloci):
-                            # fusiontoinfo[fname][i] = [aligngenes[i][0], aligngenes[i][2], alignblocks[i][0],
-                            #                    alignblocks[i][1]]
-
                             fusiontoinfo[fname][fgenes[i]] = [genomic_chroms[i], alignblocks[i][0], alignblocks[i][1]]
-                        # for i in range(numloci):
-                        #     outline = ['__'.join([x[0] for x in aligngenes]), aligngenes[i][0],
-                        #                "gene" + str(i), aligngenes[i][2], alignblocks[i][0], alignblocks[i][1],
-                        #                readsup]
-                        #     if i == 0: outline.append(','.join(goodreads))
-                        #     fusionsout.write('\t'.join([str(x) for x in outline]) + '\n')
+
     return fusiontoinfo
-    # fusionsout.close()
 
 
 

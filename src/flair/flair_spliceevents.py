@@ -1132,15 +1132,15 @@ def get_juncs_single_sample(listofargs):
                 newend = juncs[endindex][1] + enddist
                 juncs = tuple([ft.Junc(x[0], x[1]) for x in juncs[startindex:endindex+1]])
                 strand = gene_to_strand[transcript.split('_')[-1]]
-                corrected_read = ft.BedRead.from_junctions(read.reference_name, newstart, newend,
-                                                           read.query_name, read.mapping_quality, 
-                                                           strand, juncs)
+                corrected_read = ft.ReadRec.from_junctions(read.reference_name, newstart, newend,
+                                                          read.query_name, read.mapping_quality,
+                                                          strand, juncs)
                 c += 1
             else:
                 c += 1
         else:
-            bed_read = ft.BedRead.from_read(read)
-            corrected_read = junction_corrector.correct_read(bed_read)
+            readrec = ft.ReadRec.from_read(read)
+            corrected_read = junction_corrector.correct_read(readrec)
             
             if corrected_read:
                 d += 1
@@ -1294,7 +1294,7 @@ def run_by_region(listofargs):
                     gene_to_juncs[gene] = {}
                 if juncs not in gene_to_juncs[gene]:
                     gene_to_juncs[gene][juncs] = []
-                gene_to_juncs[gene][juncs].append(ft.ReadInfo(int(start), int(end), strand, readname))
+                gene_to_juncs[gene][juncs].append(ft.ReadRec(None, int(start), int(end), readname, None, strand, ()))
             allgenetojuncs.append(gene_to_juncs)
         
         process_gene_to_events(tempprefix, region.name, [x[0] for x in allsamples], allgenetojuncs, gene_to_strand, args.junc_support, args.output_read_ends, args.event_frac_of_tot, args.junc_frac_of_event, args.event_support, annot_afe_ss, annot_ale_ss, args.check_outliers)

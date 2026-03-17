@@ -220,17 +220,16 @@ def bed_to_junctions(bed):
 ####
 # splice junction correction
 ####
-def read_correct_to_bedread(junction_corrector, read):
-    # FIXME: remove unnecessary initial build of BedRead and make junctions from
+def read_correct_to_readrec(junction_corrector, read):
+    # FIXME: remove unnecessary initial build of ReadRec and make junctions from
     # read, correct, and then make bed
-    bedread = BedRead.from_read(read)
-    corrected_bed = junction_corrector.correct_read_bed(bedread.bed)
+    readrec = ReadRec.from_read(read)
+    corrected_bed = junction_corrector.correct_read_bed(readrec.to_bed())
     if corrected_bed is None:
         return None
-    # Update bed_read with corrected bed
-    bedread.bed = corrected_bed
-    bedread.juncs = BedRead._compute_juncs_from_blocks(corrected_bed)
-    return bedread
+    readrec.juncs = tuple(Junc(corrected_bed.blocks[i].end, corrected_bed.blocks[i + 1].start)
+                          for i in range(len(corrected_bed.blocks) - 1))
+    return readrec
 
 def build_intron_support(gtf_file, junction_tab, junction_bed):
     """Build IntronSupport from all available sources."""
@@ -247,11 +246,8 @@ def setup_junction_corrector(intron_support, ss_window, junction_support):
     """Create a JunctionCorrector from a pre-built IntronSupport."""
     return JunctionCorrector(intron_support, ss_window, junction_support)
 
-def get_rgb(name, strand, junclen):
-    # FIXME: document, this will not work for RefSeq
-    if name.startswith('ENST'):
-        return '3,28,252'
-    elif junclen == 0:
+def get_rgb(strand, junclen):
+    if junclen == 0:
         return "99,99,99"
     elif strand == '+':
         return "27,158,119"
@@ -283,44 +279,27 @@ def get_sequence_for_exons(genome, chrom, strand, exons):
         trans_seq = get_reverse_complement(trans_seq)
     return trans_seq
 
-class BedRead:
-    """Read alignment represented as a BED record with junction information.
+class ReadRec:
+    """Read alignment with location, junction, and metadata fields.
 
-    Contains a Bed object for standard BED fields plus juncs for splice junctions.
+    Stores chrom, start, end, name, score, strand, and juncs directly.
+    Exons are computed on the fly from start, end, and juncs.
+    A Bed record can be produced on demand via to_bed().
     """
 
-    def __init__(self, bed, juncs):
-        self.bed = bed
+    def __init__(self, chrom, start, end, name, score, strand, juncs):
+        self.chrom = chrom
+        self.start = start
+        self.end = end
+        self.name = name
+        self.score = score
+        self.strand = strand
         self.juncs = juncs
-
-    @staticmethod
-    def _create_bed(chrom, start, end, name, score, strand, exon_starts, exon_sizes):
-        """Create a Bed object with blocks from exon coordinates."""
-        # FIXME: keep everthing in ranges instead of start + length
-        bed = Bed(chrom, start, end, name, score=score, strand=strand,
-                  thickStart=start, thickEnd=end,
-                  itemRgb=get_rgb(name, strand, len(exon_starts) - 1))
-        for i in range(len(exon_starts)):
-            blk_start = start + exon_starts[i]
-            blk_end = blk_start + exon_sizes[i]
-            bed.addBlock(blk_start, blk_end)
-        return bed
-
-    @staticmethod
-    def _compute_juncs_from_blocks(bed):
-        """Compute junctions from bed blocks."""
-        blocks = bed.blocks
-        return tuple(Junc(blocks[i].end, blocks[i + 1].start) for i in range(len(blocks) - 1))
 
     @classmethod
     def from_read(cls, read, junc_direction=None):
-        """Create a BedRead from a pysam aligned read.
-
-        Args:
-            read: pysam AlignedSegment
-            junc_direction: Optional strand hint ('+' or '-'), inferred from read if not provided
-        """
-        # FIXME switch to pycbio,hgdata,cigar
+        """Create a ReadRec from a pysam aligned read."""
+        # FIXME switch to pycbio.hgdata.cigar
         align_start = read.reference_start
         ref_pos = align_start
         intron_blocks = []
@@ -338,72 +317,56 @@ class BedRead:
                 ref_pos += block[1]
                 if block[0] in {0, 7, 8}:
                     has_match = True
-
-        exon_sizes, exon_starts = intron_chain_to_exon_starts(intron_blocks, align_start, ref_pos)
         if junc_direction not in {'+', '-'}:
             junc_direction = "-" if read.is_reverse else "+"
-
-        bed = cls._create_bed(read.reference_name, align_start, ref_pos, read.query_name,
-                              read.mapping_quality, junc_direction, exon_starts, exon_sizes)
-        juncs = cls._compute_juncs_from_blocks(bed)
-        return cls(bed, juncs)
+        juncs = tuple(Junc(blk[0], blk[1]) for blk in intron_blocks)
+        return cls(read.reference_name, align_start, ref_pos, read.query_name,
+                   read.mapping_quality, junc_direction, juncs)
 
     @classmethod
     def from_junctions(cls, chrom, start, end, name, score, strand, juncs):
-        """Create a BedRead from junction coordinates.
-
-        Args:
-            chrom: Chromosome name
-            start: Start position
-            end: End position
-            name: Read/isoform name
-            score: Mapping quality or support score
-            strand: Strand ('+' or '-')
-            juncs: Tuple of Junc objects or (start, end) tuples
-        """
-        exon_starts, exon_sizes = get_bed_exons_from_juncs(juncs, start, end)
-        bed = cls._create_bed(chrom, start, end, name, score, strand, exon_starts, exon_sizes)
-        juncs = juncs if isinstance(juncs, tuple) else tuple(juncs)
-        return cls(bed, juncs)
-
-    def reset_from_exons(self, exons):
-        """Update the BedRead from a list of Exon objects."""
-        start = exons[0].start
-        end = exons[-1].end
-        exon_starts = [e.start - start for e in exons]
-        exon_sizes = [e.end - e.start for e in exons]
-        self.bed = self._create_bed(self.bed.chrom, start, end, self.bed.name, self.bed.score,
-                                    self.bed.strand, exon_starts, exon_sizes)
-        self.juncs = self._compute_juncs_from_blocks(self.bed)
-
-    def get_sequence(self, genome):
-        return get_sequence_for_exons(genome, self.bed.chrom, self.bed.strand, self.exons)
-
-    def get_bed_line(self):
-        return self.bed.toRow()
+        """Create a ReadRec from junction coordinates."""
+        return cls(chrom, start, end, name, score, strand,
+                   juncs if isinstance(juncs, tuple) else tuple(juncs))
 
     @property
     def exons(self):
-        """Return exons as list of Exon objects."""
-        # FIXME: maybe get away from exon lists and just use BED
-        return [Exon(blk.start, blk.end) for blk in self.bed.blocks]
+        """Return exons as list of Exon objects, computed from start, end, and juncs."""
+        if not self.juncs:
+            return [Exon(self.start, self.end)]
+        exons = [Exon(self.start, self.juncs[0].start)]
+        for i in range(len(self.juncs) - 1):
+            exons.append(Exon(self.juncs[i].end, self.juncs[i + 1].start))
+        exons.append(Exon(self.juncs[-1].end, self.end))
+        return exons
 
-    @property
-    def exon_starts(self):
-        """Return relative exon starts."""
-        return [blk.start - self.bed.chromStart for blk in self.bed.blocks]
+    def to_bed(self):
+        """Create and return a Bed object."""
+        exon_starts, exon_sizes = get_bed_exons_from_juncs(self.juncs, self.start, self.end)
+        bed = Bed(self.chrom, self.start, self.end, self.name,
+                  score=self.score, strand=self.strand,
+                  thickStart=self.start, thickEnd=self.end,
+                  itemRgb=get_rgb(self.strand, len(self.juncs)))
+        for i in range(len(exon_starts)):
+            blk_start = self.start + exon_starts[i]
+            bed.addBlock(blk_start, blk_start + exon_sizes[i])
+        return bed
 
-    @property
-    def exon_sizes(self):
-        """Return exon sizes."""
-        return [len(blk) for blk in self.bed.blocks]
+    def get_bed_line(self):
+        """Return BED format row."""
+        return self.to_bed().toRow()
+
+    def get_sequence(self, genome):
+        return get_sequence_for_exons(genome, self.chrom, self.strand, self.exons)
+
+    def reset_from_exons(self, exons):
+        """Update ReadRec from a list of Exon objects."""
+        self.start = exons[0].start
+        self.end = exons[-1].end
+        self.juncs = tuple(exons_to_juncs(sorted(exons)))
 
     def update_from_juncs(self, new_juncs):
-        """Update the BedRead with new corrected junctions, keeping same start/end."""
-        exon_starts, exon_sizes = get_bed_exons_from_juncs(new_juncs, self.bed.chromStart, self.bed.chromEnd)
-        self.bed = self._create_bed(self.bed.chrom, self.bed.chromStart, self.bed.chromEnd,
-                                    self.bed.name, self.bed.score, self.bed.strand,
-                                    exon_starts, exon_sizes)
+        """Update juncs, keeping chrom, start, end, name, score, strand."""
         self.juncs = tuple(new_juncs)
 
 
@@ -547,14 +510,6 @@ def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, o
 # Transcript end assignment
 ##
 
-class ReadInfo:
-    """Represents a single read's end information"""
-    def __init__(self, start, end, strand, name):
-        self.start = start
-        self.end = end
-        self.strand = strand
-        self.name = name
-
 class ReadEndInfo:
     """Represents a group of reads sharing similar transcript ends"""
     def __init__(self, start, end, strand, read_id, weighted_score=0.0, supporting_reads=None):
@@ -613,20 +568,7 @@ class EndInfo:
     def length(self):
         return self.end - self.start
 
-class JunctionChain:
-    """Represents a specific junction chain (splice pattern)"""
-    def __init__(self, chrom, strand, juncs):
-        self.chrom = chrom
-        self.strand = strand
-        self.juncs = juncs
-
-    def __eq__(self, other):
-        return (self.chrom == other.chrom and
-                self.strand == other.strand and
-                self.juncs == other.juncs)
-
-    def __hash__(self):
-        return hash((self.chrom, self.strand, self.juncs))
+JunctionChain = namedtuple('JunctionChain', ('chrom', 'strand', 'juncs'))
 
 class GeneIsoformData:
     """Organizes all isoforms for a single gene"""
@@ -843,7 +785,7 @@ def identify_spliced_iso_subset_novel(novel_iso_id, firstpass_unfiltered,
     """Check if query isoform is subset of a novel (firstpass) isoform.
     novel_iso_id is a string UUID."""
     otheriso = firstpass_unfiltered[novel_iso_id]
-    _check_junction_subset(juncs, first_exon, last_exon, otheriso.bed.score, otheriso.juncs, otheriso.exons,
+    _check_junction_subset(juncs, first_exon, last_exon, otheriso.score, otheriso.juncs, otheriso.exons,
                            terminal_exon_is_subset, superset_support, unique_seq_bound)
 
 def filter_spliced_iso(filter_type, support, juncs, exons, name, score, annots,
@@ -869,9 +811,6 @@ def filter_spliced_iso(filter_type, support, juncs, exons, name, score, annots,
         for i in range(len(unique_seq_bound)):
             unique_seq_bound[i] = f'{unique_seq_bound[i][0]}_{unique_seq_bound[i][1]}'
 
-    # if not check_term_exons:
-    #     return True
-    # else:
     if sum(terminal_exon_is_subset) < 2:  # both first and last exon have to overlap
         return True, unique_seq_bound
     elif filter_type != 'nosubset':
@@ -1091,8 +1030,7 @@ def _add_corrected_read_to_groups(corrected_read, sj_to_ends):
     junc_key = tuple(sorted(corrected_read.juncs))
     if junc_key not in sj_to_ends:
         sj_to_ends[junc_key] = []
-    sj_to_ends[junc_key].append(ReadInfo(corrected_read.bed.chromStart, corrected_read.bed.chromEnd,
-                                         corrected_read.bed.strand, corrected_read.bed.name))
+    sj_to_ends[junc_key].append(corrected_read)
 
 
 def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends):
@@ -1108,13 +1046,13 @@ def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_cor
             newend = juncs[endindex][1] + enddist
             juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex + 1]])
             strand = '-' if read.is_reverse else '+'
-            corrected_read = BedRead.from_junctions(read.reference_name, newstart, newend,
-                                                    read.query_name, read.mapping_quality,
-                                                    strand, juncs)
+            corrected_read = ReadRec.from_junctions(read.reference_name, newstart, newend,
+                                                   read.query_name, read.mapping_quality,
+                                                   strand, juncs)
         else:
-            corrected_read = read_correct_to_bedread(junction_corrector, read)
+            corrected_read = read_correct_to_readrec(junction_corrector, read)
     else:
-        corrected_read = read_correct_to_bedread(junction_corrector, read)
+        corrected_read = read_correct_to_readrec(junction_corrector, read)
     if corrected_read:
         _add_corrected_read_to_groups(corrected_read, sj_to_ends)
 
@@ -1190,25 +1128,25 @@ def filter_ends_by_redundant_and_support(args, good_ends_with_sup_reads):
 
 def _write_unfiltered_ends(chrom, juncs, good_ends, fh):
     for read_end_info in good_ends:
-        iso_bedread = BedRead.from_junctions(chrom, read_end_info.start, read_end_info.end,
+        iso_readrec = ReadRec.from_junctions(chrom, read_end_info.start, read_end_info.end,
                                              read_end_info.read_id, read_end_info.score,
                                              read_end_info.strand, juncs)
-        fh.write('\t'.join(iso_bedread.get_bed_line()) + '\n')
+        fh.write('\t'.join(iso_readrec.get_bed_line()) + '\n')
 
 def _add_end_to_firstpass(chrom, juncs, read_end_info, firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE, iso_fh):
-    iso_bedread = BedRead.from_junctions(chrom, read_end_info.start, read_end_info.end,
+    iso_readrec = ReadRec.from_junctions(chrom, read_end_info.start, read_end_info.end,
                                          read_end_info.read_id, read_end_info.score,
                                          read_end_info.strand, juncs)
-    firstpass_unfiltered[read_end_info.read_id] = iso_bedread
-    iso_fh.write('\t'.join(iso_bedread.get_bed_line()) + '\n')
+    firstpass_unfiltered[read_end_info.read_id] = iso_readrec
+    iso_fh.write('\t'.join(iso_readrec.get_bed_line()) + '\n')
     if juncs == ():
-        firstpass_SE.add((iso_bedread.exons[0][0], iso_bedread.exons[0][1], iso_bedread.bed.name))
+        firstpass_SE.add((iso_readrec.exons[0][0], iso_readrec.exons[0][1], iso_readrec.name))
     else:
         for j in juncs:
             if j not in firstpass_junc_to_name:
                 firstpass_junc_to_name[j] = set()
             firstpass_junc_to_name[j].add(read_end_info.read_id)
-        firstpass_SE.update(iso_bedread.exons)
+        firstpass_SE.update(iso_readrec.exons)
 
 def _process_junc_ends(args, chrom, juncs, good_ends, firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE, iso_fh):
     if juncs == ():
@@ -1238,7 +1176,7 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, chrom, sj_to_ends, firstp
 def filter_single_exon_iso(args, grouped_iso, curr_group, firstpass_unfiltered):
     # FIXME: make object: grouped_iso (32186479, 32188247, '99bfe5c4-0f3a-4f4d-b5c9-bac459c45e5c')
     # FIXME: curr_group is a list of these
-    iso_bedread = firstpass_unfiltered[grouped_iso[2]]
+    iso_readrec = firstpass_unfiltered[grouped_iso[2]]
     # FIXME: what does 'comp_' mean?
     expression_comp_with_superset = []
     is_contained = False
@@ -1250,8 +1188,8 @@ def filter_single_exon_iso(args, grouped_iso, curr_group, firstpass_unfiltered):
                     is_contained = True
                     break  # filter out
                 else:  # is other single exon - check relative expression
-                    other_score = firstpass_unfiltered[comp_iso[2]].bed.score
-                    score = iso_bedread.bed.score
+                    other_score = firstpass_unfiltered[comp_iso[2]].score
+                    score = iso_readrec.score
                     if score >= args.sjc_support and other_score * SINGLE_EXON_EXPRESSION_RATIO < score:
                         expression_comp_with_superset.append(True)
                     else:
@@ -1291,25 +1229,25 @@ def filter_all_single_exon(args, firstpass_SE, firstpass_unfiltered, firstpass):
 
 def filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, firstpass_SE, annots,
                           sup_annot_transcript_to_juncs):
-    # FIXME: firstpass_unfiltered is a dict of uuid to BedRead
+    # FIXME: firstpass_unfiltered is a dict of uuid to ReadRec
     iso_to_unique_bound = {}
     if args.filter == 'ginormous':
         firstpass = firstpass_unfiltered
     else:
         firstpass = {}
         for iso_name in firstpass_unfiltered:
-            iso_bedread = firstpass_unfiltered[iso_name]
-            if iso_bedread.juncs != ():
+            iso_readrec = firstpass_unfiltered[iso_name]
+            if iso_readrec.juncs != ():
                 if args.filter == 'comprehensive':
-                    firstpass[iso_name] = iso_bedread
+                    firstpass[iso_name] = iso_readrec
                 else:
-                    assert isinstance(iso_bedread.exons[0], Exon)  # FIXME tmp debugging
-                    is_not_subset, unique_seq = filter_spliced_iso(args.filter, args.sjc_support, iso_bedread.juncs, iso_bedread.exons,
-                                                                   iso_bedread.bed.name, iso_bedread.bed.score, annots,
+                    assert isinstance(iso_readrec.exons[0], Exon)  # FIXME tmp debugging
+                    is_not_subset, unique_seq = filter_spliced_iso(args.filter, args.sjc_support, iso_readrec.juncs, iso_readrec.exons,
+                                                                   iso_readrec.name, iso_readrec.score, annots,
                                                                    firstpass_junc_to_name, firstpass_unfiltered,
-                                                                   sup_annot_transcript_to_juncs, iso_bedread.bed.strand)
+                                                                   sup_annot_transcript_to_juncs, iso_readrec.strand)
                     if is_not_subset:
-                        firstpass[iso_name] = iso_bedread
+                        firstpass[iso_name] = iso_readrec
                         if len(unique_seq) > 0:
                             iso_to_unique_bound[iso_name] = ','.join(unique_seq)
         # HANDLE SINGLE EXONS SEPARATELY - group first - one traversal of list
@@ -1339,9 +1277,9 @@ def get_genes_with_shared_juncs(juncs, annots):
     return gene_hits
 
 
-def get_single_exon_gene_overlaps(iso_bedread, annots):
+def get_single_exon_gene_overlaps(iso_readrec, annots):
     gene_hits = {}
-    exon = iso_bedread.exons[0]
+    exon = iso_readrec.exons[0]
     index = binary_search(exon, annots.all_annot_SE)
     # FIXME: how does this ever work? all_annot_SE is [(start, end, strand, gene_id), ...]
     for annot_exon_info in annots.all_annot_SE[index - ANNOT_SE_SEARCH_WINDOW:index + ANNOT_SE_SEARCH_WINDOW]:
@@ -1373,10 +1311,10 @@ def get_spliced_exon_overlaps(strand, exons, annots):
                 gene_hits.append([len(covered_pos), annot_gene, strand])
     return gene_hits
 
-def _get_transcript_gene_from_annot(iso_bedread, annots, annot_name_to_used_counts):
+def _get_transcript_gene_from_annot(iso_readrec, annots, annot_name_to_used_counts):
     """Return (transcript_id, gene_id) if iso matches an annotated junction chain, else (None, None)."""
-    if iso_bedread.juncs != () and iso_bedread.juncs in annots.juncchain_to_transcript:
-        transcript_id, gene_id = annots.juncchain_to_transcript[iso_bedread.juncs]
+    if iso_readrec.juncs != () and iso_readrec.juncs in annots.juncchain_to_transcript:
+        transcript_id, gene_id = annots.juncchain_to_transcript[iso_readrec.juncs]
         if transcript_id in annot_name_to_used_counts:
             annot_name_to_used_counts[transcript_id] += 1
             transcript_id = transcript_id + '-endvar' + str(annot_name_to_used_counts[transcript_id])
@@ -1387,41 +1325,41 @@ def _get_transcript_gene_from_annot(iso_bedread, annots, annot_name_to_used_coun
         return None, None
 
 
-def _find_gene_id_by_overlap(iso_bedread, annots):
+def _find_gene_id_by_overlap(iso_readrec, annots):
     """Find gene_id for an isoform without a matching junction chain, using junction or exon overlap."""
-    if iso_bedread.juncs != ():
-        gene_hits = get_genes_with_shared_juncs(iso_bedread.juncs, annots)
+    if iso_readrec.juncs != ():
+        gene_hits = get_genes_with_shared_juncs(iso_readrec.juncs, annots)
     else:
-        gene_hits = get_single_exon_gene_overlaps(iso_bedread, annots)
+        gene_hits = get_single_exon_gene_overlaps(iso_readrec, annots)
     if gene_hits:
         return sorted(gene_hits.items(), key=lambda x: x[1], reverse=True)[0][0]
     else:
         # look for exon overlap
-        if iso_bedread.bed.strand != 'ambig':
-            gene_hits = get_spliced_exon_overlaps(iso_bedread.bed.strand, iso_bedread.exons, annots)
+        if iso_readrec.strand != 'ambig':
+            gene_hits = get_spliced_exon_overlaps(iso_readrec.strand, iso_readrec.exons, annots)
         else:
-            gene_hits = (get_spliced_exon_overlaps('+', iso_bedread.exons, annots) +
-                         get_spliced_exon_overlaps('-', iso_bedread.exons, annots))
+            gene_hits = (get_spliced_exon_overlaps('+', iso_readrec.exons, annots) +
+                         get_spliced_exon_overlaps('-', iso_readrec.exons, annots))
         if gene_hits:
             gene_hits.sort(reverse=True)
-            if iso_bedread.bed.strand == 'ambig':
-                iso_bedread.bed.strand = gene_hits[0][2]
+            if iso_readrec.strand == 'ambig':
+                iso_readrec.strand = gene_hits[0][2]
             return gene_hits[0][1]
         else:
             return None
 
 
-def get_gene_name_firstpass(iso_name, iso_bedread, annots, annot_name_to_used_counts, novel_gene_isos_to_group, iso_to_info):
-    transcript_id, gene_id = _get_transcript_gene_from_annot(iso_bedread, annots, annot_name_to_used_counts)
+def get_gene_name_firstpass(iso_name, iso_readrec, annots, annot_name_to_used_counts, novel_gene_isos_to_group, iso_to_info):
+    transcript_id, gene_id = _get_transcript_gene_from_annot(iso_readrec, annots, annot_name_to_used_counts)
     if transcript_id is None:
-        transcript_id = iso_bedread.bed.name
-        gene_id = _find_gene_id_by_overlap(iso_bedread, annots)
+        transcript_id = iso_readrec.name
+        gene_id = _find_gene_id_by_overlap(iso_readrec, annots)
     if gene_id is not None:
         strand = annots.gene_to_strand[gene_id]
     else:
-        strand = iso_bedread.bed.strand
-        novel_gene_isos_to_group[strand].append((iso_bedread.bed.chromStart, iso_bedread.bed.chromEnd, iso_name))
-    iso_info = IsoformInfo(transcript_id, strand, iso_bedread.exons)
+        strand = iso_readrec.strand
+        novel_gene_isos_to_group[strand].append((iso_readrec.start, iso_readrec.end, iso_name))
+    iso_info = IsoformInfo(transcript_id, strand, iso_readrec.exons)
     iso_info.gene_id = gene_id
     iso_to_info[iso_name] = iso_info
 
@@ -1457,22 +1395,22 @@ def generate_non_gene_iso_groups_strand(novel_gene_isos_to_group, strand, chrom,
         for s, e, t in curr_group:
             iso_to_info[t].set_gene_id(group_name)
 
-def write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, iso_bedread, max_terminal_exons_ends, add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome):
+def write_first_pass_isoforms(iso_to_info, iso_name, normalize_ends, iso_readrec, max_terminal_exons_ends, add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome):
     iso_info = iso_to_info[iso_name]
     # FIXME: do normalization outside of write function
     if normalize_ends and len(iso_info.exons) > 1:  # don't normalize ends for single exon transcripts
         normalize_gene_terminal_exons(max_terminal_exons_ends, iso_info.gene_id, iso_info.strand, iso_info.exons,
                                       add_length_at_ends=add_length_at_ends)
-        iso_bedread.reset_from_exons(iso_info.exons)
-    iso_bedread.bed.strand = iso_info.strand
-    iso_bedread.bed.name = iso_info.transcript_id + '_' + iso_info.gene_id
+        iso_readrec.reset_from_exons(iso_info.exons)
+    iso_readrec.strand = iso_info.strand
+    iso_readrec.name = iso_info.transcript_id + '_' + iso_info.gene_id
 
     if unique_bound and iso_name in unique_bound:
-        unique_fh.write(iso_bedread.bed.name + '\t' + unique_bound[iso_name] + '\n')
+        unique_fh.write(iso_readrec.name + '\t' + unique_bound[iso_name] + '\n')
 
-    iso_fh.write('\t'.join(iso_bedread.get_bed_line()) + '\n')
-    seq_fh.write('>' + iso_bedread.bed.name + '\n')
-    seq_fh.write(iso_bedread.get_sequence(genome) + '\n')
+    iso_fh.write('\t'.join(iso_readrec.get_bed_line()) + '\n')
+    seq_fh.write('>' + iso_readrec.name + '\n')
+    seq_fh.write(iso_readrec.get_sequence(genome) + '\n')
 
 def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, annots, genome, *,
                                        normalize_ends=False, add_length_at_ends=0, unique_bound=None):
@@ -1515,7 +1453,7 @@ def read_ends_file(args, ends_file):
         start, end = int(start), int(end)
         if transcript_id not in iso_id_to_ends:
             iso_id_to_ends[transcript_id] = []
-        iso_id_to_ends[transcript_id].append(ReadInfo(start, end, None, None))
+        iso_id_to_ends[transcript_id].append(ReadRec(None, start, end, None, None, None, ()))
     for iso_id in iso_id_to_ends:
         # (weighted_score, start1, end1, strand1, name1)
         new_ends = get_best_ends(iso_id_to_ends[iso_id], args.end_window)[1:3]
@@ -1607,7 +1545,7 @@ def get_bed_gtf_from_info(end_info, chrom, strand, juncs, gene_id, genome):
     exon_starts, exon_sizes = get_bed_exons_from_juncs(juncs, start, end)
     # FIXME: duplicate code to build BED record
     bed_line = [chrom, start, end, iso_id_src.id + '_' + gene_id, score, strand, start, end,
-                get_rgb(iso_id_src.id, strand, juncs), len(exon_starts), ','.join([str(x) for x in exon_sizes]),
+                get_rgb(strand, len(juncs)), len(exon_starts), ','.join([str(x) for x in exon_sizes]),
                 ','.join([str(x) for x in exon_starts])]
     exons = [Exon(start + exon_starts[i], start + exon_starts[i] + exon_sizes[i])
              for i in range(len(exon_starts))]

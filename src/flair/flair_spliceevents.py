@@ -1100,7 +1100,7 @@ def get_juncs_single_sample(listofargs):
 
     # print(region.name, region.start, region.end, sample, 'getting annot match')
     bam_file = pysam.AlignmentFile(bamfile_name, 'rb')
-    clipping_file = ft.generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
+    num_reads, clipping_file = ft.generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
     bam_file.close()
 
     goodannotaligns = generate_good_match_to_annot(args, temp_prefix, region, bamfile_name, region_annot, region_annot_fa, clipping_file)

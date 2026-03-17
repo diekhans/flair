@@ -549,14 +549,13 @@ ${ERGIC3_KRAS_SIM_FA_GZ}: $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq
 ###
 # flair spliceevents
 ###
-spliceevents-tests:
-	@echo "WARNING spliceevents-tests is broken" >&2
-#test-spliceevents
+spliceevents-tests: test-spliceevents
 
 test-spliceevents: mkdirs
 	python3 ../src/flair/flair_spliceevents.py -m $I/spliceevents.manifest.tsv -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@
 
-# FIXME: orphan, this does not work and is not referenced
+# FIXME: orphan, this does not work and is not referenced; is this still needed
+# the annotation file is there
 test-refseq: mkdirs
 	flair fusion -g genome.refSeq.fa -f $I/refSeq.test.annotation.gtf -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq -b $O/$@_chimeric.bam --maxloci 4 -o $O/$@ -s 2
 

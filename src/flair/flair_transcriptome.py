@@ -1196,11 +1196,9 @@ def filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_anno
     """Filter reads, correct splice junctions, and group by junction chain."""
     if sj_to_ends is None:
         sj_to_ends = {}
-
     for read in bam_file.fetch(region.name, region.start, region.end):
         if _should_process_read(read, region, args.quality, args.keep_sup, allow_secondary):
             _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends)
-
     return sj_to_ends
 
 
@@ -1843,9 +1841,11 @@ def combine_annot_w_novel_and_write_files(args, temp_prefix, gene_to_juncs_to_en
             write_transcript_ends_beds(args, temp_prefix, read_to_final_transcript, ends_fh)
 
 def generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region):
+    c = 0
     with open(temp_prefix + '.reads.genomicclipping.txt', 'w') as clipping_fh:
         for read in bam_file.fetch(region.name, region.start, region.end):
             if not read.is_secondary and not read.is_supplementary:
+                c += 1
                 name = read.query_name
                 cigar = read.cigartuples
                 tot_clipped = 0
@@ -1854,7 +1854,7 @@ def generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, regi
                 if cigar[-1][0] in {4, 5}:
                     tot_clipped += cigar[-1][1]
                 clipping_fh.write(name + '\t' + str(tot_clipped) + '\n')
-    return temp_prefix + '.reads.genomicclipping.txt'
+    return c, temp_prefix + '.reads.genomicclipping.txt'
 
 
 def predict_productivity(out_prefix, genome_fasta, gtf):
@@ -1896,7 +1896,20 @@ def run_for_region(listofargs):
     # which can be considered to support isoform.
     # used in filter_transcriptome_align
     # logging.info('generating genomic clipping reference')
-    generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
+    num_reads, clipping_file = generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
+
+    if num_reads == 0:
+        suffixes = ['.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed', '.firstpass.bed',
+                        '.isoforms.bed',
+                        '.isoform.read.map.txt', '.isoforms.gtf', '.isoforms.fa', '.isoform.counts.txt']
+        if args.end_norm_dist:
+            suffixes.extend(['.read_ends.bed', '.matchannot.ends.tsv'])
+        if not args.no_align_to_annot:
+            suffixes.extend(['.matchannot.counts.txt', '.matchannot.read.map.txt'])
+        for s in suffixes:
+            out = open(temp_prefix + s, 'w')
+            out.close()
+        return
 
     # aligning to reference transcriptome, then identifying reads that match well to reference transcripts
     # with filter_transcriptome_align

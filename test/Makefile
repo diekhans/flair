@@ -490,7 +490,7 @@ test-variants-help: mkdirs
 ###
 ERGIC3_KRAS_SIM_FA_GZ = $O/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq.gz
 FUSION_TEST_SHARED_OUT = $O/fusion_tests
-FUSION_TEST_BAM = ${FUSION_TEST_SHARED_OUT}_chimeric.bam
+FUSION_TEST_BAM = ${FUSION_TEST_SHARED_OUT}.bam
 
 fusion-tests: test-fusion test-fusion-pary test-fusion-help
 
@@ -507,7 +507,7 @@ test-fusion-pary: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_BAM
 ${FUSION_TEST_BAM}: mkdirs  ${ERGIC3_KRAS_SIM_FA_GZ} ${GENOME_FA}
 	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq \
 	   --genome ${GENOME_FA} -t 4 -o ${FUSION_TEST_SHARED_OUT} \
-	   --filtertype separate --minfragmentsize 40 --maxintronlen 350k
+	   --minfragmentsize 40 --maxintronlen 350k
 
 test-fusion-help: mkdirs
 	flair fusion  --help > $O/$@.out

@@ -630,11 +630,11 @@ $O/%.bb: $O/%.bed
 	bedToBigBed -sort -sizesIsChromAliasBb $< ${HG38_CHROMS} $@
 
 $O/%.sj.bb: $I/%.sj.bed
-	@mkdir -p @O
+	@mkdir -p $O
 	bedToBigBed -sort -type=bed6 -sizesIsChromAliasBb $< ${HG38_CHROMS} $@
 
 $O/%.bb: $I/%.bed
-	@mkdir -p @O
+	@mkdir -p $O
 	bedToBigBed -sort -sizesIsChromAliasBb $< ${HG38_CHROMS} $@
 
 hub-check: test-hub

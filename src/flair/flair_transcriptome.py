@@ -227,8 +227,8 @@ def read_correct_to_readrec(junction_corrector, read):
     corrected_bed = junction_corrector.correct_read_bed(readrec.to_bed())
     if corrected_bed is None:
         return None
-    readrec.juncs = tuple(Junc(corrected_bed.blocks[i].end, corrected_bed.blocks[i + 1].start)
-                          for i in range(len(corrected_bed.blocks) - 1))
+    readrec.juncs = ReadRec._intern_juncs(tuple(Junc(corrected_bed.blocks[i].end, corrected_bed.blocks[i + 1].start)
+                                                for i in range(len(corrected_bed.blocks) - 1)))
     return readrec
 
 def build_intron_support(gtf_file, junction_tab, junction_bed):
@@ -285,7 +285,17 @@ class ReadRec:
     Stores chrom, start, end, name, score, strand, and juncs directly.
     Exons are computed on the fly from start, end, and juncs.
     A Bed record can be produced on demand via to_bed().
+
+    Junction tuples are interned via a class-level cache so identical junction
+    chains share a single tuple object.
     """
+
+    # keep on one copy of junction chain
+    _juncs_cache = {}
+
+    @classmethod
+    def _intern_juncs(cls, juncs):
+        return cls._juncs_cache.setdefault(juncs, juncs)
 
     def __init__(self, chrom, start, end, name, score, strand, juncs):
         self.chrom = chrom
@@ -294,7 +304,7 @@ class ReadRec:
         self.name = name
         self.score = score
         self.strand = strand
-        self.juncs = juncs
+        self.juncs = self._intern_juncs(juncs)
 
     @classmethod
     def from_read(cls, read, junc_direction=None):
@@ -326,8 +336,7 @@ class ReadRec:
     @classmethod
     def from_junctions(cls, chrom, start, end, name, score, strand, juncs):
         """Create a ReadRec from junction coordinates."""
-        return cls(chrom, start, end, name, score, strand,
-                   juncs if isinstance(juncs, tuple) else tuple(juncs))
+        return cls(chrom, start, end, name, score, strand, tuple(juncs))
 
     @property
     def exons(self):
@@ -363,11 +372,11 @@ class ReadRec:
         """Update ReadRec from a list of Exon objects."""
         self.start = exons[0].start
         self.end = exons[-1].end
-        self.juncs = tuple(exons_to_juncs(sorted(exons)))
+        self.juncs = self._intern_juncs(tuple(exons_to_juncs(sorted(exons))))
 
     def update_from_juncs(self, new_juncs):
         """Update juncs, keeping chrom, start, end, name, score, strand."""
-        self.juncs = tuple(new_juncs)
+        self.juncs = self._intern_juncs(tuple(new_juncs))
 
 
 class AnnotData(object):

@@ -11,6 +11,9 @@ If you want to compare multiple samples, there are two primary ways of doing thi
 .. figure:: img/flair_workflow_compartmentalized.svg
 
 
+.. figure:: img/flair_workflow_compartmentalized.svg
+
+
 .. _transcriptome-label:
 
 flair transcriptome
@@ -141,6 +144,10 @@ Optional arguments
                         output file name base (default: flair.aligned)
   -t THREADS, --threads THREADS
                         minimap2 number of threads (4)
+  --junction_tab JUNCTION_TAB
+                        short-read junctions in SJ.out.tab format. Use this option
+                        if you aligned your short-reads with STAR, STAR will
+                        automatically output this file
   --junction_bed JUNCTION_BED
                         annotated isoforms/junctions bed file for splice site-guided minimap2 genomic alignment
   --nvrna               specify this flag to use native-RNA specific alignment parameters for minimap2

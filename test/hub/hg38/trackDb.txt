@@ -1,0 +1,52 @@
+track KRAS_sim_expected
+group sim_slice_site
+type bigBed
+shortLabel KRAS sim expected
+longLabel KRAS sim mut-driven splicing expected isoforms
+bigDataUrl ../../output/KRAS_sim_genomic_mut_driven_splicing.bb
+color 50,50,128
+visibility hide
+html ../empty.html
+priority 10
+
+track KRAS_sim_isoforms
+group sim_slice_site
+type bigBed
+shortLabel KRAS sim FLAIR
+longLabel KRAS sim mut-driven FLAIR  isoforms
+bigDataUrl ../../output/test-transcripome-mutant-splice.isoforms.bb
+color 50,50,128
+visibility hide
+html ../empty.html
+priority 20
+
+track KRAS_sim_sj
+group sim_slice_site
+type bigBed 6
+shortLabel KRAS sim SJ
+longLabel KRAS sim splice junctions
+bigDataUrl ../../output/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.sj.bb
+visibility hide
+html ../empty.html
+priority 30
+
+track KRAS_sim_PB
+group sim_slice_site
+type bam
+shortLabel KRAS sim PB
+longLabel KRAS sim badreadsimPB
+bigDataUrl ../../output/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.bam
+visibility hide
+html ../empty.html
+priority 40
+
+track KRAS_sim_PB_filtered
+group sim_slice_site
+type bam
+shortLabel KRAS sim PB filt
+longLabel KRAS sim badreadsimPB filtered
+bigDataUrl ../../output/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.filtered.bam
+visibility hide
+html ../empty.html
+priority 50
+

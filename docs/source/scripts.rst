@@ -59,7 +59,7 @@ The output file contains the original columns with an additional column
 containing the p-values appended.
 
 annotate_aaseq_with_uniprot
-========================
+===========================
 .. code:: sh
 
     usage: annotate_aaseq_with_uniprot [-h] -i INPUT_AASEQ -r REFERENCE_SEQ -o OUTPUT

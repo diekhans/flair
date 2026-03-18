@@ -73,10 +73,14 @@ class GtfRecord:
         # Make a copy of attrs and add optional parameters
         self.attrs = attrs if attrs is not None else {}
         if gene_id is not None:
+            if re.search(r'\s', gene_id):
+                raise GtfParseError(f"white space not allowed  in gene_id: {gene_id}")
             self.attrs['gene_id'] = gene_id
         if gene_name is not None:
             self.attrs['gene_name'] = gene_name
         if transcript_id is not None:
+            if re.search(r'\s', transcript_id):
+                raise GtfParseError(f"white space not allowed  in transcript_id: {transcript_id}")
             self.attrs['transcript_id'] = transcript_id
         if exon_number is not None:
             self.attrs['exon_number'] = exon_number
@@ -218,6 +222,14 @@ class GtfData:
         yield from self.iter_overlap_transcripts(seq_range.name, seq_range.start, seq_range.end,
                                                  strand=seq_range.strand)
 
+    def subset_for_region(self, chrom, start, end):
+        """Return a new GtfData with transcripts overlapping [start, end) on chrom.
+        Transcript objects are shared, not copied."""
+        sub = GtfData(self.gtf_file)
+        for transcript in self.iter_overlap_transcripts(chrom, start, end):
+            sub.add_transcript(transcript)
+        return sub
+
 
 def _parse_attribute_match(match: re.Match) -> tuple[str, str | int | float]:
     """Parse a single attribute match into key-value pair, converting
@@ -333,6 +345,13 @@ def _gtf_record_class(feature):
     else:
         return GtfRecord
 
+def _check_id_whitespace(attrs):
+    for key in ('gene_id', 'transcript_id'):
+        val = attrs.get(key)
+        if val is not None and re.search(r'\s', val):
+            raise GtfParseError(f"white space not allowed in {key}: {val!r}")
+
+
 def _parse_gtf_line(line: str, include_features: StrSetNone, attrs_parser=_parse_flair_attributes) -> GtfRecord:
     """Parse a single GTF line into a GtfRecord or derived class."""
     # skip empty and comments
@@ -348,6 +367,7 @@ def _parse_gtf_line(line: str, include_features: StrSetNone, attrs_parser=_parse
 
     start, end = _parse_coordinates(fields[3], fields[4])
     attrs = attrs_parser(fields[8])
+    _check_id_whitespace(attrs)
 
     cls = _gtf_record_class(fields[2])
     return cls(chrom=fields[0],

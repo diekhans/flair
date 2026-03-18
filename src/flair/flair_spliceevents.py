@@ -8,16 +8,14 @@ import shutil
 import pysam
 import logging
 from flair.ssPrep import buildIntervalTree
-import multiprocessing
-import multiprocessing.pool
-from flair import FlairInputDataError
+from flair.partition_runner import PartitionRunner
+from flair import FlairInputDataError, SeqRange
 import flair.flair_transcriptome as ft
 from statistics import median
 from flair.bed_to_sequence import bed_to_sequence
 from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
-from flair.pycbio.hgdata.bed import Bed, BedReader
 import scipy.stats as sps
 
 
@@ -45,8 +43,8 @@ def get_args():
     #                                            'STAR will automatically output this file')
     parser.add_argument('--junction_bed', help='short-read junctions in bed format '
                                                '(can be generated from short-read alignment with junctions_from_sam)')
-    parser.add_argument('--region_bed', help="""bed file with regions to parallelize by/check. 
-                        If provided, only these regions will be checked""")
+    parser.add_argument('--region_bed',
+                        help='bed file with regions to parallelize by; if not specified, all chromosomes are used')
     parser.add_argument('--junction_support', type=int, default=1,
                         help='if providing short-read junctions, minimum junction support required to keep junction. '
                              'If your junctions file is in bed format, the score field will be used for read support.')
@@ -86,7 +84,6 @@ def get_args():
 
     args = parser.parse_args()
 
-    args.parallel_mode = 'byregion' #ft.parse_parallel_mode(parser, args.parallel_mode)
     args.trust_ends = False
     args.remove_internal_priming = False
     args.quality = 0 #should only be used for genomic alignment
@@ -1091,7 +1088,7 @@ def get_juncs_single_sample(listofargs):
     if region_juncs is not None:
         intron_support.load_introns_bed(region_juncs)
     intron_support.load_annot_bed(region_annot)  # FIXME: no chrom_filter=chrom_filter
-    junction_corrector = ft.NewJunctionCorrectorWrapper(JunctionCorrector(intron_support, args.ss_window, args.junction_support))
+    junction_corrector = JunctionCorrector(intron_support, args.ss_window, args.junction_support)
 
     genome = pysam.FastaFile(args.genome)
 
@@ -1127,15 +1124,14 @@ def get_juncs_single_sample(listofargs):
                     newend = juncs[endindex][1] + enddist
                     juncs = tuple([ft.Junc(x[0], x[1]) for x in juncs[startindex:endindex+1]])
                     strand = gene_to_strand[transcript.split('_')[-1]]
-                    corrected_read = ft.BedRead.from_junctions(read.reference_name, newstart, newend,
+                    corrected_read = ft.ReadRec.from_junctions(read.reference_name, newstart, newend,
                                                             read.query_name, read.mapping_quality, 
                                                             strand, juncs)
                     c += 1
                 else:
                     c += 1
             elif read.mapping_quality >= args.quality:
-                bed_read = ft.BedRead.from_read(read)
-                corrected_read = junction_corrector.correct_read(bed_read)
+                corrected_read = ft.read_correct_to_readrec(junction_corrector, read)
                 
                 if corrected_read:
                     d += 1
@@ -1144,7 +1140,7 @@ def get_juncs_single_sample(listofargs):
             else:
                 b += 1
         else:
-            b += 1
+            corrected_read = ft.read_correct_to_readrec(junction_corrector, read)
         if corrected_read:
             ft._add_corrected_read_to_groups(corrected_read, sj_to_ends)
     bamfile.close()
@@ -1182,29 +1178,28 @@ def process_bed_line(line):
 
 
 
-def run_by_region(listofargs):
-    args, region, temp_prefix, allsamples = listofargs
-    region_bed = temp_prefix + '.region.bed'
+def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
+    region_bed = partition.output_path('region.bed')
     out = open(region_bed, 'w')
-    out.write('\t'.join([region.name, str(region.start), str(region.end)]) + '\n')
+    out.write('\t'.join([partition.region.name, str(partition.region.start), str(partition.region.end)]) + '\n')
     out.close()
 
-    region_annot = temp_prefix + '.annotation.bed'
+    region_annot = partition.file_prefix + '.annotation.bed'
     pipettor.run([('bedtools', 'intersect', '-wa', '-a', args.annot, '-b', region_bed)], stdout=region_annot)
 
     if os.path.getsize(region_annot) > 0: #check if any annotated transcripts in region
         if args.annot_basic:
-            region_annot_basic = temp_prefix + '.annotation.basic.bed'
+            region_annot_basic = partition.file_prefix + '.annotation.basic.bed'
             pipettor.run([('bedtools', 'intersect', '-wa', '-a', args.annot_basic, '-b', region_bed)], stdout=region_annot_basic)
         
         region_annot_fa = None
         if not args.noaligntoannot:
-            region_annot_fa = temp_prefix + '.annotation.fa'
+            region_annot_fa = partition.file_prefix + '.annotation.fa'
             bed_to_sequence(region_annot, args.genome, region_annot_fa)
         
         region_juncs = None
         if args.junction_bed:
-            region_juncs = temp_prefix + '.juncbed.bed'
+            region_juncs = partition.file_prefix + '.juncbed.bed'
             pipettor.run([('bedtools', 'intersect', '-wa', '-a', args.junction_bed, '-b', region_bed)], stdout=region_juncs)
 
         sjc_to_gene = {}
@@ -1251,34 +1246,28 @@ def run_by_region(listofargs):
         # add junctions from other reads that did not match ref transcriptome well after correction
         # load splice junctions for chrom
 
-        c = 0
-        chunkcmds = []
         for sample, bamfile in allsamples:
-            c += 1
-            # if True:
-            if not os.path.exists(temp_prefix + '_' + sample + '_gene_to_juncs.txt'):
-                # print(c, sample)
-                # get_juncs_single_sample(args, region, temp_prefix, sample, bamfile, region_annot, region_annot_fa, region_juncs, sjc_to_gene, junc_to_gene, exon_to_gene, gene_to_exons, gene_to_juncs, transcript_to_sjc, gene_to_strand)
-                chunkcmds.append([args, region, temp_prefix, sample, bamfile, region_annot, region_annot_fa, region_juncs, sjc_to_gene, junc_to_gene, exon_to_gene, gene_to_exons, gene_to_juncs, transcript_to_sjc, gene_to_strand])
-                # break
+            if not os.path.exists(partition.file_prefix + '_' + sample + '_gene_to_juncs.txt'):
+                get_juncs_single_sample([args, partition.region, partition.file_prefix, sample, bamfile, region_annot, region_annot_fa, region_juncs, sjc_to_gene, junc_to_gene, exon_to_gene, gene_to_exons, gene_to_juncs, transcript_to_sjc, gene_to_strand])
+                # chunkcmds.append([args, region, partition.file_prefix, sample, bamfile, region_annot, region_annot_fa, region_juncs, sjc_to_gene, junc_to_gene, exon_to_gene, gene_to_exons, gene_to_juncs, transcript_to_sjc, gene_to_strand])
 
-        p = multiprocessing.Pool(4)
-        childErrs = set()
-        c = 1
-        for i in p.imap(get_juncs_single_sample, chunkcmds):
-            # logging.info(f'\r{region.name} {region.start} {region.end} done running sample chunk {c} of {len(chunkcmds)}')
-            childErrs.add(i)
-            c += 1
-        p.close()
-        p.join()
-        if len(childErrs) > 1:
-            raise ValueError(childErrs)
+        # p = multiprocessing.Pool(4)
+        # childErrs = set()
+        # c = 1
+        # for i in p.imap(get_juncs_single_sample, chunkcmds):
+        #     # logging.info(f'\r{region.name} {region.start} {region.end} done running sample chunk {c} of {len(chunkcmds)}')
+        #     childErrs.add(i)
+        #     c += 1
+        # p.close()
+        # p.join()
+        # if len(childErrs) > 1:
+        #     raise ValueError(childErrs)
         
 
         allgenetojuncs = []
         for sample, bamfile in allsamples:
             gene_to_juncs = {}
-            for line in open(temp_prefix + '_' + sample + '_gene_to_juncs.txt'):
+            for line in open(partition.file_prefix + '_' + sample + '_gene_to_juncs.txt'):
                 line = line.rstrip().split('\t')
                 gene, juncstring, start, end, strand, readname = line
                 juncs = [x.split('.') for x in juncstring.split(',')]
@@ -1287,88 +1276,88 @@ def run_by_region(listofargs):
                     gene_to_juncs[gene] = {}
                 if juncs not in gene_to_juncs[gene]:
                     gene_to_juncs[gene][juncs] = []
-                gene_to_juncs[gene][juncs].append(ft.ReadInfo(int(start), int(end), strand, readname))
+                gene_to_juncs[gene][juncs].append(ft.ReadRec(None, int(start), int(end), readname, None, strand, ()))
             allgenetojuncs.append(gene_to_juncs)
         
-        process_gene_to_events(temp_prefix, region.name, [x[0] for x in allsamples], allgenetojuncs, gene_to_strand, args.junc_support, args.output_read_ends, args.event_frac_of_tot, args.junc_frac_of_event, args.event_support, annot_afe_ss, annot_ale_ss, args.check_outliers)
+        process_gene_to_events(partition.file_prefix, partition.region.name, [x[0] for x in allsamples], allgenetojuncs, gene_to_strand, args.junc_support, args.output_read_ends, args.event_frac_of_tot, args.junc_frac_of_event, args.event_support, annot_afe_ss, annot_ale_ss, args.check_outliers)
 
         if not args.keep_intermediate:
             for sample, bamfile in allsamples:
-                pipettor.run([('rm', temp_prefix + '_' + sample + '_gene_to_juncs.txt')])
+                pipettor.run([('rm', partition.file_prefix + '_' + sample + '_gene_to_juncs.txt')])
 
 
 
-def preprocess_single_sample(listofargs):
-    args, region, temp_prefix, sample, bamfile_name = listofargs
+# def preprocess_single_sample(listofargs):
+#     args, region, temp_prefix, sample, bamfile_name = listofargs
     
-    temp_prefix = temp_prefix + '_' + sample
+#     temp_prefix = temp_prefix + '_' + sample
     
-    bamfile = pysam.AlignmentFile(bamfile_name, 'rb')
-    starts, ends = set(), set()
-    for read in bamfile.fetch(region.name, region.start, region.end):
-        if not read.is_secondary and (not read.is_supplementary or args.keep_sup) and read.mapping_quality >= args.quality:
-            starts.add(read.reference_start)
-            ends.add(read.reference_end)
-    bamfile.close()
+#     bamfile = pysam.AlignmentFile(bamfile_name, 'rb')
+#     starts, ends = set(), set()
+#     for read in bamfile.fetch(region.name, region.start, region.end):
+#         if not read.is_secondary and (not read.is_supplementary or args.keep_sup) and read.mapping_quality >= args.quality:
+#             starts.add(read.reference_start)
+#             ends.add(read.reference_end)
+#     bamfile.close()
   
-    with open(temp_prefix + '_ends.txt', 'w') as out:
-        if len(starts) > 0:
-            out.write(f'{min(starts)}\t{max(ends)}')
-        else:
-            out.write(f'\t')
+#     with open(temp_prefix + '_ends.txt', 'w') as out:
+#         if len(starts) > 0:
+#             out.write(f'{min(starts)}\t{max(ends)}')
+#         else:
+#             out.write(f'\t')
 
 
-def preprocess_by_region(listofargs):
-    args, region, temp_prefix, allsamples = listofargs
-    chunkcmds = []
-    for sample, bamfile in allsamples:
-        chunkcmds.append([args, region, temp_prefix, sample, bamfile])
+# def preprocess_by_region(listofargs):
+#     args, region, temp_prefix, allsamples = listofargs
+#     chunkcmds = []
+#     for sample, bamfile in allsamples:
+#         chunkcmds.append([args, region, temp_prefix, sample, bamfile])
 
-    p = multiprocessing.Pool(4)
-    childErrs = set()
-    for i in p.imap(preprocess_single_sample, chunkcmds):
-        childErrs.add(i)
-    p.close()
-    p.join()
-    if len(childErrs) > 1:
-        raise ValueError(childErrs)
+#     p = multiprocessing.Pool(4)
+#     childErrs = set()
+#     for i in p.imap(preprocess_single_sample, chunkcmds):
+#         childErrs.add(i)
+#     p.close()
+#     p.join()
+#     if len(childErrs) > 1:
+#         raise ValueError(childErrs)
     
 
-    starts, ends = set(), set()
-    for sample, bamfile in allsamples:
-        for line in open(temp_prefix + '_' + sample + '_ends.txt'):
-            s, e = line.split('\t')
-            if s != '':
-                starts.add(int(s))
-                ends.add(int(e))
-        pipettor.run([('rm', temp_prefix + '_' + sample + '_ends.txt')])
+#     starts, ends = set(), set()
+#     for sample, bamfile in allsamples:
+#         for line in open(temp_prefix + '_' + sample + '_ends.txt'):
+#             s, e = line.split('\t')
+#             if s != '':
+#                 starts.add(int(s))
+#                 ends.add(int(e))
+#         pipettor.run([('rm', temp_prefix + '_' + sample + '_ends.txt')])
     
-    with open(temp_prefix + '_ends.txt', 'w') as out:
-        if len(starts) > 0:
-            out.write(f'{min(starts)}\t{max(ends)}')
-        else:
-            out.write(f'\t')
+#     with open(temp_prefix + '_ends.txt', 'w') as out:
+#         if len(starts) > 0:
+#             out.write(f'{min(starts)}\t{max(ends)}')
+#         else:
+#             out.write(f'\t')
 
 
 
-class NoDaemonProcess(multiprocessing.Process):
-    # make 'daemon' attribute always return False
-    @property
-    def daemon(self):
-        return False
+# class NoDaemonProcess(multiprocessing.Process):
+#     # make 'daemon' attribute always return False
+#     @property
+#     def daemon(self):
+#         return False
 
-    @daemon.setter
-    def daemon(self, val):
-        pass
+#     @daemon.setter
+#     def daemon(self, val):
+#         pass
 
-# We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
-# because the latter is only a wrapper function, not a proper class.
-class NoDaemonProcessPool(multiprocessing.pool.Pool):
-    def Process(self, *args, **kwds):
-        proc = super(NoDaemonProcessPool, self).Process(*args, **kwds)
-        proc.__class__ = NoDaemonProcess
+# # We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
+# # because the latter is only a wrapper function, not a proper class.
+# class NoDaemonProcessPool(multiprocessing.pool.Pool):
+#     def Process(self, *args, **kwds):
+#         proc = super(NoDaemonProcessPool, self).Process(*args, **kwds)
+#         proc.__class__ = NoDaemonProcess
 
-        return proc
+#         return proc
 
 def combine_regions(regions, buffersize=0):
     regions.sort()
@@ -1387,7 +1376,7 @@ def combine_regions(regions, buffersize=0):
     return new_regions
 
 
-def collapsefrombam():
+def main():
     logging.basicConfig(level=logging.INFO)
     args = get_args()
     logging.info('loading genome')
@@ -1397,12 +1386,16 @@ def collapsefrombam():
     tempDir = ft.make_temp_dir(args.output)
     print('temp directory:', tempDir)
 
-    all_regions = []
-    for line in open(args.region_bed):
-        line = line.rstrip().split('\t')
-        all_regions.append(ft.SeqRange(line[0], int(line[1]), int(line[2])))
-    print('input regions: ', len(all_regions))
-    all_regions = combine_regions(all_regions)
+    if args.region_bed:
+        all_regions = []
+        for line in open(args.region_bed):
+            line = line.rstrip().split('\t')
+            all_regions.append(ft.SeqRange(line[0], int(line[1]), int(line[2])))
+        all_regions = combine_regions(all_regions)
+    else:
+        all_regions = [SeqRange(chrom, 0, genome.get_reference_length(chrom))
+                       for chrom in genome.references]
+    logging.info(f'input regions: {len(all_regions)}')
 
     allsamples = []
     for line in open(args.manifest):
@@ -1410,38 +1403,6 @@ def collapsefrombam():
             line = line.rstrip().split('\t')
             sample, bamfile = line
             allsamples.append((sample, bamfile))
-
-    # chunkcmds = []
-    # for region in all_regions:
-    #     temp_prefix = tempDir + '-'.join([region.name, str(region.start), str(region.end)])
-    #     chunkcmds.append([args, region, temp_prefix, allsamples])
-
-    # multiprocessing.set_start_method('fork')
-    # print(f'running region preprocessing with {args.threads // 4} threads')
-    # p = NoDaemonProcessPool(processes=args.threads // 4)
-    # childErrs = set()
-    # c = 1
-    # for i in p.imap(preprocess_by_region, chunkcmds):
-    #     logging.info(f'\rdone running region chunk {c} of {len(chunkcmds)}')
-    #     childErrs.add(i)
-    #     c += 1
-    # p.close()
-    # p.join()
-    # if len(childErrs) > 1:
-    #     raise ValueError(childErrs)
-
-    # new_regions = []
-    # for region in all_regions:
-    #     temp_prefix = tempDir + '-'.join([region.name, str(region.start), str(region.end)])
-    #     for line in open(temp_prefix + '_ends.txt'):
-    #         s, e = line.split('\t')
-    #         if s != '':
-    #             new_regions.append(ft.SeqRange(region.name, int(s), int(e)))
-    #     pipettor.run([('rm', temp_prefix + '_ends.txt')])
-
-    # all_regions = combine_regions(new_regions)
-    # print('regions after preprocessing: ', len(all_regions))
-    # print(all_regions)
 
     out = open(tempDir + '0000.header.diffsplice.counts.tsv', 'w')
     out.write('\t'.join(['featureID'] + [x[0] for x in allsamples]) + '\n')
@@ -1458,35 +1419,17 @@ def collapsefrombam():
             pipettor.run([('gtf_to_bed', args.annot_basic, annot_basic_bed, '--include_gene')])
         args.annot_basic = annot_basic_bed
 
+    logging.info(f'running regions with {args.threads} threads')
 
-    logging.info('splitting by chunk')
-    chunkcmds = []
-    tempprefixes = []
-    for region in all_regions:
-        temp_prefix = tempDir + '-'.join([region.name, str(region.start), str(region.end)])
-        chunkcmds.append([args, region, temp_prefix, allsamples])
-        tempprefixes.append(temp_prefix)
+    runner = PartitionRunner(all_regions, tempDir, threads=args.threads)
+    runner.run(_run_region, args=args, allsamples=allsamples)
 
-    multiprocessing.set_start_method('fork')
-    print(f'running regions with {args.threads // 4} threads')
-    p = NoDaemonProcessPool(processes=args.threads // 4)
-    childErrs = set()
-    c = 1
-    for i in p.imap(run_by_region, chunkcmds):
-        logging.info(f'\rdone running region chunk {c} of {len(chunkcmds)}')
-        childErrs.add(i)
-        c += 1
-    p.close()
-    p.join()
-    if len(childErrs) > 1:
-        raise ValueError(childErrs)
-
-    ft.combine_temp_files_by_suffix(args.output, tempprefixes,
+    ft.combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner],
                                 ['.diffsplice.bed', '.diffsplice.counts.tsv', '.diffsplice.PSIjunc.tsv', '.diffsplice.PSItot.tsv'])
     if args.output_read_ends:
-        ft.combine_temp_files_by_suffix(args.output, tempprefixes, ['.diffsplice.readends.bed'])
+        ft.combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner], ['.diffsplice.readends.bed'])
     if args.check_outliers:
-        ft.combine_temp_files_by_suffix(args.output, tempprefixes, ['.diffsplice.outliers.tsv', '.diffsplice.outliers.filtered.tsv'])
+        ft.combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner], ['.diffsplice.outliers.tsv', '.diffsplice.outliers.filtered.tsv'])
 
     counts_header = ['eventname', 'eventtype', 'gene', 'junctions_included', 'junctions_excluded', 'outer_junctions', 'exons']
     for suffix in ['.diffsplice.counts', '.diffsplice.PSIjunc', '.diffsplice.PSItot']:
@@ -1517,4 +1460,4 @@ MIN_TERMINAL_JUNCTION_SEPARATION = 100
 MIN_TERMINAL_SS_FRACTION = 0.1
 
 if __name__ == "__main__":
-    collapsefrombam()
+    main()

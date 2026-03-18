@@ -9,8 +9,7 @@ from flair.gtf_io import GtfData
 from flair.pycbio.hgdata.bed import BedReader
 from flair.pycbio.tsv import TsvReader
 
-# FIXME:
-#  - chrom_filter only load a subset fix this with random indexing or pickling
+_VALID_STRANDS = {'+', '-', '.'}
 
 class SupportIntron:
     """Coordinates and support.  Strand could None if not available, but currently
@@ -117,6 +116,19 @@ class IntronSupport:
                 yield entry.data
                 seen.add(id(entry.data))
 
+    def subset_for_region(self, chrom, start, end):
+        """Return a new IntronSupport with introns overlapping [start, end) on chrom.
+        Intron support counts and flags are copied."""
+        sub = IntronSupport(min_intron_size=self.min_intron_size, max_intron_size=self.max_intron_size)
+        if chrom in self.chroms:
+            for intron in self.introns(chrom):
+                if intron.end > start and intron.start < end:
+                    new_intron = sub._add_intron(intron.chrom, intron.start, intron.end, intron.strand)
+                    new_intron.annot_supported = intron.annot_supported
+                    new_intron.read_supported = intron.read_supported
+                    new_intron.read_support_cnt = intron.read_support_cnt
+        return sub
+
     def dump(self, fh=sys.stderr):
         print("IntronSupport:", file=fh)
         for chrom, entry in self.entries():
@@ -130,13 +142,17 @@ class IntronSupport:
         msg += f": {file_name}"
         raise FlairInputDataError(msg)
 
+    @staticmethod
+    def _bed_strand_error(bed):
+        raise FlairInputDataError(f"Invalid strand `{bed.strand}' in BED must be `+', `-', or '.'")
+
     def _load_intron_bed(self, bed, chrom_filter):
         if (chrom_filter is not None) and (bed.chrom != chrom_filter):
             return False
         if not (6 <= bed.numStdCols <= 9):
             raise FlairInputDataError(f"intron BED must have 6 to 9 columns, found {bed.numStdCols}")
-        if bed.strand not in ('+', '-'):
-            raise FlairInputDataError(f"Invalid strand `{bed.strand}' in intron BED must be `+' or `-'")
+        if bed.strand not in _VALID_STRANDS:
+            self._bed_strand_error(bed)
         return self.add_support(bed.chrom, bed.chromStart, bed.chromEnd, bed.strand, bed.score)
 
     def load_introns_bed(self, bed_file, *, chrom_filter=None):
@@ -162,8 +178,8 @@ class IntronSupport:
             return False
         if bed.numStdCols != 12:
             raise FlairInputDataError(f"annot BED must have 12 columns, found {bed.numStdCols}")
-        if bed.strand not in ('+', '-'):
-            raise FlairInputDataError(f"Invalid strand `{bed.strand}' in BED must be `+' or `-'")
+        if bed.strand not in _VALID_STRANDS:
+            self._bed_strand_error(bed)
         for i in range(len(bed.blocks) - 1):
             self.add_support(bed.chrom, bed.blocks[i].end, bed.blocks[i + 1].start, bed.strand, None)
         return True

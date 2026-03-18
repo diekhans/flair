@@ -58,7 +58,9 @@ default:
 	@echo "   " make real-clean >&2
 	@echo run flake8: >&2
 	@echo "   " make flake8 >&2
-	@echo "   " make lint >&2
+	@echo "build test case hub" >&2
+	@echo "   " make test-hub >&2
+	@echo "   " make make hub-check huburl=https://public.gi.ucsc.edu/~you/flair/test/hub/hub.txt >&2
 	@exit 1
 
 test: test-base test-with-R
@@ -66,7 +68,7 @@ test: test-base test-with-R
 test-base: align-tests quantify-tests \
 	combine-tests predict-productivity-tests diff-iso-usage-tests \
 	plot-usage-tests transcriptome-tests fusion-tests variants-tests \
-	partition-tests lib-tests
+	spliceevents-tests partition-tests lib-tests
 
 test-with-R: diffexp-tests diffsplice-tests
 
@@ -175,6 +177,15 @@ SEG1_ALIGN_BAM = $O/test-align-seg1.bam
 SEG1_ISOFORMS_FA = expected/test-collapse-seg1.isoforms.fa
 SEG1_ISOFORMS_BED = expected/test-collapse-seg1.isoforms.bed
 
+##
+# mutant splice site, BED is truth
+##
+KRAS_MUT_SPLICE_FQ = input/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.fastq
+KRAS_MUT_SPLICE_BAM = output/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.bam
+KRAS_MUT_SPLICE_SJ_BED = input/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.sj.bed
+KRAS_MUT_SPLICE_SJ_BB = output/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.sj.bb
+KRAS_MUT_SPLICE_BED = input/KRAS_sim_genomic_mut_driven_splicing.bed
+KRAS_MUT_SPLICE_BB = output/KRAS_sim_genomic_mut_driven_splicing.bb
 
 # The help test results vary on screen width.  This forces them to be consistent.
 # It might seem weird to see if help works, but some it did break in the past.
@@ -413,7 +424,7 @@ test-plot-usage-help: mkdirs
 ###
 
 transcriptome-tests: test-transcriptome test-transcriptome-partition test-transcriptome-noannot test-transcriptome-predcds \
-	test-transcriptome-seg1 test-transcriptome-help
+	test-transcriptome-seg1 test-transcripome-mutant-splice test-transcriptome-help
 
 update-transcriptome-tests:
 	for tname in "test-transcriptome" "test-transcriptome-partition" "test-transcriptome-noannot" "test-transcriptome-predcds" "test-transcriptome-seg1" "test-transcriptome-ends"; \
@@ -428,7 +439,7 @@ test-transcriptome: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --keep_intermediate
 	$(diff_bed_gtf)
 
-# FIXME: doesn't currently work
+# FIXME: not working
 test-transcriptome-ends: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --end_norm_dist 500 --output_endpos
 	$(diff_bed_gtf)
@@ -449,6 +460,21 @@ test-transcriptome-predcds: mkdirs ${TEST_ALIGN_BAM}
 test-transcriptome-seg1: mkdirs  ${SEG1_ALIGN_BAM}
 	flair transcriptome -b ${SEG1_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(SEG1_ANNOTATION) -o $O/$@
 	$(diff_bed_gtf)
+
+# test of an artifical mutated splice site.
+test-transcripome-mutant-splice: mkdirs ${KRAS_MUT_SPLICE_BAM}
+	flair transcriptome -b ${KRAS_MUT_SPLICE_BAM} -g ${GENOME_FA} \
+	   --junction_bed=${KRAS_MUT_SPLICE_SJ_BED} \
+	   -t 4 -f ${BASIC_ANNOTATION} -o $O/$@
+	$(diff_bed_gtf)
+
+
+${KRAS_MUT_SPLICE_BAM}: ${KRAS_MUT_SPLICE_FQ}  ${GENOME_FA}
+	@mkdir -p $O
+	flair align -r ${KRAS_MUT_SPLICE_FQ} \
+	   --genome ${GENOME_FA} -t 4 -o $(basename ${KRAS_MUT_SPLICE_BAM} .bam) \
+	   --minfragmentsize 40 --maxintronlen 350k
+
 
 test-transcriptome-help: mkdirs
 	flair transcriptome --help > $O/$@.out
@@ -504,7 +530,8 @@ test-fusion-pary: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_BAM
 	$(call cmp_expect_sort,$@.fusions.isoforms.bed)
 	$(call cmp_expect_sort,$@.fusions.isoforms.fa)
 
-${FUSION_TEST_BAM}: mkdirs  ${ERGIC3_KRAS_SIM_FA_GZ} ${GENOME_FA}
+${FUSION_TEST_BAM}: ${ERGIC3_KRAS_SIM_FA_GZ} ${GENOME_FA}
+	@mkdir -p $O
 	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq \
 	   --genome ${GENOME_FA} -t 4 -o ${FUSION_TEST_SHARED_OUT} \
 	   --minfragmentsize 40 --maxintronlen 350k
@@ -521,9 +548,13 @@ ${ERGIC3_KRAS_SIM_FA_GZ}: $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq
 ###
 # flair spliceevents
 ###
+spliceevents-tests: test-spliceevents
+
 test-spliceevents: mkdirs
 	python3 ../src/flair/flair_spliceevents.py -m $I/spliceevents.manifest.tsv -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@
 
+# FIXME: orphan, this does not work and is not referenced; is this still needed
+# the annotation file is there
 test-refseq: mkdirs
 	flair fusion -g genome.refSeq.fa -f $I/refSeq.test.annotation.gtf -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq -b $O/$@_chimeric.bam --maxloci 4 -o $O/$@ -s 2
 
@@ -582,6 +613,32 @@ ${BASIC_ISOFORMS_OUT_FA}: ${BASIC_ISOFORMS_FA}
 
 ${BASIC_ISOFORMS_OUT_FAI}: ${BASIC_ISOFORMS_OUT_FA}
 	samtools faidx --output $@ $<
+
+##
+# test hub (work in progress)
+##
+HUB_OUT_DIR = $O/hg38
+
+HG38_CHROMS = https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chromAlias.bb
+
+TEST_TRANSCRIPOME_MUTANT_SPLICE_BB = output/test-transcripome-mutant-splice.isoforms.bb
+
+test-hub:  ${KRAS_MUT_SPLICE_BB} ${KRAS_MUT_SPLICE_SJ_BB} ${TEST_TRANSCRIPOME_MUTANT_SPLICE_BB}
+
+$O/%.bb: $O/%.bed
+	bedToBigBed -sort -sizesIsChromAliasBb $< ${HG38_CHROMS} $@
+
+$O/%.sj.bb: $I/%.sj.bed
+	@mkdir -p @O
+	bedToBigBed -sort -type=bed6 -sizesIsChromAliasBb $< ${HG38_CHROMS} $@
+
+$O/%.bb: $I/%.bed
+	@mkdir -p @O
+	bedToBigBed -sort -sizesIsChromAliasBb $< ${HG38_CHROMS} $@
+
+hub-check: test-hub
+	@[ -n "${huburl}" ] || { echo "Error: huburl= must be specified on the commad line"; exit 1; }
+	hubCheck ${huburl}
 
 mkdirs:
 	@mkdir -p $O

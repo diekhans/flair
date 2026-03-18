@@ -1,10 +1,11 @@
 usage: align [-h] -r READS [READS ...] [-g GENOME] [--mm_index MM_INDEX]
              [-o OUTPUT] [-t THREADS] [--junction_bed JUNCTION_BED] [--nvrna]
+             [--quality QUALITY] [--filtertype {keepsup,removesup,separate}]
              [--minfragmentsize MINFRAGMENTSIZE] [--maxintronlen MAXINTRONLEN]
              [--quiet] [--log-stderr] [--log-level LOG_LEVEL]
              [--log-conf LOG_CONF] [--log-debug]
 
-FLAIR align outputs an unfiltered bam file and a filtered bed file for use in
+FLAIR align outputs an unfiltered bam file and a filtered bam file for use in
 the downstream pipeline
 
 options:
@@ -18,6 +19,13 @@ options:
                         guided minimap2 genomic alignment
   --nvrna               specify this flag to use native-RNA specific alignment
                         parameters for minimap2
+  --quality QUALITY     minimum MAPQ of read alignment to the genome (0)
+  --filtertype {keepsup,removesup,separate}
+                        method of filtering chimeric alignments (potential
+                        fusion reads). Options: removesup (default), separate
+                        (required for downstream work with fusions), keepsup
+                        (keeps supplementary alignments for isoform detection,
+                        does not allow gene fusion detection)
   --minfragmentsize MINFRAGMENTSIZE
                         minimum size of alignment kept, used in minimap -s.
                         More important when doing downstream fusion detection

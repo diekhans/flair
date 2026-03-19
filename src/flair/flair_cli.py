@@ -7,8 +7,8 @@ import logging
 from flair import VERSION, set_unix_path
 from flair.pycbio.sys import cli
 
-VALID_MODULES = ('align', 'correct', 'transcriptome', 'collapse', 'quantify',
-                 'combine', 'variants', 'variantquant', 'fusion', 'diffexp', 'diffsplice')
+VALID_MODULES = ('align', 'transcriptome', 'quantify', 'combine',
+                 'variants', 'variantquant', 'fusion', 'diffexp', 'diffsplice')
 
 def parse_args():
     """Argument parsing a module name for this and then returns the remaining arguments
@@ -21,14 +21,14 @@ def parse_args():
 
     desc = '''Run a FLAIR module.  This program is the main entry point
     for running FLAIR analysis.'''
-    parser = cli.ArgumentParserExtras(description=desc)
+    parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('--version', action='version', version='FLAIR ' + VERSION,
                         help="print FLAIR version")
     parser.add_argument("module", choices=VALID_MODULES, type=str.lower,
                         help="name of module to run")
     parser.add_argument('module_args', nargs=argparse.REMAINDER,
                         help="arguments to module")
-    return parser.parse_opts_args()
+    return cli.parseOptsArgsWithLogging(parser)
 
 def move_opts_to_argv(opts, module_argv):
     """move options back to module_argv for modules that have been converted
@@ -47,15 +47,9 @@ def flair_module_run(opts, module, module_argv):  # noqa: C901
     if module == 'align':
         from flair import flair_align
         flair_align.align()
-    elif module == 'correct':
-        from flair.flair_correct import correct
-        correct()
     elif module == 'transcriptome':
-        from flair.flair_transcriptome import run_collapse_from_bam
-        run_collapse_from_bam()
-    elif module == 'collapse':
-        from flair.flair_collapse import collapse
-        collapse()
+        from flair.flair_transcriptome import flair_transcriptome
+        flair_transcriptome()
     elif module == 'quantify':
         from flair.flair_quantify import quantify
         quantify()

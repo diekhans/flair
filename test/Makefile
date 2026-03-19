@@ -11,12 +11,34 @@ ifneq (${use_installed_flair},yes)
     export PYTHONPATH := ${root}/src:${PYTHONPATH}
 endif
 
+ifeq (${PYTHONWARNINGS},)
+   # get resource and other warnings
+   #   ResourceWarning: Enable tracemalloc to get the object allocation traceback
+   # use
+   #    PYTHONTRACEMALLOC=20 make
+   # to find out were ResourceWarning are comming from
+   # WANRING tracemalloc is really slow
+   #
+   # FIXME: gets lots of warnings by not closing files, and these break some
+   # expect results.  Disable for now.
+   #export PYTHONWARNINGS=always
+endif
+
+ifneq (${PYTHONTRACEMALLOC},)
+    msg = WARNING: PYTHONTRACEMALLOC is set test will be very slow
+    $(warning ${msg})
+    $(warning ${msg})
+    $(warning ${msg})
+    $(warning ${msg})
+endif
+
+
 
 ##
 # all targets
 ##
 default:
-	@echo To run tests, use: >&2
+	@echo To run all tests, use: >&2
 	@echo "   " make test >&2
 	@echo To run tests without R depedencies, use: >&2
 	@echo "   " make test-base >&2
@@ -24,24 +46,31 @@ default:
 	@echo "   " make test-installed >&2
 	@echo To run tests without R depedencies using installed FLAIR, use: >&2
 	@echo "   " make test-base-installed >&2
-	@echo otherwise run individual tests by specifying test target, such as: >&2
+	@echo Otherwise run individual tests by specifying test target, such as: >&2
 	@echo "   " make align-tests >&2
 	@echo to installed FLAIR for individual tests use the use_installed_flair option, such as: >&2
 	@echo "   " make align-tests use_installed_flair=yes >&2
-	@echo remove output files: >&2
+	@echo "Run only library tests" >&2
+	@echo "   " make lib-tests >&2
+	@echo "Remove output files:" >&2
 	@echo "   " make clean >&2
-	@echo remove output and downloaded genomes files: >&2
+	@echo Remove output and downloaded genomes files: >&2
 	@echo "   " make real-clean >&2
+	@echo run flake8: >&2
+	@echo "   " make flake8 >&2
+	@echo "build test case hub" >&2
+	@echo "   " make test-hub >&2
+	@echo "   " make make hub-check huburl=https://public.gi.ucsc.edu/~you/flair/test/hub/hub.txt >&2
 	@exit 1
 
 test: test-base test-with-R
-test-base: align-tests correct-tests collapse-tests quantify-tests \
+
+test-base: align-tests quantify-tests \
 	combine-tests predict-productivity-tests diff-iso-usage-tests \
 	plot-usage-tests transcriptome-tests fusion-tests variants-tests \
-	partition-tests
+	spliceevents-tests partition-tests lib-tests
 
 test-with-R: diffexp-tests diffsplice-tests
-
 
 test-installed:
 	${MAKE} test use_installed_flair=yes
@@ -49,12 +78,48 @@ test-installed:
 test-base-installed:
 	${MAKE} test-base use_installed_flair=yes
 
-test-help: test-main-help test-align-help test-correct-help test-collapse-help \
+test-help: test-main-help test-align-help \
            test-quantify-help test-diffexp-help test-diffsplice-help \
            test-predict-productivity-help test-diff-iso-usage-help \
-	   test-plot-usage-help test-transcriptome-help test-variants-help \
-	   test-fusion-help
+	       test-plot-usage-help test-transcriptome-help test-variants-help test-fusion-help
 
+test-fast: test-combine-bed-only \
+           test-predict-productivity test-diff-iso-usage test-plot-usage test-transcriptome \
+		   test-fusion test-variants
+
+
+
+lint: flake8
+flake8:
+	cd .. && ${MAKE} flake8
+
+##
+# options for pytest
+##
+# keep pytest xdist from complaining about the terminal
+export TERM=dumb
+
+###
+# pytest config
+###
+# override number of process with nproc=0 to run
+# in main process.
+# stdout not echo with mulitple processes
+# keep small for now due to startup time with only a few tests
+nproc = 0
+
+# logging level
+loglevel = INFO
+
+# override with pytest_extra=-v or what ever
+pytest_extra =
+
+# Sometimes standard traceback (--tb=native) helts debug, less decoration,
+# but lots pytest internal
+# traceback = --tb=native
+
+# --numprocesses is provided by pytest-xdist
+PYTEST_CMD = ${PYTEST} --capture=no ${traceback} --log-cli-level=${loglevel} ${pytest_extra}
 
 ##
 # Note: expected and output are sorted in cases where the order is not stable
@@ -77,14 +142,21 @@ BASIC_ANNOTATION_INCOMPLETE = $I/basic.annotation.incomplete.gtf
 BASIC_SHORTREAD_JUNCTIONS = $I/basic.shortread_junctions.tab
 BASIC_PROMOTER_REGIONS = $I/basic.promoter_regions.bed
 BASIC_READS_MANIFEST = $I/basic.reads_manifest.txt
+
+# FIXME: test are based on old test data, however flair quantify
+# does not produce sufficient pvalues to work diffexpr
 BASIC_COUNTS_MATRIX = $I/basic.counts_matrix_diffexp.tsv
 BASIC_DIFFSPLICE_MATRIX = $I/basic.counts_matrix_diffsplice.tsv
 BASIC_DIFFSPLICE_BED = $I/test-collapse-annot.isoforms.bed
 
-BASIC_ALIGN_BED = $E/test-align.bed
-BASIC_CORRECT_READS_BED = $E/test-correct_all_corrected.bed
+# FIXME: recreate these files with transcriptome, and others below 
 BASIC_ISOFORMS_FA = $E/test-collapse-annot.isoforms.fa
 BASIC_ISOFORMS_BED = $E/test-collapse-annot.isoforms.bed
+
+# copy so *.fai does end up in expect directory
+BASIC_ISOFORMS_OUT_FA = $O/test-collapse-annot.isoforms.fa
+BASIC_ISOFORMS_OUT_FAI = $O/test-collapse-annot.isoforms.fa.fai
+
 
 ##
 # Files generate by tests that are used by other tests.
@@ -102,10 +174,18 @@ SEG1_PROMOTER_REGIONS = input/seg1.promoter-regions.bed
 
 SEG1_ALIGN_BED = $E/test-align-seg1.bed
 SEG1_ALIGN_BAM = $O/test-align-seg1.bam
-SEG1_CORRECT_READS_BED = $E/test-correct-seg1_all_corrected.bed
 SEG1_ISOFORMS_FA = expected/test-collapse-seg1.isoforms.fa
 SEG1_ISOFORMS_BED = expected/test-collapse-seg1.isoforms.bed
 
+##
+# mutant splice site, BED is truth
+##
+KRAS_MUT_SPLICE_FQ = input/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.fastq
+KRAS_MUT_SPLICE_BAM = output/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.bam
+KRAS_MUT_SPLICE_SJ_BED = input/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.sj.bed
+KRAS_MUT_SPLICE_SJ_BB = output/KRAS_sim_genomic_mut_driven_splicing.badreadsimPB.sj.bb
+KRAS_MUT_SPLICE_BED = input/KRAS_sim_genomic_mut_driven_splicing.bed
+KRAS_MUT_SPLICE_BB = output/KRAS_sim_genomic_mut_driven_splicing.bb
 
 # The help test results vary on screen width.  This forces them to be consistent.
 # It might seem weird to see if help works, but some it did break in the past.
@@ -140,75 +220,35 @@ test-main-help: mkdirs
 # FLAIR ALIGN
 ###
 
-align-tests: test-align test-align-intpriming test-align-seg1 test-align-separate test-align-help
+align-tests: test-align test-align-seg1 test-align-help
 
+# just checks bed4 to make sure we are getting alignments
 test-align : mkdirs ${GENOME_FA}
 	flair align -r $(BASIC_READS_FA) --genome ${GENOME_FA} -t 4 -o $O/$@
+	bedtools bamtobed -i $O/$@.bam > $O/$@.bed
 	$(call cmp_expect,$@.bed)
 
 ${TEST_ALIGN_BAM}: test-align
 ${SEG1_ALIGN_BAM}: test-align-seg1
 
-test-align-separate : mkdirs ${GENOME_FA}
-	flair align -r $(BASIC_READS_FA) --genome ${GENOME_FA} -t 4 -o $O/$@ --filtertype separate
-	$(call cmp_expect,$@.bed)
-
-test-align-intpriming : mkdirs ${GENOME_FA}
-	flair align -r $(BASIC_READS_FA) --genome ${GENOME_FA} -t 4 -o $O/$@ --remove_internal_priming -f $(BASIC_ANNOTATION) --remove_singleexon
-	$(call cmp_expect,$@.bed)
-
 test-align-seg1 : mkdirs ${GENOME_FA}
 	flair align -r ${SEG1_READS_FQ} --genome ${GENOME_FA} -t 4 -o $O/$@
+	bedtools bamtobed -i $O/$@.bam > $O/$@.bed
 	$(call cmp_expect,$@.bed)
 
 test-align-help: mkdirs
 	flair align --help > $O/$@.out
 	$(call cmp_expect,$@.out)
 
-###
-# FLAIR CORRECT
-###
-correct-tests: test-correct test-correct-seg1 test-correct-blocksize test-correct-help
-
-test-correct: mkdirs ${GENOME_FA}
-	flair correct -q ${BASIC_ALIGN_BED} --junction_tab $(BASIC_SHORTREAD_JUNCTIONS) -f $(BASIC_ANNOTATION_INCOMPLETE) -o $O/$@
-	$(call cmp_expect_sort,$@_all_inconsistent.bed)
-	$(call cmp_expect_sort,$@_all_corrected.bed)
-
-test-correct-seg1: mkdirs ${GENOME_FA}
-	flair correct -q ${SEG1_ALIGN_BED} -f ${SEG1_ANNOTATION} -o $O/$@
-	$(call cmp_expect_sort,$@_all_inconsistent.bed)
-	$(call cmp_expect_sort,$@_all_corrected.bed)
-
-# case that resulted in negative block size in coorrect
-test-correct-blocksize: mkdirs ${GENOME_FA}
-	flair correct -q input/tardigrade-regress-aligns.bed --junction_bed=input/tardigrade-regress-introns.bed -o $O/$@
-	$(call cmp_expect_sort,$@_all_corrected.bed)
-
-test-correct-help: mkdirs
-	flair correct --help > $O/$@.out
-	$(call cmp_expect,$@.out)
-
-###
-# FLAIR COLLAPSE
-###
-collapse-tests: test-collapse test-collapse-promoter test-collapse-incgtf test-collapse-incgtfannot \
-	test-collapse-annot test-collapse-support test-collapse-support-annot test-collapse-seg1 test-collapse-predcds \
-	test-collapse-help
-
-update-collapse-tests:
-	for tname in "test-collapse" "test-collapse-sup1" "test-collapse-promoter" "test-collapse-incgtf" "test-collapse-incgtfannot" "test-collapse-annot" "test-collapse-support" "test-collapse-support-annot" "test-collapse-seg1" "test-collapse-predcds"; \
-	do \
-	cp $O/$$tname.isoforms.bed $E/$$tname.isoforms.bed; \
-	cp $O/$$tname.isoforms.gtf $E/$$tname.isoforms.gtf; \
-	cp $O/$$tname.isoform.read.map.txt $E/$$tname.isoform.read.map.txt; \
-	done
-
-
 # macros to do comparions with expected results
-define collapse_diff
+# FIXME: make sort version go away by making results stable
+define diff_bed_gtf_sort
 	$(call cmp_expect_sort,$@.isoforms.bed)
 	$(call cmp_expect_sort,$@.isoforms.gtf)
+endef
+define diff_bed_gtf
+	$(call cmp_expect,$@.isoforms.bed)
+	$(call cmp_expect,$@.isoforms.gtf)
 endef
 
 define collapse_promoter_diff
@@ -218,83 +258,9 @@ endef
 # resulting read map differs between run (see #443)
 # just check if it exists for now
 # should do: $(call cmp_expect_sort,$@.isoform.read.map.txt)
-define collapse_diff_read_map
+define diff_bed_gtf_sort_read_map
 	@test -e $O/${1} || (echo Error: output file missing: $O/${1}; exit 1)
 endef
-
-
-
-# basic collapse
-test-collapse: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@
-	$(collapse_diff)
-	$(collapse_diff_read_map)
-
-test-collapse-sup1: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@ -s 1
-	$(collapse_diff)
-	$(collapse_diff_read_map)
-
-test-collapse-promoter: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@ -p $(BASIC_PROMOTER_REGIONS)
-	$(collapse_diff)
-	$(collapse_diff_read_map)
-	$(collapse_promoter_diff)
-
-test-collapse-incgtf: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $I/basic.annotation.incomplete.scrambled.gtf -o $O/$@ --gene_tss
-	$(collapse_diff)
-	$(collapse_diff_read_map)
-
-test-collapse-incgtfannot: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $I/basic.annotation.incomplete.scrambled.gtf -o $O/$@  --annotation_reliant generate --stringent
-	$(collapse_diff)
-	$(collapse_diff_read_map)
-
-test-collapse-predcds: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@ --predictCDS --gene_tss
-	$(collapse_diff)
-	$(call cmp_expect,$@.isoforms.CDS.bed)
-
-# collapse annotation-reliant
-##these reads are low quality, many isoforms fail with the check_splice parameter
-test-collapse-annot: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@ --annotation_reliant generate --stringent
-	$(collapse_diff)
-	$(collapse_diff_read_map)
-
-test-collapse-seg1: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -r ${SEG1_READS_FQ} -q ${SEG1_CORRECT_READS_BED} -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(SEG1_ANNOTATION) -o $O/$@ --stringent --gene_tss
-	$(collapse_diff)
-	$(collapse_diff_read_map)
-
-# collapse with support
-test-collapse-support: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -s 0.25 -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@
-	$(collapse_diff)
-	$(collapse_diff_read_map)
-
-# collapse with support --annotation_reliant --isoformtss
-test-collapse-support-annot: mkdirs ${GENOME_FA}
-	rm -rf $O/$@.tmp
-	flair collapse -s 0.25 -r $(BASIC_READS_FA) -q $(BASIC_CORRECT_READS_BED) -g ${GENOME_FA} -t 4 --generate_map --temp_dir $O/$@.tmp --keep_intermediate -f $(BASIC_ANNOTATION) -o $O/$@ \
-	     --gtf=${BASIC_ANNOTATION} --quality 0 --generate_map --annotation_reliant generate
-	$(collapse_diff)
-	$(collapse_diff_read_map)
-
-test-collapse-help: mkdirs
-	flair collapse --help > $O/$@.out
-	$(call cmp_expect,$@.out)
-
 
 ###
 # FLAIR COMBINE
@@ -347,9 +313,9 @@ test-combine-bed-fa-map: mkdirs
 ###
 quantify-tests: test-quantify test-quantify-nobam test-quantify-help
 
-test-quantify: mkdirs
+test-quantify: mkdirs ${BASIC_ISOFORMS_OUT_FAI}
 	rm -rf $O/$@.tmp
-	flair quantify -r $(BASIC_READS_MANIFEST) -i $(BASIC_ISOFORMS_FA) --isoform_bed $(BASIC_ISOFORMS_BED) --generate_map --temp_dir $O/$@.tmp --tpm --sample_id_only -o $O/$@ --output_bam
+	flair quantify -r $(BASIC_READS_MANIFEST) -i $(BASIC_ISOFORMS_OUT_FA) --isoform_bed $(BASIC_ISOFORMS_BED) --generate_map --temp_dir $O/$@.tmp --tpm --sample_id_only -o $O/$@ --output_bam
 	samtools view $O/$@.A1.A.flair.aligned.bam | cut -f 1,3 > $O/$@.A1.A.flair.aligned.readtotranscript.txt
 	$(call cmp_expect,$@.counts.tsv)
 	$(call cmp_expect_sort,$@.A1.A.flair.aligned.readtotranscript.txt)
@@ -358,9 +324,9 @@ test-quantify: mkdirs
 ${TEST_QUANTIFY_B1_BAM}: test-quantify
 
 # without map or bam outputs
-test-quantify-nobam : mkdirs
+test-quantify-nobam : mkdirs ${BASIC_ISOFORMS_OUT_FAI}
 	rm -rf $O/$@.tmp
-	flair quantify -r $(BASIC_READS_MANIFEST) -i $(BASIC_ISOFORMS_FA) --isoform_bed $(BASIC_ISOFORMS_BED) --temp_dir $O/$@.tmp --tpm --sample_id_only -o $O/$@
+	flair quantify -r $(BASIC_READS_MANIFEST) -i $(BASIC_ISOFORMS_OUT_FA) --isoform_bed $(BASIC_ISOFORMS_BED) --temp_dir $O/$@.tmp --tpm --sample_id_only -o $O/$@
 	$(call cmp_expect,$@.counts.tsv)
 	$(call cmp_expect,$@.tpm.tsv)
 
@@ -458,7 +424,7 @@ test-plot-usage-help: mkdirs
 ###
 
 transcriptome-tests: test-transcriptome test-transcriptome-partition test-transcriptome-noannot test-transcriptome-predcds \
-	test-transcriptome-seg1 test-transcriptome-ends test-transcriptome-help
+	test-transcriptome-seg1 test-transcripome-mutant-splice test-transcriptome-help
 
 update-transcriptome-tests:
 	for tname in "test-transcriptome" "test-transcriptome-partition" "test-transcriptome-noannot" "test-transcriptome-predcds" "test-transcriptome-seg1" "test-transcriptome-ends"; \
@@ -471,29 +437,45 @@ update-transcriptome-tests:
 
 test-transcriptome: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --keep_intermediate
-	$(collapse_diff)
+	$(diff_bed_gtf)
 
+# FIXME: not working
 test-transcriptome-ends: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --end_norm_dist 500 --output_endpos
-	$(collapse_diff)
+	$(diff_bed_gtf)
 
 test-transcriptome-partition: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --parallel_mode byregion
-	$(collapse_diff)
+	$(diff_bed_gtf)
 
 test-transcriptome-noannot: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --no_align_to_annot
-	$(collapse_diff)
+	$(diff_bed_gtf)
 
 test-transcriptome-predcds: mkdirs ${TEST_ALIGN_BAM}
 	flair transcriptome  -b ${TEST_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@ --predict_cds
-	$(collapse_diff)
+	$(diff_bed_gtf)
 	$(call cmp_expect,$@.isoforms.CDS.bed)
 
 # FIXME: doesn't work, returns nothing. Need to debug later
 test-transcriptome-seg1: mkdirs  ${SEG1_ALIGN_BAM}
 	flair transcriptome -b ${SEG1_ALIGN_BAM} -g ${GENOME_FA} -t 4 -f $(SEG1_ANNOTATION) -o $O/$@
-	$(collapse_diff)
+	$(diff_bed_gtf)
+
+# test of an artifical mutated splice site.
+test-transcripome-mutant-splice: mkdirs ${KRAS_MUT_SPLICE_BAM}
+	flair transcriptome -b ${KRAS_MUT_SPLICE_BAM} -g ${GENOME_FA} \
+	   --junction_bed=${KRAS_MUT_SPLICE_SJ_BED} \
+	   -t 4 -f ${BASIC_ANNOTATION} -o $O/$@
+	$(diff_bed_gtf)
+
+
+${KRAS_MUT_SPLICE_BAM}: ${KRAS_MUT_SPLICE_FQ}  ${GENOME_FA}
+	@mkdir -p $O
+	flair align -r ${KRAS_MUT_SPLICE_FQ} \
+	   --genome ${GENOME_FA} -t 4 -o $(basename ${KRAS_MUT_SPLICE_BAM} .bam) \
+	   --minfragmentsize 40 --maxintronlen 350k
+
 
 test-transcriptome-help: mkdirs
 	flair transcriptome --help > $O/$@.out
@@ -510,13 +492,12 @@ variants-tests:  test-variants test-variants-help
 have_longshot := $(shell which longshot >/dev/null 2>&1 && echo yes || echo no)
 
 ifeq (${have_longshot},yes)
-test-variants: mkdirs ${GENOME_FA} ${TEST_QUANTIFY_B1_BAM}
+test-variants: mkdirs ${GENOME_FA} ${TEST_QUANTIFY_B1_BAM} ${BASIC_ISOFORMS_OUT_FAI}
 	minimap2 -ax map-ont --secondary=no ${GENOME_FA} input/basic.reads.4.fa | samtools view -hb - | samtools sort - > $O/$@.genomealigned.bam
 	samtools index $O/$@.genomealigned.bam
-	samtools faidx $(BASIC_ISOFORMS_FA)
 	longshot --force_overwrite --bam $O/$@.genomealigned.bam --ref ${GENOME_FA} --out $O/$@.genomealigned.longshot.vcf --min_cov 3 --min_alt_count 3 --strand_bias_pvalue_cutoff 0.000001
 	echo 's1    ${TEST_QUANTIFY_B1_BAM}   $O/$@.genomealigned.longshot.vcf' > $O/$@.varmanifest.tsv
-	flair variants -m $O/$@.varmanifest.tsv -i $(BASIC_ISOFORMS_FA) -b $(BASIC_ISOFORMS_BED) -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@
+	flair variants -m $O/$@.varmanifest.tsv -i $(BASIC_ISOFORMS_OUT_FA) -b $(BASIC_ISOFORMS_BED) -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -o $O/$@
 	$(call cmp_expect,$@.isoswithvars.counts.tsv)
 	$(call cmp_expect,$@.aaseq.counts.tsv)
 else
@@ -535,35 +516,49 @@ test-variants-help: mkdirs
 # flair fusion
 ###
 ERGIC3_KRAS_SIM_FA_GZ = $O/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq.gz
+FUSION_TEST_SHARED_OUT = $O/fusion_tests
+FUSION_TEST_BAM = ${FUSION_TEST_SHARED_OUT}.bam
+FUSION_TEST_CHIMERIC_BAM = ${FUSION_TEST_SHARED_OUT}_chimeric.bam
+
 fusion-tests: test-fusion test-fusion-pary test-fusion-help
 
-test-fusion: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ}
-	flair align -r ${ERGIC3_KRAS_SIM_FA_GZ} --genome ${GENOME_FA} -t 4 -o $O/$@ --filtertype separate --minfragmentsize 40 --maxintronlen 350k
-	flair fusion -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -r ${ERGIC3_KRAS_SIM_FA_GZ} -b $O/$@_chimeric.bam --maxloci 4 -o $O/$@ -s 2
+test-fusion: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_CHIMERIC_BAM}
+	flair fusion -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -r ${ERGIC3_KRAS_SIM_FA_GZ} -b ${FUSION_TEST_CHIMERIC_BAM} --maxloci 4 -o $O/$@ -s 2
+	diff <(sort <(cut -f 1,2,3,5,6,7,8,9,10,11,12 $E/$@.fusions.isoforms.bed)) <(sort <(cut -f 1,2,3,5,6,7,8,9,10,11,12 $O/$@.fusions.isoforms.bed))
+	diff <(sort <(grep -v ">" $E/$@.fusions.isoforms.fa)) <(sort <(grep -v ">" $O/$@.fusions.isoforms.fa))
+
+test-fusion-pary: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_CHIMERIC_BAM}
+	flair fusion -g ${GENOME_FA} -f $I/parY.annotation.gtf -r ${ERGIC3_KRAS_SIM_FA_GZ} -b ${FUSION_TEST_CHIMERIC_BAM} --maxloci 4 -o $O/$@ -s 2
 	$(call cmp_expect_sort,$@.fusions.isoforms.bed)
 	$(call cmp_expect_sort,$@.fusions.isoforms.fa)
 
-test-fusion-pary: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ}
-	flair align -r ${ERGIC3_KRAS_SIM_FA_GZ} --genome ${GENOME_FA} -t 4 -o $O/$@ --filtertype separate --minfragmentsize 40 --maxintronlen 350k
-	flair fusion -g ${GENOME_FA} -f $I/parY.annotation.gtf -r ${ERGIC3_KRAS_SIM_FA_GZ} -b $O/$@_chimeric.bam --maxloci 4 -o $O/$@ -s 2
-	$(call cmp_expect_sort,$@.fusions.isoforms.bed)
-	$(call cmp_expect_sort,$@.fusions.isoforms.fa)
+${FUSION_TEST_BAM} ${FUSION_TEST_CHIMERIC_BAM}&: ${ERGIC3_KRAS_SIM_FA_GZ} ${GENOME_FA}
+	@mkdir -p $O
+	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq \
+	   --genome ${GENOME_FA} -t 4 -o ${FUSION_TEST_SHARED_OUT} \
+	   --filtertype separate --minfragmentsize 40 --maxintronlen 350k
 
 test-fusion-help: mkdirs
 	flair fusion  --help > $O/$@.out
 	$(call cmp_expect,$@.out)
 
-###
-# flair spliceevents
-###
-test-spliceevents: mkdirs
-	python3 ../src/flair/flair_spliceevents.py -m $I/spliceevents.manifest.tsv -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@
-
-
 ${ERGIC3_KRAS_SIM_FA_GZ}: $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq
 	@mkdir -p $(dir $@)
 	gzip -c $< >$@
 
+
+###
+# flair spliceevents
+###
+spliceevents-tests: test-spliceevents
+
+test-spliceevents: mkdirs ${TEST_ALIGN_BAM}
+	python3 ../src/flair/flair_spliceevents.py -m $I/spliceevents.manifest.tsv -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@
+
+# FIXME: orphan, this does not work and is not referenced; is this still needed
+# the annotation file is there
+test-refseq: mkdirs
+	flair fusion -g genome.refSeq.fa -f $I/refSeq.test.annotation.gtf -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq -b $O/$@_chimeric.bam --maxloci 4 -o $O/$@ -s 2
 
 ##
 # flair_partition command
@@ -595,6 +590,11 @@ test-partition-sam: mkdirs
 	$(call cmp_expect,$@.ranges.bed)
 	$(call cmp_expect,$@.out)
 
+##
+# library tests with pytest
+##
+lib-tests:
+	${PYTEST_CMD} .
 
 ##
 # build test input files
@@ -608,6 +608,39 @@ ${GENOME_FA}:
 	zcat chr12.fa.gz chr17.fa.gz chr20.fa.gz > $@
 	rm chr12.fa.gz chr17.fa.gz chr20.fa.gz
 	samtools faidx $@
+
+${BASIC_ISOFORMS_OUT_FA}: ${BASIC_ISOFORMS_FA}
+	mkdir -p $(dir $@)
+	cp -f $< $@
+
+${BASIC_ISOFORMS_OUT_FAI}: ${BASIC_ISOFORMS_OUT_FA}
+	samtools faidx --output $@ $<
+
+##
+# test hub (work in progress)
+##
+HUB_OUT_DIR = $O/hg38
+
+HG38_CHROMS = https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chromAlias.bb
+
+TEST_TRANSCRIPOME_MUTANT_SPLICE_BB = output/test-transcripome-mutant-splice.isoforms.bb
+
+test-hub:  ${KRAS_MUT_SPLICE_BB} ${KRAS_MUT_SPLICE_SJ_BB} ${TEST_TRANSCRIPOME_MUTANT_SPLICE_BB}
+
+$O/%.bb: $O/%.bed
+	bedToBigBed -sort -sizesIsChromAliasBb $< ${HG38_CHROMS} $@
+
+$O/%.sj.bb: $I/%.sj.bed
+	@mkdir -p $O
+	bedToBigBed -sort -type=bed6 -sizesIsChromAliasBb $< ${HG38_CHROMS} $@
+
+$O/%.bb: $I/%.bed
+	@mkdir -p $O
+	bedToBigBed -sort -sizesIsChromAliasBb $< ${HG38_CHROMS} $@
+
+hub-check: test-hub
+	@[ -n "${huburl}" ] || { echo "Error: huburl= must be specified on the commad line"; exit 1; }
+	hubCheck ${huburl}
 
 mkdirs:
 	@mkdir -p $O

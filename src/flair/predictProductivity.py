@@ -20,6 +20,7 @@
 import sys
 import pipettor
 import os
+from pycbio.sys import fileOps
 from flair import FlairInputDataError
 ########################################################################
 # CommandLine
@@ -101,7 +102,7 @@ class Isoform(object):
 
 def getStarts(gtf):
     # starts = list()
-    starts = 'tmp_predictProd_starts.bed'
+    starts = fileOps.tmpFileGet('predictProd_starts', suffix='.bed')
     scount = 0
     out = open(starts, 'w')
     tnamenmdexcep = set()
@@ -275,7 +276,7 @@ def predict(bed, starts, isoDict, nmdexcep):
                 if transcript_id[:10] == 'fusiongene':
                     fusionindex = transcript_id.split('_')[0]
                     transcript_id = '_'.join(transcript_id.split('_')[1:])
-                
+
                 if transcript_id not in fusiondict:
                     fusiondict[transcript_id] = {}
                 if fusionindex not in fusiondict[transcript_id]:
@@ -287,7 +288,7 @@ def predict(bed, starts, isoDict, nmdexcep):
                     fusiondict[transcript_id][fusionindex]['esizes'].insert(0, elen)
                     fusiondict[transcript_id][fusionindex]['exons'].insert(0, (exonCoord[0], exonCoord[1], strand, fusionindex))
 
-            else: 
+            else:
                 # fusionindex = "NA"
                 if strand == '+':
                     isoDict[transcript_id].allEsizes.append(elen)
@@ -441,7 +442,7 @@ def main():
                 if not int(bedCols[1]) < start < int(bedCols[2]) and not int(bedCols[1]) < end < int(bedCols[2]):
                     bedCols[6],bedCols[7] = bedCols[1], bedCols[1]
                 else:
-                    if isoObj.strand == "+":
+                    if bedCols[5] == '+':
                         if int(bedCols[1]) < start < int(bedCols[2]): bedCols[6] = str(start)
                         if int(bedCols[1]) < end < int(bedCols[2]): bedCols[7] = str(end)
                     else:

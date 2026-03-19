@@ -1,7 +1,7 @@
 usage: fusion [-h] -g GENOME -f GTF -r READS [READS ...] -b GENOMECHIMBAM
               [--transcriptchimbam TRANSCRIPTCHIMBAM] [-o OUTPUT] [-t THREADS]
               [--minfragmentsize MINFRAGMENTSIZE] [-s SUPPORT]
-              [--maxloci MAXLOCI]
+              [--maxloci MAXLOCI] [--keep_intermediate]
 
 options:
   -h, --help            show this help message and exit
@@ -23,12 +23,14 @@ options:
                         minimum number of supporting reads for a fusion (3)
   --maxloci MAXLOCI     max loci detected in fusion. Set higher for detection
                         of 3-gene+ fusions
+  --keep_intermediate   keep intermediate and temporary files for debugging
+                        purposes
 
 required named arguments:
   -g GENOME, --genome GENOME
                         FastA of reference genome
   -r READS [READS ...], --reads READS [READS ...]
-                        FastA/FastQ files of raw reads, can specify multiple
+                        FASTA/FASTQ files of raw reads, can specify multiple
                         files
   -b GENOMECHIMBAM, --genomechimbam GENOMECHIMBAM
                         bam file of chimeric reads from genomic alignment from

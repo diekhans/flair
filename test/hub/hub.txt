@@ -1,0 +1,6 @@
+hub FLAIR-test-hub
+shortLabel FLAIR tests
+longLabel FLAIR test case hub
+genomesFile genomes.txt
+email markd@ucsc.edu
+descriptionUrl empty.html

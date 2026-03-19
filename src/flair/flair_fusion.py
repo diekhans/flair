@@ -33,7 +33,7 @@ def detectfusions():
     parser.add_argument('-f', '--gtf',
                         type=str, required=True, help='GTF annotation file, used for renaming FLAIR isoforms to annotated isoforms and adjusting TSS/TESs')
     required.add_argument('-r', '--reads', nargs='+',
-                          type=str, required=True, help='FastA/FastQ files of raw reads, can specify multiple files')
+                          type=str, required=True, help='FASTA/FASTQ files of raw reads, can specify multiple files')
     required.add_argument('-b', '--genomechimbam',
                           type=str, required=True, help='bam file of chimeric reads from genomic alignment from flair align')
     parser.add_argument('--transcriptchimbam',
@@ -48,8 +48,11 @@ def detectfusions():
                         help='''minimum number of supporting reads for a fusion (3)''')
     parser.add_argument('--maxloci', type=int, default=2,
                         help='''max loci detected in fusion. Set higher for detection of 3-gene+ fusions''')
+    parser.add_argument('--keep_intermediate', default=False, action='store_true',
+                        help='''keep intermediate and temporary files for debugging purposes''')
     path = os.path.dirname(os.path.realpath(__file__)) + '/'
 
+    # FIXME: incorrect way to check for missing arguments
     no_arguments_passed = len(sys.argv) == 1
     if no_arguments_passed:
         parser.print_help()
@@ -85,6 +88,7 @@ def detectfusions():
     ###Processing the gtf file so many times is really inefficient, how can we resolve this??
 
     ###align to transcriptome with --secondary=no
+
     if not args.transcriptchimbam:
         mm2_cmd = ['minimap2', '-a', '-s', str(args.minfragmentsize), '-t', str(args.threads), '--secondary=no',
                    args.annotated_fa] + args.reads
@@ -200,7 +204,7 @@ def detectfusions():
 
     bedout.close()
 
-
+    # FIXME: use opengz
     temp = args.reads[0].split('.')
     if temp[-1] == 'gz': temp = temp[:-1]
     freadsname = args.output + '.chimreads.' + temp[-1]
@@ -245,28 +249,38 @@ def detectfusions():
         report_nofusions(args.output)
         return
 
+    # FIXME: pipettor by default captures stderr to include in an error message, this hides logging from
+    # lower level.  Maybe don't capture when running flair subtools
     faidxcommand = ['samtools', 'faidx', args.output + '-syntheticFusionGenome.fa']
     mm2_cmd = ['minimap2', '-ax', 'splice', '-s', str(args.minfragmentsize), '-t', str(args.threads), '-un',
                '--secondary=no', '-G', '1000k', args.output + '-syntheticFusionGenome.fa', freadsname]
     samtools_filter_cmd = ('samtools', 'view', '-F', '2048', '-hb', '-')
     samtools_sort_cmd = ('samtools', 'sort', '-@', str(args.threads), '-o', args.output + '.syntheticAligned.bam', '-')
     samtools_index_cmd = ('samtools', 'index', args.output + '.syntheticAligned.bam')
-    # bamtobedcmd = ('bamToBed', '-bed12', '-i', args.output + '.syntheticAligned.bam')
     bamtobedcmd = ('bedtools', 'bamtobed', '-bed12', '-i', args.output + '.syntheticAligned.bam')
     getsscommand = ['python3', path + 'synthetic_splice_sites.py', args.output + '.syntheticAligned.bed',
                         args.output + '-syntheticReferenceAnno.gtf', args.output + '.syntheticAligned.SJ.bed', args.output + '-syntheticBreakpointLoc.bed', '8', '2', args.output + '-syntheticFusionGenome.fa']#'15', '2']
-    ##NOT ADDING GTF ANNOT TO correct or collapse - I think this will save time down the line
-    correctcommand = ['python3', path + 'flair_correct.py', '-t', args.threads, '-q', args.output + '.syntheticAligned.bed',
-                      '-f', args.output + '-syntheticReferenceAnno.gtf',
-                      '--output', args.output + '.syntheticAligned.flair', '--junction_bed', args.output + '.syntheticAligned.SJ.bed', '--ss_window', '8']
-    collapsecommand = ['python3', path + 'flair_collapse.py', '-t', args.threads, '-q', args.output + '.syntheticAligned.flair_all_corrected.bed',
-                      '-g', args.output + '-syntheticFusionGenome.fa', #'-f', args.output + '-syntheticReferenceAnno.gtf',
-                      '--output', args.output + '.syntheticAligned.flair', '-r', freadsname, '--end_window', '300', #'--stringent', '--check_splice', #'--annotation_reliant', 'generate',
-                      '--generate_map', '--quality', '0', '--support', '2', '--fusion_breakpoints', args.output + '-syntheticBreakpointLoc.bed', '--allow_paralogs']
-
-
-    ##currently need to run correct and collapse as subprocess because they expect specific args, need to fix this at some point I think
-    # print(makesynthcommand)
+    transcriptome_command = ['python3', path + 'flair_transcriptome.py',
+                             '--genome_aligned_bam', args.output + '.syntheticAligned.bam',
+                             '--genome', args.output + '-syntheticFusionGenome.fa',
+                             '--gtf', args.output + '-syntheticReferenceAnno.gtf',
+                             '--ss_window', '8',
+                             '--generate_map',
+                             '--quality', '0',
+                             '--sjc_support', '2',
+                             '--allow_paralogs',
+                             '--end_window', '300',
+                             '--no_check_splice',
+                             '--no_stringent',
+                             '--no_align_to_annot',
+                             '--fusion_breakpoints', args.output + '-syntheticBreakpointLoc.bed',
+                             '--output', args.output + '.syntheticAligned.flair',]
+    if args.keep_intermediate:
+        transcriptome_command.append("--keep_intermediate")
+    # only include junction if any where found
+    junc_bed = args.output + '.syntheticAligned.SJ.bed'
+    if os.path.exists(junc_bed) and (os.path.getsize(junc_bed) > 0):
+        transcriptome_command.extend(['--junction_bed', junc_bed])
 
     pipettor.run([faidxcommand])
     print('synth genome made')
@@ -276,9 +290,8 @@ def detectfusions():
     pipettor.run([bamtobedcmd], stdout=args.output + '.syntheticAligned.bed')
     pipettor.run([getsscommand])
     print('done getting ss')
-    pipettor.run([correctcommand])
-    print('done with correct')
-    pipettor.run([collapsecommand])
+
+    pipettor.run(transcriptome_command)
 
     ##clean up isoform/gene names for args.output + '.combined.isoform.read.map.txt', '.isoforms.bed', '.isoforms.fa'
     oldnametonewname = {}
@@ -321,9 +334,10 @@ def detectfusions():
 
     os.rename(args.output + '.syntheticAligned.isoform.read.map.txt', args.output + '.fusion.isoform.read.map.txt')
 
-    #removing extra FLAIR files
-    for filename in glob.glob(args.output + '.syntheticAligned.flair*'):
-        os.remove(filename)
+    # removing extra FLAIR files
+    if not args.keep_intermediate:
+        for filename in glob.glob(args.output + '.syntheticAligned.flair*'):
+            os.remove(filename)
 
 
 

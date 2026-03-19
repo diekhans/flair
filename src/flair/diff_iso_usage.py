@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import sys
 import csv
 import os
@@ -12,7 +13,7 @@ def parse_args():
     desc = """Calculates the usage of each isoform as a fraction of the total expression
     of the gene and compares this between samples."""
 
-    parser = cli.ArgumentParserExtras(description=desc)
+    parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('counts_matrix_tsv',
                         help='counts matrix TSV from flair-quantify')
     parser.add_argument('colname1',
@@ -22,7 +23,7 @@ def parse_args():
     parser.add_argument('outfile',
                         help='output filename containing the p-value associated with differential '
                         'isoform usage for each isoform')
-    return parser.parse_args()
+    return cli.parseArgsWithLogging(parser)
 
 def split_iso_gene(iso_gene):
     if '_chr' in iso_gene:
@@ -73,28 +74,36 @@ def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):
 
     with open(outfilename, 'wt') as outfile:
         writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
-        writer.writerow(['geneID', 'isoID', 'fisher_pval', 'this_iso_sample1_count', 'this_iso_sample2_count', 'other_isos_sample1_count', 'other_isos_sample2_count'])
+        writer.writerow(['geneID', 'isoID', 'fisher_pval', 'this_iso_sample1_count', 'this_iso_sample2_count', 'other_isos_sample1_count', 'other_isos_sample2_count', 'sample1_PSI', 'sample2_PSI', 'delta_PSI'])
         geneordered = sorted(counts.keys())
         for gene in geneordered:
             generes = []
             for iso in counts[gene]:
                 thesecounts = counts[gene][iso]
                 othercounts = [0, 0]
-                ctable = [thesecounts, othercounts]
                 for iso_ in counts[gene]:
-                    if iso_ == iso:
-                        continue
-                    othercounts[0] += counts[gene][iso_][0]
-                    othercounts[1] += counts[gene][iso_][1]
-                if thesecounts[0] + othercounts[0] == 0 or thesecounts[1] + othercounts[1] == 0:  # do not test this isoform if no gene exp in one sample
-                    continue
-                ctable[1] = othercounts
-                if ctable[0][0] + ctable[1][0] == 0 or ctable[0][1] + ctable[1][1] == 0 or not sum(ctable[1]):
-                    continue
-                generes += [[gene, iso, sps.fisher_exact(ctable)[1]] + ctable[0] + ctable[1]]
-            if not generes:
-                writer.writerow([gene, iso, 'NA'] + ctable[0] + ctable[1])
-                continue
+                    if iso_ != iso:
+                        othercounts[0] += counts[gene][iso_][0]
+                        othercounts[1] += counts[gene][iso_][1]
+                ctable = [thesecounts, othercounts]
+                if thesecounts[0] + othercounts[0] == 0 or thesecounts[1] + othercounts[1] == 0 or sum(thesecounts) == 0 or sum(othercounts) == 0:  # do not test this isoform if no gene exp in one sample
+                    generes.append([gene, iso, 'NA'] + ctable[0] + ctable[1] + ['NA', 'NA', 'NA'])
+                else:
+                    s1PSI, s2PSI, deltaPSI = 'NA', 'NA', 'NA'
+                    if ctable[1][0] + ctable[0][0] > 0:
+                        s1PSI = round(ctable[0][0]/(ctable[1][0] + ctable[0][0]), 3)
+                    if ctable[1][1] + ctable[0][1] > 0:
+                        s2PSI = round(ctable[0][1]/(ctable[1][1] + ctable[0][1]), 3)
+                    if s1PSI != 'NA' and s2PSI != 'NA':
+                        deltaPSI = round(s2PSI-s1PSI, 3)
+                    psi_data = [s1PSI, s2PSI, deltaPSI]
+
+                    generes.append([gene, iso, sps.fisher_exact(ctable)[1]] + ctable[0] + ctable[1] + psi_data)
+
+
+            # if not generes:
+            #     writer.writerow([gene, iso, 'NA'] + ctable[0] + ctable[1] + psi_data)
+            #     continue
 
             for res in generes:
                 writer.writerow(res)

@@ -1,5 +1,11 @@
 # Major user-visible changes
 
+## [v3.x.xx]
+* Incompatibles
+  * Removed flair correct and collapse modules, the functionality is replaced
+    by flair transcriptome.
+  * Remove flair align options that are no longer need without flair correct.
+    
 ## [v3.0.0] 2025-11-31
 * General
   * Bug fixes since v3.0.0b1

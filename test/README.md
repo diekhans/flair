@@ -43,3 +43,18 @@ You can usually find more information in the lines preceding the error. If you c
 
 
 
+# Hub for examining test cases
+
+A UCSC Browser hub exists in hub/hub.txt to visualized test results.  It
+references BAM and bigBed files in the output directory.  These files may 
+also be view with IGV
+
+The bigBed based files are not built by default. as they require the UCSC
+utilities to be install.  To build them:
+```
+make test-hub
+make hub-check huburl=https://public.gi.ucsc.edu/~you/flair/test/hub/hub.txt
+```
+
+
+   

@@ -277,10 +277,6 @@ def detectfusions():
                              '--output', args.output + '.syntheticAligned.flair',]
     if args.keep_intermediate:
         transcriptome_command.append("--keep_intermediate")
-    # only include junction if any where found
-    junc_bed = args.output + '.syntheticAligned.SJ.bed'
-    if os.path.exists(junc_bed) and (os.path.getsize(junc_bed) > 0):
-        transcriptome_command.extend(['--junction_bed', junc_bed])
 
     pipettor.run([faidxcommand])
     print('synth genome made')
@@ -290,6 +286,12 @@ def detectfusions():
     pipettor.run([bamtobedcmd], stdout=args.output + '.syntheticAligned.bed')
     pipettor.run([getsscommand])
     print('done getting ss')
+
+    # only include junction if any where found by getsscommand
+    # FIXME: would be better getsscommand was library that returned a status
+    junc_bed = args.output + '.syntheticAligned.SJ.bed'
+    if os.path.exists(junc_bed) and (os.path.getsize(junc_bed) > 0):
+        transcriptome_command.extend(['--junction_bed', junc_bed])
 
     pipettor.run(transcriptome_command)
 

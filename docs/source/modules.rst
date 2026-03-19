@@ -236,7 +236,7 @@ Other Options
                         minimum number of supporting reads for a fusion (3)
   --maxloci             max loci detected in fusion. Set higher for detection of 3-gene+ fusions
 
-
+  --keep_intermediate   keep intermediate and temporary files debugging purposes
 
 .. _combine-label:
 

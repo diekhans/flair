@@ -33,7 +33,7 @@ def detectfusions():
     parser.add_argument('-f', '--gtf',
                         type=str, required=True, help='GTF annotation file, used for renaming FLAIR isoforms to annotated isoforms and adjusting TSS/TESs')
     required.add_argument('-r', '--reads', nargs='+',
-                          type=str, required=True, help='FastA/FastQ files of raw reads, can specify multiple files')
+                          type=str, required=True, help='FASTA/FASTQ files of raw reads, can specify multiple files')
     required.add_argument('-b', '--genomechimbam',
                           type=str, required=True, help='bam file of chimeric reads from genomic alignment from flair align')
     parser.add_argument('--transcriptchimbam',
@@ -48,8 +48,11 @@ def detectfusions():
                         help='''minimum number of supporting reads for a fusion (3)''')
     parser.add_argument('--maxloci', type=int, default=2,
                         help='''max loci detected in fusion. Set higher for detection of 3-gene+ fusions''')
+    parser.add_argument('--keep_intermediate', default=False, action='store_true',
+                        help='''keep intermediate and temporary files for debugging purposes''')
     path = os.path.dirname(os.path.realpath(__file__)) + '/'
 
+    # FIXME: incorrect way to check for missing arguments
     no_arguments_passed = len(sys.argv) == 1
     if no_arguments_passed:
         parser.print_help()
@@ -85,6 +88,7 @@ def detectfusions():
     ###Processing the gtf file so many times is really inefficient, how can we resolve this??
 
     ###align to transcriptome with --secondary=no
+
     if not args.transcriptchimbam:
         mm2_cmd = ['minimap2', '-a', '-s', str(args.minfragmentsize), '-t', str(args.threads), '--secondary=no',
                    args.annotated_fa] + args.reads
@@ -200,7 +204,7 @@ def detectfusions():
 
     bedout.close()
 
-
+    # FIXME: use opengz
     temp = args.reads[0].split('.')
     if temp[-1] == 'gz': temp = temp[:-1]
     freadsname = args.output + '.chimreads.' + temp[-1]
@@ -245,6 +249,8 @@ def detectfusions():
         report_nofusions(args.output)
         return
 
+    # FIXME: pipettor by default captures stderr to include in an error message, this hides logging from
+    # lower level.  Maybe don't capture when running flair subtools
     faidxcommand = ['samtools', 'faidx', args.output + '-syntheticFusionGenome.fa']
     mm2_cmd = ['minimap2', '-ax', 'splice', '-s', str(args.minfragmentsize), '-t', str(args.threads), '-un',
                '--secondary=no', '-G', '1000k', args.output + '-syntheticFusionGenome.fa', freadsname]
@@ -269,6 +275,8 @@ def detectfusions():
                              '--no_align_to_annot',
                              '--fusion_breakpoints', args.output + '-syntheticBreakpointLoc.bed',
                              '--output', args.output + '.syntheticAligned.flair',]
+    if args.keep_intermediate:
+        transcriptome_command.append("--keep_intermediate")
     # only include junction if any where found
     junc_bed = args.output + '.syntheticAligned.SJ.bed'
     if os.path.exists(junc_bed) and (os.path.getsize(junc_bed) > 0):
@@ -326,9 +334,10 @@ def detectfusions():
 
     os.rename(args.output + '.syntheticAligned.isoform.read.map.txt', args.output + '.fusion.isoform.read.map.txt')
 
-    #removing extra FLAIR files
-    for filename in glob.glob(args.output + '.syntheticAligned.flair*'):
-        os.remove(filename)
+    # removing extra FLAIR files
+    if not args.keep_intermediate:
+        for filename in glob.glob(args.output + '.syntheticAligned.flair*'):
+            os.remove(filename)
 
 
 

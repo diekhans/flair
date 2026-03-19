@@ -517,21 +517,22 @@ test-variants-help: mkdirs
 ###
 ERGIC3_KRAS_SIM_FA_GZ = $O/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq.gz
 FUSION_TEST_SHARED_OUT = $O/fusion_tests
-FUSION_TEST_BAM = ${FUSION_TEST_SHARED_OUT}_chimeric.bam
+FUSION_TEST_BAM = ${FUSION_TEST_SHARED_OUT}.bam
+FUSION_TEST_CHIMERIC_BAM = ${FUSION_TEST_SHARED_OUT}_chimeric.bam
 
 fusion-tests: test-fusion test-fusion-pary test-fusion-help
 
-test-fusion: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_BAM}
-	flair fusion -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -r ${ERGIC3_KRAS_SIM_FA_GZ} -b ${FUSION_TEST_BAM} --maxloci 4 -o $O/$@ -s 2
+test-fusion: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_CHIMERIC_BAM}
+	flair fusion -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -r ${ERGIC3_KRAS_SIM_FA_GZ} -b ${FUSION_TEST_CHIMERIC_BAM} --maxloci 4 -o $O/$@ -s 2
 	diff <(sort <(cut -f 1,2,3,5,6,7,8,9,10,11,12 $E/$@.fusions.isoforms.bed)) <(sort <(cut -f 1,2,3,5,6,7,8,9,10,11,12 $O/$@.fusions.isoforms.bed))
 	diff <(sort <(grep -v ">" $E/$@.fusions.isoforms.fa)) <(sort <(grep -v ">" $O/$@.fusions.isoforms.fa))
 
-test-fusion-pary: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_BAM}
-	flair fusion -g ${GENOME_FA} -f $I/parY.annotation.gtf -r ${ERGIC3_KRAS_SIM_FA_GZ} -b ${FUSION_TEST_BAM} --maxloci 4 -o $O/$@ -s 2
+test-fusion-pary: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_CHIMERIC_BAM}
+	flair fusion -g ${GENOME_FA} -f $I/parY.annotation.gtf -r ${ERGIC3_KRAS_SIM_FA_GZ} -b ${FUSION_TEST_CHIMERIC_BAM} --maxloci 4 -o $O/$@ -s 2
 	$(call cmp_expect_sort,$@.fusions.isoforms.bed)
 	$(call cmp_expect_sort,$@.fusions.isoforms.fa)
 
-${FUSION_TEST_BAM}: ${ERGIC3_KRAS_SIM_FA_GZ} ${GENOME_FA}
+${FUSION_TEST_BAM} ${FUSION_TEST_CHIMERIC_BAM}&: ${ERGIC3_KRAS_SIM_FA_GZ} ${GENOME_FA}
 	@mkdir -p $O
 	flair align -r $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq \
 	   --genome ${GENOME_FA} -t 4 -o ${FUSION_TEST_SHARED_OUT} \
@@ -551,7 +552,7 @@ ${ERGIC3_KRAS_SIM_FA_GZ}: $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq
 ###
 spliceevents-tests: test-spliceevents
 
-test-spliceevents: mkdirs
+test-spliceevents: mkdirs ${TEST_ALIGN_BAM}
 	python3 ../src/flair/flair_spliceevents.py -m $I/spliceevents.manifest.tsv -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@
 
 # FIXME: orphan, this does not work and is not referenced; is this still needed

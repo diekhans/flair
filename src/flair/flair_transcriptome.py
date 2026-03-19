@@ -286,15 +286,20 @@ def get_sequence_for_exons(genome, chrom, strand, exons):
     return trans_seq
 
 
-class SJCIso:
-    def __init__(self, chrom, strand, juncs, start=None, end=None):
+class ReadRec:
+    """Read alignment with location, junction, and metadata fields.
+
+    Stores chrom, start, end, name, score, strand, and juncs directly.
+    Exons are computed on the fly from start, end, and juncs.
+    A Bed record can be produced on demand via to_bed().
+    """
+    def __init__(self, chrom, strand, juncs, start=None, end=None, name=None):
         self.chrom = chrom
         self.strand = strand
         self.juncs = juncs
-        self.reads = []
         self.start = start
         self.end = end
-        self.name = None
+        self.name = name
     
     @property
     def exons(self):
@@ -354,8 +359,40 @@ class SJCIso:
     
     def score(self):
         return 0
+    
+    @classmethod
+    def from_read(cls, read, junc_direction=None):
+        """Create a ReadRec from a pysam aligned read."""
+        # FIXME switch to pycbio.hgdata.cigar
+        align_start = read.reference_start
+        ref_pos = align_start
+        intron_blocks = []
+        has_match = False
+        for block in read.cigartuples:
+            if block[0] == 3:  # intron
+                if has_match:
+                    intron_blocks.append([ref_pos, ref_pos + block[1]])
+                # this fixes weird bug if there's an intron, then an insertion, then another intron???
+                elif len(intron_blocks) > 0:
+                    intron_blocks[-1][1] += block[1]
+                has_match = False
+                ref_pos += block[1]
+            elif block[0] in {0, 7, 8, 2}:  # consumes reference
+                ref_pos += block[1]
+                if block[0] in {0, 7, 8}:
+                    has_match = True
+        if junc_direction not in {'+', '-'}:
+            junc_direction = "-" if read.is_reverse else "+"
+        juncs = tuple(Junc(blk[0], blk[1]) for blk in intron_blocks)
+        return cls(read.reference_name, junc_direction, juncs, align_start, ref_pos, read.query_name)
 
-class IsoWithReads(SJCIso):
+    @classmethod
+    def from_junctions(cls, chrom, start, end, name, score, strand, juncs):
+        """Create a ReadRec from junction coordinates."""
+        return cls(chrom, strand, juncs if isinstance(juncs, tuple) else tuple(juncs), start, end, name)
+
+
+class IsoWithReads(ReadRec):
     def __init__(self, chrom, strand, juncs, start=None, end=None, reads=None):
         super().__init__(chrom, strand, juncs, start, end)
         self.reads = reads if reads != None else []
@@ -383,8 +420,6 @@ class IsoWithReads(SJCIso):
         return len(self.reads)
     
 
-    
-
 
 class ReadEndInfo:
     def __init__(self, start, end, name, mapq):
@@ -398,59 +433,6 @@ class ReadEndInfo:
     @classmethod
     def from_readrec(cls, readrec):
         return cls(readrec.start, readrec.end, readrec.name, readrec.score)
-
-    
-
-
-class ReadRec(SJCIso):
-    """Read alignment with location, junction, and metadata fields.
-
-    Stores chrom, start, end, name, score, strand, and juncs directly.
-    Exons are computed on the fly from start, end, and juncs.
-    A Bed record can be produced on demand via to_bed().
-    """
-
-    def __init__(self, chrom, start, end, name, score, strand, juncs):
-        super().__init__(chrom, strand, juncs)
-        self.start = start
-        self.end = end
-        self.name = name
-        self.score = score
-
-    @classmethod
-    def from_read(cls, read, junc_direction=None):
-        """Create a ReadRec from a pysam aligned read."""
-        # FIXME switch to pycbio.hgdata.cigar
-        align_start = read.reference_start
-        ref_pos = align_start
-        intron_blocks = []
-        has_match = False
-        for block in read.cigartuples:
-            if block[0] == 3:  # intron
-                if has_match:
-                    intron_blocks.append([ref_pos, ref_pos + block[1]])
-                # this fixes weird bug if there's an intron, then an insertion, then another intron???
-                elif len(intron_blocks) > 0:
-                    intron_blocks[-1][1] += block[1]
-                has_match = False
-                ref_pos += block[1]
-            elif block[0] in {0, 7, 8, 2}:  # consumes reference
-                ref_pos += block[1]
-                if block[0] in {0, 7, 8}:
-                    has_match = True
-        if junc_direction not in {'+', '-'}:
-            junc_direction = "-" if read.is_reverse else "+"
-        juncs = tuple(Junc(blk[0], blk[1]) for blk in intron_blocks)
-        return cls(read.reference_name, align_start, ref_pos, read.query_name,
-                   read.mapping_quality, junc_direction, juncs)
-
-    @classmethod
-    def from_junctions(cls, chrom, start, end, name, score, strand, juncs):
-        """Create a ReadRec from junction coordinates."""
-        return cls(chrom, start, end, name, score, strand,
-                   juncs if isinstance(juncs, tuple) else tuple(juncs))
-
-
 
     
 

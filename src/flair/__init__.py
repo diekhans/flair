@@ -62,3 +62,8 @@ class SeqRange(namedtuple("SeqRange",
         assert start <= end  # allows zero length
         assert isinstance(strand, (str, NoneType)) and ((strand is None) or (strand in ('+', '-', '.', None)))
         return super(SeqRange, cls).__new__(cls, name, start, end, strand)
+
+
+def range_overlap(a, b):
+    """Return the overlap length between two ranges with .start/.end attributes. Returns 0 if no overlap."""
+    return max(0, min(a.end, b.end) - max(a.start, b.start))

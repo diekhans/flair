@@ -59,8 +59,11 @@ def detectfusions():
                         help='''max loci detected in fusion. Set higher for detection of 3-gene+ fusions''')
     parser.add_argument('--max_dist_to_TSS', type=int, default=15000,
                         help='''maximum allowed distance of 5' alignment to TSS of annotated transcript. To not check this, set to -1''')
+    parser.add_argument('--keep_intermediate', default=False, action='store_true',
+                        help='''keep intermediate and temporary files for debugging purposes''')
     path = os.path.dirname(os.path.realpath(__file__)) + '/'
 
+    # FIXME: incorrect way to check for missing arguments
     no_arguments_passed = len(sys.argv) == 1
     if no_arguments_passed:
         parser.print_help()
@@ -98,6 +101,7 @@ def detectfusions():
     ###Processing the gtf file so many times is really inefficient, how can we resolve this??
 
     ###align to transcriptome with --secondary=no
+
     if not args.transcriptchimbam:
         args.annotated_bed = args.output + '.annotated_transcripts.bed'
         gtf_to_bed(args.annotated_bed, args.gtf, include_gene=True)
@@ -296,6 +300,8 @@ def detectfusions():
         report_nofusions(args.output)
         return
 
+    # FIXME: pipettor by default captures stderr to include in an error message, this hides logging from
+    # lower level.  Maybe don't capture when running flair subtools
     faidxcommand = ['samtools', 'faidx', args.output + '-syntheticFusionGenome.fa']
     pipettor.run([faidxcommand])
 
@@ -451,9 +457,10 @@ def detectfusions():
 
     os.rename(args.output + '.syntheticAligned.isoform.read.map.txt', args.output + '.fusion.isoform.read.map.txt')
 
-    #removing extra FLAIR files
-    for filename in glob.glob(args.output + '.syntheticAligned.flair*'):
-        os.remove(filename)
+    # removing extra FLAIR files
+    if not args.keep_intermediate:
+        for filename in glob.glob(args.output + '.syntheticAligned.flair*'):
+            os.remove(filename)
 
 
 

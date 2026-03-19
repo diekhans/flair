@@ -1,5 +1,5 @@
 #! /usr/bin/env python3
-
+import sys
 import argparse
 import os
 import pipettor
@@ -7,15 +7,24 @@ import shutil
 import pysam
 import logging
 from collections import Counter, namedtuple
-from flair import PosRange
 from flair.flair_align import intron_chain_to_exon_starts
 from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
 from flair.partition_runner import parallel_mode_parse, partition_runner_factory
-from flair.pycbio.hgdata.bed import Bed, BedReader
+from flair.pycbio.hgdata.bed import BedReader
 from flair.bed_to_sequence import bed_to_sequence
 from flair.bed_to_gtf import bed_to_gtf
+from flair.isoform_data import (Junc, Exon, ReadRec, IsoWithReads, ReadEndInfo, exons_to_juncs, bed_to_junctions,
+                              get_rgb, get_bed_exons_from_juncs, get_bed_exons_from_exons,
+                              get_sequence_for_exons, get_reverse_complement, binary_search,
+                              ISO_SRC_ANNOT, ISO_SRC_NOVEL)
+from flair.read_processing import (should_process_read, add_corrected_read_to_groups,
+                                    read_correct_to_readrec,
+                                    generate_genomic_alignment_read_to_clipping_file)
+# keep old private names as aliases for any callers using ft._should_process_read etc.
+_should_process_read = should_process_read
+_add_corrected_read_to_groups = add_corrected_read_to_groups
 
 # FIXME: temporarily disabled C901 (too complex) in .flake8
 # FIXME: add object for all file names
@@ -137,29 +146,7 @@ def get_args():
 ####
 # basic types
 ####
-# FIXME: junction_corrector isn't using this, should these be more global?
-class Junc(PosRange):
-    """Stores start, end, just adds a type name to SeqRange for clearer code and error messages"""
-    pass
-
-class Exon(namedtuple("Exon",("start", "end", "name"))):
-    def __new__(cls, start, end, name=None):
-        assert start <= end
-        if name == None:
-            name = ''
-        return super(Exon, cls).__new__(cls, start, end, name)
-    
-    def __len__(self):
-        return self.end - self.start
-
-def exons_to_juncs(exons):
-    """Convert exon ranges to junctions"""
-    return [Junc(exons[i].end, exons[i + 1].start)
-            for i in range(len(exons) - 1)]
-
-
-ISO_SRC_ANNOT = 'annot'
-ISO_SRC_NOVEL = 'novel'
+# (Junc, Exon, exons_to_juncs, ISO_SRC_ANNOT, ISO_SRC_NOVEL, IsoIdSrc imported from flair.isoform_data)
 
 # tolerance for terminal exon boundary comparisons
 TERMINAL_EXON_BOUNDARY_TOLERANCE = 20
@@ -178,13 +165,6 @@ MIN_ANNOT_OVERLAP_FRAC = 0.8
 ANNOT_SE_SEARCH_WINDOW = 2
 
 
-# class IsoIdSrc(namedtuple("IsoIdSrc",
-#                           ("id", "src"))):
-#     """isoform identifier along with the source of the isoform"""
-#     # FIXME: it is unclear if this is the best way to store the information,
-#     # this was create as a transition from iso (id) or (iso_id) (marker, id)
-#     pass
-
 ####
 # misc
 ###
@@ -198,44 +178,10 @@ def make_temp_dir(out_prefix):
     return temp_dir + '/'
 
 
-def binary_search(query, data):
-    """ Query is a coordinate interval. Binary search for the query in sorted data,
-        which is a list of coordinates. Finishes when an overlapping value of query and
-        data exists and returns the index in data. """
-    # FIXME: uses python bisect module
-    i = int(round(len(data) / 2))  # binary search prep
-    lower, upper = 0, len(data)
-    while True:
-        if upper - lower < 2:  # stop condition but not necessarily found
-            break
-        if data[i][1] < query[0]:
-            lower = i
-            i = int(round((i + upper) / 2))
-        elif data[i][0] > query[1]:
-            upper = i
-            i = int(round((lower + i) / 2))
-        else:  # found
-            break
-    return i
-
-def bed_to_junctions(bed):
-    # FIXME: a junctions object might be good
-    return [Junc(bed.blocks[i - 1].end, bed.blocks[i].start)
-            for i in range(1, bed.blockCount)]
-
 ####
 # splice junction correction
 ####
-def read_correct_to_readrec(junction_corrector, read):
-    # FIXME: remove unnecessary initial build of ReadRec and make junctions from
-    # read, correct, and then make bed
-    readrec = ReadRec.from_read(read)
-    corrected_bed = junction_corrector.correct_read_bed(readrec.to_bed())
-    if corrected_bed is None:
-        return None
-    readrec.juncs = tuple(Junc(corrected_bed.blocks[i].end, corrected_bed.blocks[i + 1].start)
-                          for i in range(len(corrected_bed.blocks) - 1))
-    return readrec
+# (binary_search, bed_to_junctions, read_correct_to_readrec imported from flair.isoform_data / flair.read_processing)
 
 def build_intron_support(gtf_file, junction_tab, junction_bed):
     """Build IntronSupport from all available sources."""
@@ -251,191 +197,6 @@ def build_intron_support(gtf_file, junction_tab, junction_bed):
 def setup_junction_corrector(intron_support, ss_window, junction_support):
     """Create a JunctionCorrector from a pre-built IntronSupport."""
     return JunctionCorrector(intron_support, ss_window, junction_support)
-
-def get_rgb(strand, junclen):
-    if junclen == 0:
-        return "99,99,99"
-    elif strand == '+':
-        return "27,158,119"
-    else:
-        return "217,95,2"
-
-
-def get_bed_exons_from_juncs(juncs, start, end):
-    if len(juncs) == 0:
-        exon_starts = [0]
-        exon_sizes = [end - start]
-    else:
-        exon_starts = [0] + [j.end - start for j in juncs]
-        exon_sizes = ([juncs[0].start - start] + [juncs[i + 1].start - juncs[i].end
-                                                  for i in range(len(juncs) - 1)] +
-                      [end - juncs[-1].end])
-    return exon_starts, exon_sizes
-
-def get_bed_exons_from_exons(exons, start):
-    exon_starts = [e.end - start for e in exons]
-    exon_sizes = [e.end - e.start for e in exons]
-    return exon_starts, exon_sizes
-
-def get_sequence_for_exons(genome, chrom, strand, exons):
-    trans_seq = ''.join([genome.fetch(chrom, e.start, e.end)
-                         for e in exons])
-    # FIXME: this upper cases only if reverse strand
-    if strand == '-':
-        trans_seq = get_reverse_complement(trans_seq)
-    return trans_seq
-
-
-class ReadRec:
-    """Read alignment with location, junction, and metadata fields.
-
-    Stores chrom, start, end, name, score, strand, and juncs directly.
-    Exons are computed on the fly from start, end, and juncs.
-    A Bed record can be produced on demand via to_bed().
-    """
-    def __init__(self, chrom, strand, juncs, start=None, end=None, name=None):
-        self.chrom = chrom
-        self.strand = strand
-        self.juncs = juncs
-        self.start = start
-        self.end = end
-        self.name = name
-    
-    @property
-    def exons(self):
-        """Return exons as list of Exon objects, computed from start, end, and juncs."""
-        if self.start == None or self.end == None:
-            return None
-        if not self.juncs:
-            return [Exon(self.start, self.end)]
-        exons = [Exon(self.start, self.juncs[0].start)]
-        for i in range(len(self.juncs) - 1):
-            exons.append(Exon(self.juncs[i].end, self.juncs[i + 1].start))
-        exons.append(Exon(self.juncs[-1].end, self.end))
-        return exons
-
-    def generate_name(self):
-        if self.name == None:
-            self.name = str(hash(tuple(self.exons)))
-
-    def to_bed(self):
-        """Create and return a Bed object."""
-        if self.start == None or self.end == None or self.name == None:
-            return None
-        exon_starts, exon_sizes = get_bed_exons_from_juncs(self.juncs, self.start, self.end)
-        bed = Bed(self.chrom, self.start, self.end, self.name,
-                  score=self.score, strand=self.strand,
-                  thickStart=self.start, thickEnd=self.end,
-                  itemRgb=get_rgb(self.strand, len(self.juncs)))
-        for i in range(len(exon_starts)):
-            blk_start = self.start + exon_starts[i]
-            bed.addBlock(blk_start, blk_start + exon_sizes[i])
-        return bed
-
-    def get_bed_line(self):
-        """Return BED format row."""
-        return self.to_bed().toRow()
-
-    def get_sequence(self, genome):
-        if self.start == None or self.end == None:
-            return None
-        return get_sequence_for_exons(genome, self.chrom, self.strand, self.exons)
-
-    def update_from_juncs(self, new_juncs):
-        """Update juncs, keeping chrom, start, end, name, score, strand."""
-        self.juncs = tuple(new_juncs)
-    
-    @property
-    def genomic_length(self):
-        if self.start == None or self.end == None:
-            return None
-        return self.end - self.start
-    
-    def reset_from_exons(self, exons):
-        """Update ReadRec from a list of Exon objects."""
-        self.start = exons[0].start
-        self.end = exons[-1].end
-        self.juncs = tuple(exons_to_juncs(sorted(exons)))
-    
-    def score(self):
-        return 0
-    
-    @classmethod
-    def from_read(cls, read, junc_direction=None):
-        """Create a ReadRec from a pysam aligned read."""
-        # FIXME switch to pycbio.hgdata.cigar
-        align_start = read.reference_start
-        ref_pos = align_start
-        intron_blocks = []
-        has_match = False
-        for block in read.cigartuples:
-            if block[0] == 3:  # intron
-                if has_match:
-                    intron_blocks.append([ref_pos, ref_pos + block[1]])
-                # this fixes weird bug if there's an intron, then an insertion, then another intron???
-                elif len(intron_blocks) > 0:
-                    intron_blocks[-1][1] += block[1]
-                has_match = False
-                ref_pos += block[1]
-            elif block[0] in {0, 7, 8, 2}:  # consumes reference
-                ref_pos += block[1]
-                if block[0] in {0, 7, 8}:
-                    has_match = True
-        if junc_direction not in {'+', '-'}:
-            junc_direction = "-" if read.is_reverse else "+"
-        juncs = tuple(Junc(blk[0], blk[1]) for blk in intron_blocks)
-        return cls(read.reference_name, junc_direction, juncs, align_start, ref_pos, read.query_name)
-
-    @classmethod
-    def from_junctions(cls, chrom, start, end, name, score, strand, juncs):
-        """Create a ReadRec from junction coordinates."""
-        return cls(chrom, strand, juncs if isinstance(juncs, tuple) else tuple(juncs), start, end, name)
-
-
-class IsoWithReads(ReadRec):
-    def __init__(self, chrom, strand, juncs, start=None, end=None, reads=None):
-        super().__init__(chrom, strand, juncs, start, end)
-        self.reads = reads if reads != None else []
-        self.gene_id = None
-        self.transcript_id = None
-    
-    @classmethod
-    def from_readrec(cls, readrec):
-        return cls(readrec.chrom, readrec.strand, readrec.juncs)
-    
-    @property
-    def starts(self):
-        return [x.start for x in reads]
-    
-    @property
-    def ends(self):
-        return [x.end for x in reads]
-
-    @property
-    def num_reads(self):
-        return len(self.reads)
-
-    @property
-    def score(self):
-        return len(self.reads)
-    
-
-
-class ReadEndInfo:
-    def __init__(self, start, end, name, mapq):
-        self.start = start
-        self.end = end
-        self.name = name
-        self.mapq = mapq
-        self.polyA = None
-        self.intprim = None
-    
-    @classmethod
-    def from_readrec(cls, readrec):
-        return cls(readrec.start, readrec.end, readrec.name, readrec.score)
-
-    
-
 
 class AnnotData(object):
     def __init__(self):
@@ -572,6 +333,7 @@ def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, o
     # FIXME add in step to filter out chimeric reads here
     # FIXME really need to go in and check on how count_sam_transcripts is working
     count_cmd = get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound)
+
     pipettor.run([mm2_cmd, count_cmd])
 
 ##
@@ -1049,20 +811,6 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
     return read_to_transcript
 
 
-def _should_process_read(read, region, min_quality, keep_sup, allow_secondary, allow_outside_range=False):
-    """Check if read passes filtering criteria for processing"""
-    if read.mapping_quality < min_quality:
-        return False
-    if read.is_secondary and not allow_secondary:
-        return False
-    if read.is_supplementary and not keep_sup:
-        return False
-    if read.reference_name != region.name:
-        return False
-    if not (region.start <= read.reference_start and read.reference_end <= region.end) and not allow_outside_range:
-        return False
-    return True
-
 
 def _add_corrected_read_to_groups(corrected_read, sj_to_ends):
     """Add a corrected read to the junction-to-ends mapping"""
@@ -1253,6 +1001,7 @@ def filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, fi
                           sup_annot_transcript_to_juncs):
     # FIXME: firstpass_unfiltered is a dict of uuid to ReadRec
     iso_to_unique_bound = {}
+
     if args.filter == 'ginormous':
         firstpass = firstpass_unfiltered
     else:
@@ -1462,16 +1211,6 @@ def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, annots, ge
                                       add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome)
 
 
-def get_reverse_complement(seq):
-    compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N',
-                'R': 'Y', 'Y': 'R', 'K': 'M', 'M': 'K', 'S': 'S',
-                'W': 'W', 'B': 'V', 'V': 'B', 'D': 'H', 'H': 'D'}
-    seq = seq.upper()
-    new_seq = []
-    for base in seq:
-        new_seq.append(compbase[base])
-    return ''.join(new_seq[::-1])
-
 ####
 # results output
 ####
@@ -1605,23 +1344,6 @@ def write_transcript_ends_beds(args, temp_prefix, read_to_final_transcript, ends
     for suffix in ['.matchannot.ends.tsv']:
         write_transcript_ends_bed(args, temp_prefix, suffix, read_to_final_transcript, ends_fh)
 
-def generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region):
-    c = 0
-    with open(temp_prefix + '.reads.genomicclipping.txt', 'w') as clipping_fh:
-        for read in bam_file.fetch(region.name, region.start, region.end):
-            if not read.is_secondary and not read.is_supplementary:
-                c += 1
-                name = read.query_name
-                cigar = read.cigartuples
-                tot_clipped = 0
-                if cigar[0][0] in {4, 5}:
-                    tot_clipped += cigar[0][1]
-                if cigar[-1][0] in {4, 5}:
-                    tot_clipped += cigar[-1][1]
-                clipping_fh.write(name + '\t' + str(tot_clipped) + '\n')
-    return c, temp_prefix + '.reads.genomicclipping.txt'
-
-
 def predict_productivity(out_prefix, genome_fasta, gtf):
     cmd = ('predictProductivity',
            '-i', out_prefix + '.isoforms.bed',
@@ -1728,6 +1450,7 @@ def _run_region(*, partition, gtf_data, intron_support, args):
                                       partition.output_path('reads.genomicclipping.txt'),
                                       partition.output_path('firstpass.uniquebound.txt'))
     else:
+        logging.info('no firstpass isoforms found')
         # create empty files
         with open(partition.output_path('firstpass.fa'), 'w') as _, \
              open(partition.output_path('firstpass.bed'), 'w') as _, \

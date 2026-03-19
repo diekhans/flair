@@ -2,6 +2,7 @@ usage: fusion [-h] -g GENOME -f GTF [-r READS [READS ...]] -b GENOMECHIMBAM
               [--transcriptchimbam TRANSCRIPTCHIMBAM] [-o OUTPUT] [-t THREADS]
               [--minfragmentsize MINFRAGMENTSIZE] [-s SUPPORT]
               [--maxloci MAXLOCI] [--max_dist_to_TSS MAX_DIST_TO_TSS]
+              [--keep_intermediate]
 
 options:
   -h, --help            show this help message and exit
@@ -29,6 +30,8 @@ options:
   --max_dist_to_TSS MAX_DIST_TO_TSS
                         maximum allowed distance of 5' alignment to TSS of
                         annotated transcript. To not check this, set to -1
+  --keep_intermediate   keep intermediate and temporary files for debugging
+                        purposes
 
 required named arguments:
   -g GENOME, --genome GENOME

@@ -550,7 +550,7 @@ ${ERGIC3_KRAS_SIM_FA_GZ}: $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq
 ###
 spliceevents-tests: test-spliceevents
 
-test-spliceevents: mkdirs
+test-spliceevents: mkdirs ${TEST_ALIGN_BAM}
 	python3 ../src/flair/flair_spliceevents.py -m $I/spliceevents.manifest.tsv -g ${GENOME_FA} -t 4 -f $(BASIC_ANNOTATION) -o $O/$@
 
 # FIXME: orphan, this does not work and is not referenced; is this still needed
@@ -629,11 +629,11 @@ $O/%.bb: $O/%.bed
 	bedToBigBed -sort -sizesIsChromAliasBb $< ${HG38_CHROMS} $@
 
 $O/%.sj.bb: $I/%.sj.bed
-	@mkdir -p @O
+	@mkdir -p $O
 	bedToBigBed -sort -type=bed6 -sizesIsChromAliasBb $< ${HG38_CHROMS} $@
 
 $O/%.bb: $I/%.bed
-	@mkdir -p @O
+	@mkdir -p $O
 	bedToBigBed -sort -sizesIsChromAliasBb $< ${HG38_CHROMS} $@
 
 hub-check: test-hub

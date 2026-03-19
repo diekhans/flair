@@ -57,6 +57,8 @@ def detectfusions():
                         help='''minimum number of supporting reads for a fusion (3)''')
     parser.add_argument('--maxloci', type=int, default=2,
                         help='''max loci detected in fusion. Set higher for detection of 3-gene+ fusions''')
+    parser.add_argument('--max_dist_to_TSS', type=int, default=15000,
+                        help='''maximum allowed distance of 5' alignment to TSS of annotated transcript. To not check this, set to -1''')
     path = os.path.dirname(os.path.realpath(__file__)) + '/'
 
     no_arguments_passed = len(sys.argv) == 1
@@ -65,6 +67,8 @@ def detectfusions():
         parser.error("No arguments passed. Please provide a bam file, reads, genome, and annotation file")
 
     args = parser.parse_args()
+    if args.max_dist_to_TSS == -1:
+        args.max_dist_to_TSS = None
 
     if not (args.reads or args.transcriptchimbam):
         raise FlairInputDataError(f'please provide either a fastq/fasta reads file or a bam file of chimeric alignments to the transcriptome')
@@ -219,16 +223,11 @@ def detectfusions():
     gene_to_paralogs = get_paralog_ref(os.path.realpath(__file__).split('flair_fusion')[0] + 'dgd_Hsa_all_v71.tsv')
     
     print('loading transcriptomic chimeras')
-    tchim = id_chimeras('transcriptomic', args.transcriptchimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=15000, maxpromiscuity=4, intronLocs=intronLocs, intronToGenome=intronToGenome)
+    tchim = id_chimeras('transcriptomic', args.transcriptchimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=args.max_dist_to_TSS, maxpromiscuity=4, intronLocs=intronLocs, intronToGenome=intronToGenome)
     print('loading genomic chimeras')
     
-    combchim = id_chimeras('genomic', args.genomechimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=15000, maxpromiscuity=4)
+    combchim = id_chimeras('genomic', args.genomechimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=args.max_dist_to_TSS, maxpromiscuity=4)
     
-    # tchim = transcriptomic_chimeras.idTranscriptomicChimeras(args.transcriptchimbam, genetoinfo, intronLocs, intronToGenome, args.support, maxloci=args.maxloci, reqdisttostart=15000, maxpromiscuity=maxpromiscuity)
-    # print('done getting fusions from transcriptome')
-    # # print(tchim)
-    # combchim = genomic_chimeras.idGenomicChimeras(args.genomechimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, genetoparalogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=15000, maxpromiscuity=maxpromiscuity)
-    # print(combchim)
     print('combining genomic and transcriptomic')
     #
     for f in tchim:

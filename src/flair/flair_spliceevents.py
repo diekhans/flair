@@ -7,7 +7,6 @@ import pipettor
 import shutil
 import pysam
 import logging
-from flair.ssPrep import buildIntervalTree
 from flair.partition_runner import PartitionRunner
 from flair import FlairInputDataError, SeqRange, range_overlap
 import flair.flair_transcriptome as ft

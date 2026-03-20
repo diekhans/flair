@@ -1296,7 +1296,7 @@ def _run_region(*, partition, gtf_data, intron_support, args):
              open(partition.output_path('firstpass.bed'), 'w') as _, \
              open(partition.output_path('isoform.counts.txt'), 'w') as _, \
              open(partition.output_path('isoform.read.map.txt'), 'w') as _, \
-             open(partition.output_path('ends.tsv'), 'w') as _:
+             open(partition.output_path('isoform.ends.tsv'), 'w') as _:
             pass
 
     ##FIXME this is messy, shouldn't have to reorganize like this

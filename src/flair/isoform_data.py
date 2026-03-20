@@ -3,6 +3,7 @@
 from collections import namedtuple
 from flair import PosRange
 from flair.pycbio.hgdata.bed import Bed
+from statistics import median
 
 
 ####
@@ -115,6 +116,44 @@ def binary_search(query, data):
     return i
 
 
+def convert_to_bed(readrec):
+    """Create and return a Bed object."""
+    exon_starts, exon_sizes = get_bed_exons_from_juncs(readrec.juncs, readrec.start, readrec.end)
+    bed = Bed(readrec.chrom, readrec.start, readrec.end, readrec.name,
+                score=readrec.score, strand=readrec.strand,
+                thickStart=readrec.start, thickEnd=readrec.end,
+                itemRgb=get_rgb(readrec.strand, len(readrec.juncs)))
+    for i in range(len(exon_starts)):
+        blk_start = readrec.start + exon_starts[i]
+        bed.addBlock(blk_start, blk_start + exon_sizes[i])
+    return bed
+
+def get_exons(readrec):
+    """Return exons as list of Exon objects, computed from start, end, and juncs."""
+    if not readrec.juncs:
+        return [Exon(readrec.start, readrec.end)]
+    exons = [Exon(readrec.start, readrec.juncs[0].start)]
+    for i in range(len(readrec.juncs) - 1):
+        exons.append(Exon(readrec.juncs[i].end, readrec.juncs[i + 1].start))
+    exons.append(Exon(readrec.juncs[-1].end, readrec.end))
+    return exons
+
+
+# class JuncChain:
+#     # keep on one copy of junction chain
+#     _juncs_cache = {}
+
+#     @classmethod
+#     def _intern_juncs(cls, juncs):
+#         return cls._juncs_cache.setdefault(juncs, juncs)
+    
+#     def __init__(self, chrom, strand, juncs):
+#         self.chrom = chrom
+#         self.strand = strand
+#         self.juncs = self._intern_juncs(juncs)
+
+    
+
 class ReadRec:
     """Read alignment with location, junction, and metadata fields.
 
@@ -133,72 +172,30 @@ class ReadRec:
     def _intern_juncs(cls, juncs):
         return cls._juncs_cache.setdefault(juncs, juncs)
 
-    def __init__(self, chrom, strand, juncs, start=None, end=None, name=None):
+    def __init__(self, chrom, strand, juncs, start, end, name, score=None):
         self.chrom = chrom
         self.strand = strand
         self.juncs = self._intern_juncs(juncs)
         self.start = start
         self.end = end
         self.name = name
+        self.score = score
+        self.polyA = None
+        self.intprim = None
     
     @property
     def exons(self):
-        """Return exons as list of Exon objects, computed from start, end, and juncs."""
-        if self.start == None or self.end == None:
-            return None
-        if not self.juncs:
-            return [Exon(self.start, self.end)]
-        exons = [Exon(self.start, self.juncs[0].start)]
-        for i in range(len(self.juncs) - 1):
-            exons.append(Exon(self.juncs[i].end, self.juncs[i + 1].start))
-        exons.append(Exon(self.juncs[-1].end, self.end))
-        return exons
-
-    def generate_name(self):
-        if self.name == None:
-            self.name = str(hash(tuple(self.exons)))
-
-    def to_bed(self):
-        """Create and return a Bed object."""
-        if self.start == None or self.end == None or self.name == None:
-            return None
-        exon_starts, exon_sizes = get_bed_exons_from_juncs(self.juncs, self.start, self.end)
-        bed = Bed(self.chrom, self.start, self.end, self.name,
-                  score=self.score, strand=self.strand,
-                  thickStart=self.start, thickEnd=self.end,
-                  itemRgb=get_rgb(self.strand, len(self.juncs)))
-        for i in range(len(exon_starts)):
-            blk_start = self.start + exon_starts[i]
-            bed.addBlock(blk_start, blk_start + exon_sizes[i])
-        return bed
-
-    def get_bed_line(self):
-        """Return BED format row."""
-        return self.to_bed().toRow()
-
-    def get_sequence(self, genome):
-        if self.start == None or self.end == None:
-            return None
-        return get_sequence_for_exons(genome, self.chrom, self.strand, self.exons)
-
-    def update_from_juncs(self, new_juncs):
-        """Update juncs, keeping chrom, start, end, name, score, strand."""
-        self.juncs = tuple(new_juncs)
-    
-    @property
-    def genomic_length(self):
-        if self.start == None or self.end == None:
-            return None
-        return self.end - self.start
+        return get_exons(self)
+        
+    # def update_from_juncs(self, new_juncs):
+    #     """Update juncs, keeping chrom, start, end, name, score, strand."""
+    #     self.juncs = tuple(new_juncs)
     
     def reset_from_exons(self, exons):
         """Update ReadRec from a list of Exon objects."""
         self.start = exons[0].start
         self.end = exons[-1].end
         self.juncs = tuple(exons_to_juncs(sorted(exons)))
-    
-    def score(self):
-        return 0
     
     @classmethod
     def from_read(cls, read, junc_direction=None):
@@ -229,19 +226,51 @@ class ReadRec:
     @classmethod
     def from_junctions(cls, chrom, start, end, name, score, strand, juncs):
         """Create a ReadRec from junction coordinates."""
-        return cls(chrom, strand, tuple(juncs), start, end, name)
+        return cls(chrom, strand, tuple(juncs), start, end, name, score)
 
 
-class IsoWithReads(ReadRec):
-    def __init__(self, chrom, strand, juncs, start=None, end=None, reads=None):
-        super().__init__(chrom, strand, juncs, start, end)
-        self.reads = reads if reads != None else []
-        self.gene_id = None
-        self.transcript_id = None
-    
+class IsoWithReads:
+    # keep on one copy of junction chain
+    _juncs_cache = {}
+
     @classmethod
-    def from_readrec(cls, readrec):
-        return cls(readrec.chrom, readrec.strand, readrec.juncs)
+    def _intern_juncs(cls, juncs):
+        return cls._juncs_cache.setdefault(juncs, juncs)
+
+    def __init__(self, chrom, strand, juncs, start=None, end=None, reads = None, gene_id = None, transcript_id = None):
+        self.chrom = chrom
+        self.strand = strand
+        self.juncs = self._intern_juncs(juncs)
+        self.start = start
+        self.end = end
+        self._name = None
+        self._score = None
+        self.reads = reads if reads != None else []
+        self.gene_id = gene_id
+        self.transcript_id = transcript_id
+        self.end5confidence = None
+        self.end3confidence = None
+    
+    @property
+    def name(self):
+        if self._name == None:
+            if self.start == None:
+                return 'FLISO' + str(abs(hash(tuple(self.juncs))))
+            else:
+                return 'FLISO' + str(abs(hash(tuple(self.exons))))
+        else:
+            return self._name
+
+    @name.setter
+    def name(self, new_name):
+        self._name = new_name
+    
+    @property
+    def exons(self):
+        if self.start == None:
+            self.start = median(self.starts)
+            self.end = median(self.ends)
+        return get_exons(self)
     
     @property
     def starts(self):
@@ -257,19 +286,37 @@ class IsoWithReads(ReadRec):
 
     @property
     def score(self):
-        return len(self.reads)
+        if self._score == None:
+            return len(self.reads)
+        else:
+            return self._score
+
+    @score.setter
+    def score(self, new_score):
+        self._score = new_score
     
-
-
-class ReadEndInfo:
-    def __init__(self, start, end, name, mapq):
-        self.start = start
-        self.end = end
-        self.name = name
-        self.mapq = mapq
-        self.polyA = None
-        self.intprim = None
+    @property
+    def genomic_length(self):
+        if self.start == None or self.end == None:
+            return None
+        return self.end - self.start
+    
+    def reset_from_exons(self, exons):
+        """Update ReadRec from a list of Exon objects."""
+        self.start = exons[0].start
+        self.end = exons[-1].end
+        self.juncs = tuple(exons_to_juncs(sorted(exons)))
+    
+    def get_sequence(self, genome):
+        if self.start == None or self.end == None:
+            return None
+        return get_sequence_for_exons(genome, self.chrom, self.strand, self.exons)
     
     @classmethod
     def from_readrec(cls, readrec):
-        return cls(readrec.start, readrec.end, readrec.name, readrec.score)
+        return cls(readrec.chrom, readrec.strand, readrec.juncs)
+
+    @classmethod
+    def from_other(cls, iso, newstart, newend, newreads):
+        return cls(iso.chrom, iso.strand, iso.juncs, newstart, newend, newreads, iso.gene_id, iso.transcript_id)
+    

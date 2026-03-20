@@ -15,10 +15,10 @@ from flair.partition_runner import parallel_mode_parse, partition_runner_factory
 from flair.pycbio.hgdata.bed import BedReader
 from flair.bed_to_sequence import bed_to_sequence
 from flair.bed_to_gtf import bed_to_gtf
-from flair.isoform_data import (Junc, Exon, ReadRec, IsoWithReads, ReadEndInfo, exons_to_juncs, bed_to_junctions,
+from flair.isoform_data import (Junc, Exon, ReadRec, IsoWithReads, exons_to_juncs, bed_to_junctions,
                               get_rgb, get_bed_exons_from_juncs, get_bed_exons_from_exons,
                               get_sequence_for_exons, get_reverse_complement, binary_search,
-                              ISO_SRC_ANNOT, ISO_SRC_NOVEL)
+                              ISO_SRC_ANNOT, ISO_SRC_NOVEL, convert_to_bed)
 from flair.read_processing import (should_process_read, add_corrected_read_to_groups,
                                     read_correct_to_readrec,
                                     generate_genomic_alignment_read_to_clipping_file)
@@ -283,9 +283,10 @@ def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, cl
 
     # count sam transcripts ; the dash at the end means STDIN
     # use 1 thread in because this is already multithreaded here
-    count_cmd = ['filter_transcriptome_align.py', '--sam', '-',
-    # count_cmd = ['count_sam_transcripts.py', '--sam', '-',
-                 '-o', output_name, '-t', 1,]
+    # count_cmd = ['filter_transcriptome_align.py', '--sam', '-',
+    # FIXME why use filter_transcriptome_align if not multithreading? Remove?
+    count_cmd = ['count_sam_transcripts.py', '--sam', '-',
+                 '-o', output_name,] #'-t', 1,]
     if clipping_file:
         count_cmd.extend(['--trimmedreads', clipping_file])
     if map_file:
@@ -340,99 +341,8 @@ def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, o
 # Transcript end assignment
 ##
 
-# class IsoformEndInfo:
-#     """Represents a group of reads sharing similar transcript ends"""
-#     def __init__(self, start, end, strand, read_id, weighted_score=0.0, supporting_reads=None):
-#         self.start = start
-#         self.end = end
-#         self.strand = strand
-#         self.read_id = read_id  # Representative read for this group
-#         self.weighted_score = weighted_score
-#         self.supporting_reads = supporting_reads or []
-
-#     @property
-#     def num_reads(self):
-#         return len(self.supporting_reads)
-
-#     @property
-#     def length(self):
-#         return self.end - self.start
-
-#     @property
-#     def score(self):
-#         """Alias for num_reads for compatibility"""
-#         return self.num_reads
-
-# class IsoformInfo:
-#     """Represents metadata about a detected isoform"""
-#     def __init__(self, transcript_id, strand, exons):
-#         self.transcript_id = transcript_id
-#         self.strand = strand
-#         self.exons = exons
-#         self.gene_id = None  # Assigned later
-
-#     @property
-#     def start(self):
-#         return self.exons[0][0] if self.exons else None
-
-#     @property
-#     def end(self):
-#         return self.exons[-1][1] if self.exons else None
-
-#     def set_gene_id(self, gene_id):
-#         self.gene_id = gene_id
-
-# class EndInfo:
-#     """Represents transcript end information for final isoforms"""
-#     def __init__(self, start, end, iso_id_src, read_names):
-#         self.start = start
-#         self.end = end
-#         self.iso_id_src = iso_id_src
-#         self.read_names = read_names
-
-#     @property
-#     def score(self):
-#         return min(len(self.read_names), 1000)
-
-#     @property
-#     def length(self):
-#         return self.end - self.start
-
 JunctionChain = namedtuple('JunctionChain', ('chrom', 'strand', 'juncs'))
 
-# class GeneIsoformData:
-#     """Organizes all isoforms for a single gene"""
-#     def __init__(self, gene_id):
-#         self.gene_id = gene_id
-#         self._by_junction = {}
-
-#     def add_isoform(self, chrom, strand, juncs, end_info):
-#         """Add an isoform to the gene's isoform data"""
-#         junc_chain = JunctionChain(chrom, strand, juncs)
-#         if junc_chain not in self._by_junction:
-#             self._by_junction[junc_chain] = []
-#         self._by_junction[junc_chain].append(end_info)
-
-#     def get_isoforms(self, chrom, strand, juncs):
-#         """Get all isoforms for a specific junction chain"""
-#         junc_chain = JunctionChain(chrom, strand, juncs)
-#         return self._by_junction.get(junc_chain, [])
-
-#     def set_isoforms(self, chrom, strand, juncs, isoforms):
-#         """Set the isoforms list for a specific junction chain"""
-#         junc_chain = JunctionChain(chrom, strand, juncs)
-#         self._by_junction[junc_chain] = isoforms
-
-#     def junction_chains(self):
-#         """Iterate over all junction chains in this gene"""
-#         return iter(self._by_junction.keys())
-
-#     @property
-#     def total_read_support(self):
-#         """Sum of all reads supporting all isoforms"""
-#         return sum(len(iso.read_names)
-#                    for isos in self._by_junction.values()
-#                    for iso in isos)
 
 def get_best_ends(curr_group, end_window):
     best_ends = []
@@ -488,8 +398,7 @@ def collapse_end_groups(end_window, isoform):
         all_end_groups.extend(group_reads_by_ends(start_group, 1, end_window))
     for end_group in all_end_groups:
         weighted_score, start, end = get_best_ends(end_group, end_window)
-        read_end_info = IsoWithReads(isoform.chrom, isoform.strand, isoform.juncs, start, end, end_group)
-        read_end_info.generate_name()
+        read_end_info = IsoWithReads.from_other(isoform, start, end, end_group)
         iso_end_groups.append(read_end_info)
     return iso_end_groups
 
@@ -817,7 +726,7 @@ def _add_corrected_read_to_groups(corrected_read, sj_to_ends):
     junc_key = tuple(sorted(corrected_read.juncs))
     if junc_key not in sj_to_ends:
         sj_to_ends[junc_key] = IsoWithReads.from_readrec(corrected_read)
-    sj_to_ends[junc_key].reads.append(ReadEndInfo.from_readrec(corrected_read))
+    sj_to_ends[junc_key].reads.append(corrected_read)
 
 
 def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends):
@@ -903,10 +812,10 @@ def filter_ends_by_redundant_and_support(args, isoforms):
 
 def _write_unfiltered_ends(isoforms, fh):
     for iso_readrec in isoforms:
-        fh.write('\t'.join(iso_readrec.get_bed_line()) + '\n')
+        convert_to_bed(iso_readrec).write(fh)
 
 def _add_end_to_firstpass(isoform, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh):
-    iso_fh.write('\t'.join(isoform.get_bed_line()) + '\n')
+    convert_to_bed(isoform).write(iso_fh)
     if isoform.juncs == ():
         firstpass_exons.add(Exon(isoform.start, isoform.end, isoform.name))
     else:
@@ -930,7 +839,12 @@ def _process_junc(args, isoform, firstpass_unfiltered, firstpass_junc_to_name, f
     _write_unfiltered_ends(these_firstpass, iso_unfilt_fh)
     _process_junc_ends(args, these_firstpass, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh)
 
-def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends):
+def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, region_chrom):
+    novel_gene_isos_to_group = get_gene_names_firstpass(sj_to_ends, annots)
+    # generating non-gene iso groups
+    for strand in novel_gene_isos_to_group:
+        generate_non_gene_iso_groups_strand(novel_gene_isos_to_group, strand, region_chrom, sj_to_ends)
+    
     firstpass_exons = set()
     firstpass_unfiltered, firstpass_junc_to_name = {}, {}
     with open(temp_prefix + '.firstpass.unfiltered.bed', 'w') as iso_fh, \
@@ -1120,10 +1034,9 @@ def _find_gene_id_by_overlap(iso_readrec, annots):
             return None
 
 
-def get_gene_name_firstpass(iso_name, isoform, annots, annot_name_to_used_counts, novel_gene_isos_to_group):
+def get_gene_name_firstpass(isoform, annots, annot_name_to_used_counts, novel_gene_isos_to_group):
     transcript_id, gene_id = _get_transcript_gene_from_annot(isoform, annots, annot_name_to_used_counts)
     if transcript_id is None:
-        transcript_id = isoform.name
         gene_id = _find_gene_id_by_overlap(isoform, annots)
     return gene_id, transcript_id
 
@@ -1131,18 +1044,18 @@ def get_gene_name_firstpass(iso_name, isoform, annots, annot_name_to_used_counts
 def get_gene_names_firstpass(firstpass, annots):
     annot_name_to_used_counts = {}
     novel_gene_isos_to_group = {'+': [], '-': []}
-    for iso_name in firstpass:
-        isoform = firstpass[iso_name]
-        gene_id, isoform_id = get_gene_name_firstpass(iso_name, isoform, annots, annot_name_to_used_counts,
+    for iso_key in firstpass:
+        isoform = firstpass[iso_key]
+        gene_id, isoform_id = get_gene_name_firstpass(isoform, annots, annot_name_to_used_counts,
                                 novel_gene_isos_to_group)
-        firstpass[iso_name].transcript_id = isoform_id
+        firstpass[iso_key].transcript_id = isoform_id
         if gene_id is not None:
             # removing this strand correction breaks the unusual junction (due to underlying variant?) test
-            firstpass[iso_name].strand = annots.gene_to_strand[gene_id]
+            firstpass[iso_key].strand = annots.gene_to_strand[gene_id]
             
-            firstpass[iso_name].gene_id = gene_id
+            firstpass[iso_key].gene_id = gene_id
         else: 
-            novel_gene_isos_to_group[isoform.strand].append((isoform.start, isoform.end, iso_name))
+            novel_gene_isos_to_group[isoform.strand].append((isoform.start, isoform.end, iso_key))
 
     return novel_gene_isos_to_group
 
@@ -1171,28 +1084,23 @@ def generate_non_gene_iso_groups_strand(novel_gene_isos_to_group, strand, chrom,
 
 def write_first_pass_isoforms(iso_name, normalize_ends, isoform, max_terminal_exons_ends, add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome):
     # FIXME: do normalization outside of write function
-    if normalize_ends and len(iso_info.exons) > 1:  # don't normalize ends for single exon transcripts
+    if normalize_ends and len(isoform.exons) > 1:  # don't normalize ends for single exon transcripts
         normalize_gene_terminal_exons(max_terminal_exons_ends, isoform.gene_id, isoform.strand, isoform.exons,
                                       add_length_at_ends=add_length_at_ends)
-        isoform.reset_from_exons(iso_info.exons)
+        isoform.reset_from_exons(isoform.exons)
+    if isoform.transcript_id is None:
+        isoform.transcript_id = isoform.name
     isoform.name = isoform.transcript_id + '_' + isoform.gene_id
 
     if unique_bound and iso_name in unique_bound:
         unique_fh.write(isoform.name + '\t' + unique_bound[iso_name] + '\n')
 
-    iso_fh.write('\t'.join(isoform.get_bed_line()) + '\n')
+    convert_to_bed(isoform).write(iso_fh)
     seq_fh.write('>' + isoform.name + '\n')
     seq_fh.write(isoform.get_sequence(genome) + '\n')
 
-def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, annots, genome, *,
+def write_firstpass(temp_prefix, chrom, firstpass, annots, genome, *,
                                        normalize_ends=False, add_length_at_ends=0, unique_bound=None):
-    # THIS IS WHERE WE CAN GET GENES AND ADJUST NAMES
-
-    novel_gene_isos_to_group = get_gene_names_firstpass(firstpass, annots)
-
-    # generating non-gene iso groups
-    for strand in novel_gene_isos_to_group:
-        generate_non_gene_iso_groups_strand(novel_gene_isos_to_group, strand, chrom, firstpass)
 
     # generating standardized set of ends for gene
     if normalize_ends:
@@ -1214,112 +1122,6 @@ def get_gene_names_and_write_firstpass(temp_prefix, chrom, firstpass, annots, ge
 ####
 # results output
 ####
-# def get_bed_gtf_from_info(end_info, chrom, strand, juncs, gene_id, genome):
-#     # FIXME: what is end info??
-#     # build gtf, bed, fasta data
-#     start = end_info.start
-#     end = end_info.end
-#     iso_id_src = end_info.iso_id_src
-#     read_names = end_info.read_names
-#     score = min(len(read_names), 1000)
-#     exon_starts, exon_sizes = get_bed_exons_from_juncs(juncs, start, end)
-#     # FIXME: duplicate code to build BED record
-#     bed_line = [chrom, start, end, iso_id_src.id + '_' + gene_id, score, strand, start, end,
-#                 get_rgb(strand, len(juncs)), len(exon_starts), ','.join([str(x) for x in exon_sizes]),
-#                 ','.join([str(x) for x in exon_starts])]
-#     exons = [Exon(start + exon_starts[i], start + exon_starts[i] + exon_sizes[i])
-#              for i in range(len(exon_starts))]
-#     trans_seq = get_sequence_for_exons(genome, chrom, strand, exons)
-#     if strand == '-':
-#         exons.reverse()
-
-#     # Create GtfTranscript with exons
-#     gtf_transcript = GtfTranscript(chrom, 'FLAIR', 'transcript', start, end, score, strand, '.',
-#                                    gene_id=gene_id, transcript_id=iso_id_src.id)
-#     for i, exon in enumerate(exons, start=1):
-#         gtf_exon = GtfExon(chrom, 'FLAIR', 'exon', exon.start, exon.end, score, strand, '.',
-#                            gene_id=gene_id, transcript_id=iso_id_src.id, exon_number=i)
-#         gtf_transcript.add_exon(gtf_exon)
-
-#     return '\t'.join([str(x) for x in bed_line]) + '\n', gtf_transcript, trans_seq
-
-# def write_iso_seq_map(iso_info, name_to_used_counts, chrom, strand, juncs, gene_id, genome, iso_fh, t_starts, t_ends, gtf_transcripts, map_fh,
-#                       read_to_final_transcript, counts_fh, seq_fh):
-#     iso_id_src = iso_info.iso_id_src
-#     iso_id = iso_id_src.id.split('-endvar')[0]  # FIXME what is this all about?
-#     if iso_id in name_to_used_counts:
-#         name_to_used_counts[iso_id] += 1
-#         iso_id = iso_id + '-endvar' + str(name_to_used_counts[iso_id])
-#     else:
-#         name_to_used_counts[iso_id] = 1
-#     iso_info.iso_id_src = IsoIdSrc(iso_id, iso_id_src.src)
-#     bed_line, gtf_data, tseq = get_bed_gtf_from_info(iso_info, chrom, strand, juncs, gene_id, genome)
-#     iso_fh.write(bed_line)
-#     t_starts.append(iso_info.start)
-#     t_ends.append(iso_info.end)
-#     gtf_transcripts.append(gtf_data)
-#     map_fh.write(iso_id + '_' + gene_id + '\t' + ','.join(iso_info.read_names) + '\n')
-#     for r in iso_info.read_names:
-#         read_to_final_transcript[r] = (iso_id + '_' + gene_id, chrom, strand)
-#     counts_fh.write(iso_id + '_' + gene_id + '\t' + str(len(iso_info.read_names)) + '\n')
-#     seq_fh.write('>' + iso_id + '_' + gene_id + '\n')
-#     seq_fh.write(tseq + '\n')
-
-# def calculate_gene_total_reads(gene_isoform_data):
-#     """Calculate total read support across all isoforms in a gene."""
-#     gene_tot = 0
-#     for junc_chain in gene_isoform_data.junction_chains():
-#         for iso_info in gene_isoform_data.get_isoforms(junc_chain.chrom, junc_chain.strand, junc_chain.juncs):
-#             gene_tot += len(iso_info.read_names)
-#     return gene_tot
-
-# def write_gene_isoforms(gene_isoform_data, gene_id, gene_tot, args, genome, iso_fh, map_fh, read_to_final_transcript, counts_fh, seq_fh):
-#     """Write isoform data (BED, sequences, maps) for isoforms meeting the threshold.
-#     Returns tuple of (gtf_transcripts, t_starts, t_ends) for GTF writing."""
-#     gtf_transcripts, t_starts, t_ends = [], [], []
-
-#     for junc_chain in gene_isoform_data.junction_chains():
-#         ends_list = gene_isoform_data.get_isoforms(junc_chain.chrom, junc_chain.strand, junc_chain.juncs)
-
-#         name_to_used_counts = {}
-#         for iso_info in ends_list:
-#             if len(iso_info.read_names) / gene_tot >= args.frac_support:
-#                 write_iso_seq_map(iso_info, name_to_used_counts, junc_chain.chrom, junc_chain.strand, junc_chain.juncs,
-#                                   gene_id, genome, iso_fh, t_starts, t_ends, gtf_transcripts, map_fh,
-#                                   read_to_final_transcript, counts_fh, seq_fh)
-
-#     return gtf_transcripts, t_starts, t_ends
-
-# def write_gene_gtf(gtf_transcripts, t_starts, t_ends, gene_id, gtf_fh):
-#     """Write GTF records for a gene (gene record, transcript records, and exon records)."""
-#     first_transcript = gtf_transcripts[0]
-#     gtf_write_row(gtf_fh, first_transcript.chrom, 'FLAIR', 'gene', min(t_starts), max(t_ends), '.',
-#                   first_transcript.strand, '.', gene_id=gene_id)
-
-#     # Write transcript and exon records
-#     for gtf_transcript in gtf_transcripts:
-#         # Write transcript record
-#         print(gtf_transcript, file=gtf_fh)
-
-#         # Write exon records
-#         for gtf_exon in gtf_transcript.exons:
-#             print(gtf_exon, file=gtf_fh)
-
-# def write_gene_output(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh, read_to_final_transcript, counts_fh, seq_fh, gtf_fh):
-#     """Write all output files for a single gene (isoforms, sequences, maps, and GTF)."""
-#     gene_isoform_data = gene_to_juncs_to_ends[gene_id]
-
-#     # Calculate total read support for the gene
-#     gene_tot = calculate_gene_total_reads(gene_isoform_data)
-
-#     # Write isoform data and collect GTF information
-#     gtf_transcripts, t_starts, t_ends = write_gene_isoforms(
-#         gene_isoform_data, gene_id, gene_tot, args, genome,
-#         iso_fh, map_fh, read_to_final_transcript, counts_fh, seq_fh)
-
-#     # Write GTF records
-#     if gtf_transcripts:
-#         write_gene_gtf(gtf_transcripts, t_starts, t_ends, gene_id, gtf_fh)
 
 def get_transcirpts_to_reads(temp_prefix, suffix):
     transcript_to_reads = {}
@@ -1357,9 +1159,9 @@ def _iso_passes_support_filter(args, iso, num_exons, iso_to_counts, gene_to_tot)
     if iso not in iso_to_counts:
         return False
     else:
-        count = iso_to_counts[iso]
+        count = iso_to_counts[iso][0]
         min_support = args.sjc_support if num_exons > 1 else args.se_support
-        return (count >= min_support) and (count / gene_to_tot[iso.split('_')[-1]]) >= args.frac_support
+        return (count >= min_support) and (count / gene_to_tot[iso.split('_')[-1]][0]) >= args.frac_support
 
 
 def _run_region(*, partition, gtf_data, intron_support, args):
@@ -1414,12 +1216,13 @@ def _run_region(*, partition, gtf_data, intron_support, args):
                                             junction_corrector)
     bam_file.close()
 
+
     # for each junction chain, clusters ends - generates junction chain x ends
     # firstpass objects then does initial filtering by read support and
     # redundant ends also separates single exon isoforms from spliced isoforms
     # (because they're handled differently in future step for identifying
     # annotated gene/isoform names)
-    firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons = process_juncs_to_firstpass_isos(args, partition.file_prefix, sj_to_ends)
+    firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons = process_juncs_to_firstpass_isos(args, partition.file_prefix, sj_to_ends, annots, region.name)
 
     # - filter isoforms - remove any that represent a subset of another
     # - identified isoform - based on what args.filter is set to also generate
@@ -1428,6 +1231,7 @@ def _run_region(*, partition, gtf_data, intron_support, args):
     #   subsets with additional sequence at the ends)
     firstpass, iso_to_unique_bound = filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons,
                                                            annots, {})
+    
     if len(firstpass.keys()) > 0:
         # logging.info('getting gene names and writing firstpass')
         # this section identifies annotated gene and isoform names (primarily based on splice junction matching, secondarily by exon overlap)
@@ -1435,10 +1239,10 @@ def _run_region(*, partition, gtf_data, intron_support, args):
         # also normalizes transcript ends (temporarily extends ends so that transcript end alignment does not drive transcript assignment during transcriptome alignment)
         # writes out bed and fa files
         if args.end_norm_dist is not None:
-            get_gene_names_and_write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome,
+            write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome,
                                                normalize_ends=True, add_length_at_ends=args.end_norm_dist, unique_bound=iso_to_unique_bound)
         else:
-            get_gene_names_and_write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome, unique_bound=iso_to_unique_bound)
+            write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome, unique_bound=iso_to_unique_bound)
             # logging.info('identifying good match to firstpass')
 
         # aligns to firstpass transcriptome, identifies best read -> isoform alignment for each read, then gets read counts per isoform
@@ -1446,7 +1250,7 @@ def _run_region(*, partition, gtf_data, intron_support, args):
                                       partition.output_path('firstpass.fa'),
                                       partition.output_path('firstpass.bed'),
                                       partition.output_path('isoform.counts.txt'),
-                                      partition.output_path('isoform.read.map.txt'), False,
+                                      partition.output_path('isoform.read.map.txt'), True,
                                       partition.output_path('reads.genomicclipping.txt'),
                                       partition.output_path('firstpass.uniquebound.txt'))
     else:
@@ -1461,24 +1265,45 @@ def _run_region(*, partition, gtf_data, intron_support, args):
             with open(partition.output_path('ends.tsv'), 'w') as _:
                 pass
 
+    ##FIXME this is messy, shouldn't have to reorganize like this
+    final_transcript_objs = {}
+    for og_key in firstpass:
+        final_transcript_objs[firstpass[og_key].name] = firstpass[og_key]
+    
     iso_to_counts = {}
     gene_to_tot = {}
-    for line in open(partition.output_path('isoform.counts.txt')):
-        iso, counts = line.rstrip().split('\t')
-        gene = iso.split('_')[-1]
+    for line in open(partition.output_path('isoform.ends.tsv')):
+        line = line.rstrip().split('\t')
+        read, transcript = line[:2]
+        gene = transcript.split('_')[-1]
         if gene not in gene_to_tot:
-            gene_to_tot[gene] = 0
-        gene_to_tot[gene] += int(counts)
-        iso_to_counts[iso] = int(counts)
-    with open(partition.output_path('isoforms.bed'), 'w') as out:
-        for line in open(partition.output_path('firstpass.bed')):
-            temp = line.split('\t')
-            iso = temp[3]
-            num_exons = int(temp[-3])
-            if _iso_passes_support_filter(args, iso, num_exons, iso_to_counts, gene_to_tot):
-                out.write(line)
+            gene_to_tot[gene] = [0,0]
+        if transcript not in iso_to_counts:
+            iso_to_counts[transcript] = [0,0]
+        
+        startindex, startdist, endindex, enddist = [int(x) for x in line[2:]]
+        if startindex == 0 and endindex == len(final_transcript_objs[transcript].juncs) - 1:
+            iso_to_counts[transcript][0] += 1
+            gene_to_tot[gene][0] += 1
+        iso_to_counts[transcript][1] += 1
+        gene_to_tot[gene][1] += 1
+
+    with open(partition.output_path('isoform.counts.txt'), 'w') as fh:
+        for transcript in iso_to_counts:
+            fh.write(f'{transcript}\t{iso_to_counts[transcript][0]}\t{iso_to_counts[transcript][1]}\n')
+    
+    with open(partition.output_path('isoforms.bed'), 'w') as iso_fh, \
+         open(partition.output_path('isoforms.fa'), 'w') as seq_fh:
+        for tname in final_transcript_objs:
+            if _iso_passes_support_filter(args, tname, len(final_transcript_objs[tname].exons), iso_to_counts, gene_to_tot):
+                print(final_transcript_objs[tname].score, iso_to_counts[tname])
+                final_transcript_objs[tname].score = iso_to_counts[tname][0]
+                
+                convert_to_bed(final_transcript_objs[tname]).write(iso_fh)
+                seq_fh.write('>' + final_transcript_objs[tname].name + '\n')
+                seq_fh.write(final_transcript_objs[tname].get_sequence(genome) + '\n')
+
     bed_to_gtf(partition.output_path('isoforms.bed'), partition.output_path('isoforms.gtf'))
-    bed_to_sequence(partition.output_path('isoforms.bed'), args.genome, partition.output_path('isoforms.fa'))
 
     genome.close()
 

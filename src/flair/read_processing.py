@@ -1,7 +1,7 @@
 """Shared read-processing logic for FLAIR modules."""
 
 import pysam
-from flair.isoform_data import ReadRec, Junc, IsoWithReads, ReadEndInfo
+from flair.isoform_data import ReadRec, Junc, IsoWithReads, convert_to_bed
 
 
 def should_process_read(read, region, min_quality, keep_sup, allow_secondary, allow_outside_range=False):
@@ -24,14 +24,14 @@ def add_corrected_read_to_groups(corrected_read, sj_to_ends):
     junc_key = tuple(sorted(corrected_read.juncs))
     if junc_key not in sj_to_ends:
         sj_to_ends[junc_key] = IsoWithReads.from_readrec(corrected_read)
-    sj_to_ends[junc_key].reads.append(ReadEndInfo.from_readrec(corrected_read))
+    sj_to_ends[junc_key].reads.append(corrected_read)
 
 
 def read_correct_to_readrec(junction_corrector, read):
     # FIXME: remove unnecessary initial build of ReadRec and make junctions from
     # read, correct, and then make bed
     readrec = ReadRec.from_read(read)
-    corrected_bed = junction_corrector.correct_read_bed(readrec.to_bed())
+    corrected_bed = junction_corrector.correct_read_bed(convert_to_bed(readrec))
     if corrected_bed is None:
         return None
     readrec.juncs = ReadRec._intern_juncs(tuple(Junc(corrected_bed.blocks[i].end, corrected_bed.blocks[i + 1].start)

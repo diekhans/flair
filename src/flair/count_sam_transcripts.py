@@ -42,7 +42,7 @@ def parse_args():
                                             help='number of bases that are at leas 75%% As required to call read as internal priming')
     parser.add_argument('--intprimingfracAs', type=float, default=0.6,
                                             help='number of bases that are at leas 75%% As required to call read as internal priming')
-    parser.add_argument('--soft_clipping_buffer', type=int, default=50, 
+    parser.add_argument('--soft_clipping_buffer', type=int, default=50,
                                             help='''number of acceptable bases for transcriptome alignment to increase softclipping by''')
     parser.add_argument('--transcriptomefasta',
                                             help='provide transcriptome fasta aligned to if --remove_internal_priming is specified')
@@ -274,7 +274,7 @@ def check_stringentandsplice(args, exoninfo, tname, coveredpos, tlen, blockstart
     if args.stringent or args.check_splice or args.fusion_breakpoints:
         # single exon genes always get checked
         passesstringent = check_stringent(coveredpos, exoninfo, tlen, blockstarts, blocksizes,
-                                          args.trust_ends, tname, args.end_norm_dist, 
+                                          args.trust_ends, tname, args.end_norm_dist,
                                           transcript_to_unique_bounds) if args.stringent or len(exoninfo) == 1 else True
         #only run if spliced transcript
         passessplice = check_splicesites(coveredpos, exoninfo, tstart, tend, tname) if args.check_splice and len(exoninfo) > 1 else True
@@ -302,13 +302,14 @@ def identify_corrected_ends(exoninfo, startpos, endpos, transcript_to_genomic_en
                 right_dist = endpos - currpos
         if gtstrand == '-':
             left_intron_index, right_intron_index = (len(exoninfo)-2) - right_intron_index, (len(exoninfo)-2) - left_intron_index
-            left_dist, right_dist = right_dist, left_dist  
+            left_dist, right_dist = right_dist, left_dist
     return left_intron_index, left_dist, right_intron_index, right_dist
 
 def get_best_transcript(tinfo, args, transcript_to_exons, transcript_to_bp_ss_index, genomicclipping, transcript_to_genomic_ends, transcript_to_unique_bounds):
     # parse CIGAR + MD tag to ID transcript pos covered by alignment
     # get start + end of transcript on read, alignment block positions
     # also save soft/hard clipping at ends of read
+    # FIXME: MIN_INSERTION_LEN isn't implemented
     # not positions of insertions larger than MIN_INSERTION_LEN, apply those to check_splice
     # filter out reads with long indels
     # generate list of 0s and 1s - transcript pos with match to query, val > 1 = insertion
@@ -363,7 +364,7 @@ def parse_sam(args, transcript_to_exons, transcript_to_bp_ss_index, transcript_t
     genome = None
     if args.remove_internal_priming:
         genome = pysam.FastaFile(args.transcriptomefasta)
-    
+
     for read in samfile:
         if read.is_mapped:
             readname = read.query_name
@@ -414,7 +415,7 @@ def parse_sam(args, transcript_to_exons, transcript_to_bp_ss_index, transcript_t
 def write_output(args, transcripttoreads):
     if args.output_endpos:
         endout = open(args.output_endpos, 'w')
-    
+
     if args.generate_map: mapout = open(args.generate_map, 'w')
     countout = open(args.output, 'wt')
     for t in transcripttoreads:

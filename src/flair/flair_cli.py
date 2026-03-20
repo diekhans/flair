@@ -30,15 +30,6 @@ def parse_args():
                         help="arguments to module")
     return cli.parseOptsArgsWithLogging(parser)
 
-def move_opts_to_argv(opts, module_argv):
-    """move options back to module_argv for modules that have been converted
-    to pycbio CLI."""
-    nargv = []
-    for n, v in opts.items():
-        if n != 'version':
-            nargv.extend([f'--{n}', v])
-    return nargv + module_argv
-
 def flair_module_run(opts, module, module_argv):  # noqa: C901
     start_time = time.time()
     sys.argv = [sys.argv[1]] + module_argv

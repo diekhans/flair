@@ -57,7 +57,7 @@ for line in open(alignedbedfile):
 for thisintron in introns_to_reads:
     readcount = introns_to_reads[thisintron]
     thisintron = list(thisintron)
-    
+
     foundSJ = False
     if genome.fetch(thischr, thisintron[1], thisintron[1]+2) == 'GT' and \
             genome.fetch(thischr, thisintron[2]-3, thisintron[2]-1) == 'AG':
@@ -71,9 +71,8 @@ for thisintron in introns_to_reads:
 
     # print(thisintron, readcount, foundSJ, thisintron[1] <= fusiontobp[thischr] <= thisintron[2])
 
-    
+
     if thisintron[1] <= fusiontobp[thischr] <= thisintron[2] or foundSJ: ##only process introns that have correct motifs OR cross the fusion breakpoint
-        doreconsider = True
         if thischr in fusiontoannotsj:
             # closestdist, closestpos = 1000, None
             close_ref = False
@@ -87,7 +86,6 @@ for thisintron in introns_to_reads:
                     # if thisdist < closestdist: closestdist, closestpos = thisdist, sj
                     close_ref = True
                     break
-            # if closestpos: doreconsider = False
         # print(close_ref)
         if not close_ref:
             if thischr not in chrtonovelss: chrtonovelss[thischr] = []
@@ -133,8 +131,6 @@ for thisintron in reconsideredss:
     if thisintron not in splicejunctosupport: splicejunctosupport[thisintron] = 0
     splicejunctosupport[thisintron] += readcount
 
-
-goodsj, lowsupsj = {}, {}
 
 out = open(outfilename, 'w')
 for j in splicejunctosupport:

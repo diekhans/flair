@@ -55,53 +55,6 @@ def parse_args():
     args.reads = reads
     return args
 
-def intron_chain_to_exon_starts(ichain, start, end):
-    esizes, estarts = [], [0,]
-    for i in ichain:
-        esizes.append(i[0] - (start + estarts[-1]))
-        estarts.append(i[1] - start)
-    esizes.append(end - (start + estarts[-1]))
-    return esizes, estarts
-
-
-def inferMM2JuncStrand(read):
-    # minimap gives junction strand denoted as 'ts'
-    # the sign corresponds to the alignment orientation, where + agrees and - disagrees
-    orientation = read.flag
-    try:
-        juncDir = read.get_tag('ts')
-    except:
-        juncDir = None
-
-    # Try to resolve strand by looking for polyA
-    if not juncDir:
-        left, right = read.cigartuples[0], read.cigartuples[-1]
-        s1, s2 = read.query_sequence[:100], read.query_sequence[-100:]
-        if ("T" * 10 in s1 and left[0] == 4 and left[1] >= 10) and \
-            ("A" * 10 in s2 and right[0] == 4 and right[1] >= 10):
-            # probably internal priming
-            juncDir = "ambig"
-        elif ("T" * 10 in s1 and left[0] == 4 and left[1] >= 10):
-            # maps to positive strand but has a rev comp polyA
-            juncDir = '-'
-        elif ("A" * 10 in s2 and right[0] == 4 and right[1] >= 10):
-            # maps to positive strand but has a sense polyA
-            juncDir = "+"
-        else:
-            juncDir = "ambig"
-
-    else: # only executes for processing ts tag strand
-        if orientation == 0 and juncDir == "+":
-            juncDir = "+"
-        elif orientation == 0 and juncDir == "-":
-            juncDir = "-"
-        elif orientation == 16 and juncDir == "+":
-            juncDir = "-"
-        elif orientation == 16 and juncDir == "-":
-            juncDir = "+"
-    # print(read.query_name, orientation, ogjuncdir, juncDir)
-    return juncDir
-
 def doalignment(args):
     # minimap
     mm2_cmd = ['minimap2', '-ax', 'splice', '-s', str(args.minfragmentsize),

@@ -1,5 +1,4 @@
 #! /usr/bin/env python3
-import sys
 import argparse
 import os
 import pipettor
@@ -7,7 +6,6 @@ import shutil
 import pysam
 import logging
 from collections import Counter, namedtuple
-from flair.flair_align import intron_chain_to_exon_starts
 from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon, GtfAttrsSet
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
@@ -16,15 +14,12 @@ from flair.pycbio.hgdata.bed import BedReader
 from flair.bed_to_sequence import bed_to_sequence
 from flair.bed_to_gtf import bed_to_gtf
 from flair.isoform_data import (Junc, Exon, IsoIdSrc, ReadRec, exons_to_juncs, bed_to_junctions,
-                              get_rgb, get_bed_exons_from_juncs, get_bed_exons_from_exons,
-                              get_sequence_for_exons, get_reverse_complement, binary_search,
-                              ISO_SRC_ANNOT, ISO_SRC_NOVEL)
-from flair.read_processing import (should_process_read, add_corrected_read_to_groups,
-                                    read_correct_to_readrec,
-                                    generate_genomic_alignment_read_to_clipping_file)
-# keep old private names as aliases for any callers using ft._should_process_read etc.
-_should_process_read = should_process_read
-_add_corrected_read_to_groups = add_corrected_read_to_groups
+                                get_rgb, get_bed_exons_from_juncs, get_bed_exons_from_exons,
+                                get_sequence_for_exons, binary_search,
+                                ISO_SRC_ANNOT)
+from flair.read_processing import (should_process_read, read_correct_to_readrec,
+                                   add_corrected_read_to_groups,
+                                   generate_genomic_alignment_read_to_clipping_file)
 
 # FIXME: temporarily disabled C901 (too complex) in .flake8
 # FIXME: add object for all file names
@@ -64,7 +59,6 @@ def get_args():
                         help='window size for correcting splice sites (15)')
     parser.add_argument('-w', '--end_window', type=int, default=100,
                         help='window size for comparing TSS/TES (100)')
-
     parser.add_argument('--sjc_support', type=int, default=1,
                         help='''minimum number of supporting reads for a spliced isoform''')
     parser.add_argument('--se_support', type=int, default=3,
@@ -146,7 +140,6 @@ def get_args():
 ####
 # basic types
 ####
-# (Junc, Exon, exons_to_juncs, ISO_SRC_ANNOT, ISO_SRC_NOVEL, IsoIdSrc imported from flair.isoform_data)
 
 # tolerance for terminal exon boundary comparisons
 TERMINAL_EXON_BOUNDARY_TOLERANCE = 20
@@ -168,6 +161,7 @@ ANNOT_SE_SEARCH_WINDOW = 2
 ####
 # misc
 ###
+# FIXME: these are also used by flair_spliceevents, need to figure out some common code.
 def make_temp_dir(out_prefix):
     # FIXME: use TMPDIR unless directory explicitly specified
     temp_dir = out_prefix + ".intermediate"
@@ -175,7 +169,15 @@ def make_temp_dir(out_prefix):
         os.makedirs(temp_dir, exist_ok=True)
     except OSError as exc:
         raise OSError(f"Creation of the directory `{temp_dir}' failed") from exc
-    return temp_dir + '/'
+    return temp_dir
+
+def combine_temp_files_by_suffix(output, temp_prefixes, suffixes):
+    for filesuffix in suffixes:
+        with open(output + filesuffix, 'wb') as combined_fh:
+            for temp_prefix in temp_prefixes:
+                with open(temp_prefix + filesuffix, 'rb') as in_fh:
+                    shutil.copyfileobj(in_fh, combined_fh, 1024 * 1024 * 10)
+
 
 
 ####
@@ -397,7 +399,8 @@ class EndInfo:
     def length(self):
         return self.end - self.start
 
-JunctionChain = namedtuple('JunctionChain', ('chrom', 'strand', 'juncs'))
+class JunctionChain(namedtuple('JunctionChain', ('chrom', 'strand', 'juncs'))):
+    pass
 
 class GeneIsoformData:
     """Organizes all isoforms for a single gene"""
@@ -584,28 +587,6 @@ def _check_junction_subset(juncs, first_exon, last_exon, otheriso_score, otheris
         else:
             _check_internal_exon_overlap(first_exon, last_exon, other_exon, otheriso_score,
                                          terminal_exon_is_subset, superset_support, unique_seq_bound)
-
-
-def identify_spliced_iso_subset_annot(annot_iso_id, sup_annot_transcript_to_juncs, annots,
-                                      juncs, first_exon, last_exon, terminal_exon_is_subset,
-                                      superset_support, unique_seq_bound):
-    """Check if query isoform is subset of an annotated isoform.
-    annot_iso_id is (transcript_id, gene_id) tuple."""
-    if sup_annot_transcript_to_juncs is not None:
-        # using only supported annotated
-        if annot_iso_id not in sup_annot_transcript_to_juncs:
-            return
-        otheriso_score, otheriso_juncs = sup_annot_transcript_to_juncs[annot_iso_id]
-        otheriso_exons = annots.transcript_to_exons[annot_iso_id]
-    elif annot_iso_id in annots.transcript_to_exons:
-        # using all annotated
-        otheriso_exons = annots.transcript_to_exons[annot_iso_id]
-        otheriso_juncs = exons_to_juncs(otheriso_exons)
-        otheriso_score = 0
-    else:
-        return
-    _check_junction_subset(juncs, first_exon, last_exon, otheriso_score, otheriso_juncs, otheriso_exons,
-                           terminal_exon_is_subset, superset_support, unique_seq_bound)
 
 
 def identify_spliced_iso_subset_novel(novel_iso_id, firstpass_unfiltered,
@@ -853,24 +834,23 @@ def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_cor
             juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex + 1]])
             strand = '-' if read.is_reverse else '+'
             corrected_read = ReadRec.from_junctions(read.reference_name, newstart, newend,
-                                                   read.query_name, read.mapping_quality,
-                                                   strand, juncs)
+                                                    read.query_name, read.mapping_quality,
+                                                    strand, juncs)
         else:
             corrected_read = read_correct_to_readrec(junction_corrector, read)
     else:
         corrected_read = read_correct_to_readrec(junction_corrector, read)
     if corrected_read:
-        _add_corrected_read_to_groups(corrected_read, sj_to_ends)
+        add_corrected_read_to_groups(corrected_read, sj_to_ends)
 
 def filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_annot_transcript, annots,
-                               junction_corrector, generate_fasta=True, sj_to_ends=None,
-                               allow_secondary=False):
+                               junction_corrector, *, sj_to_ends=None, allow_secondary=False):
     """Filter reads, correct splice junctions, and group by junction chain."""
     if sj_to_ends is None:
         sj_to_ends = {}
 
     for read in bam_file.fetch(region.name, region.start, region.end):
-        if _should_process_read(read, region, args.quality, args.keep_sup, allow_secondary):
+        if should_process_read(read, region, args.quality, args.keep_sup, allow_secondary):
             _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends)
 
     return sj_to_ends
@@ -1061,14 +1041,6 @@ def filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, fi
         firstpass = filter_all_single_exon(args, firstpass_SE, firstpass_unfiltered, firstpass)
 
     return firstpass, iso_to_unique_bound
-
-
-def combine_temp_files_by_suffix(output, temp_prefixes, suffixes):
-    for filesuffix in suffixes:
-        with open(output + filesuffix, 'wb') as combined_fh:
-            for temp_prefix in temp_prefixes:
-                with open(temp_prefix + filesuffix, 'rb') as in_fh:
-                    shutil.copyfileobj(in_fh, combined_fh, 1024 * 1024 * 10)
 
 
 def get_genes_with_shared_juncs(juncs, annots):
@@ -1310,24 +1282,6 @@ def process_detected_isos(args, map_file, bed_file, iso_src, ends_file, gene_to_
         if have_sufficient_support(args, iso_id_src, iso_bed.blockCount, og_iso_to_reads):
             process_detected_iso(args, iso_bed, gene_id, iso_id_src, og_iso_to_reads, ends_file, iso_to_ends, gene_to_juncs_to_ends)
 
-def isoform_processing(args, output):
-    gene_to_juncs_to_ends = {}
-    if not args.no_align_to_annot:
-        process_detected_isos(args,
-                              output + '.matchannot.read.map.txt',
-                              output + '.matchannot.bed',
-                              ISO_SRC_ANNOT,
-                              output + '.matchannot.ends.tsv',
-                              gene_to_juncs_to_ends)
-    process_detected_isos(args,
-                          output + '.novelisos.read.map.txt',
-                          output + '.firstpass.bed',
-                          ISO_SRC_NOVEL,
-                          output + '.novelisos.ends.tsv',
-                          gene_to_juncs_to_ends)
-    return gene_to_juncs_to_ends
-
-
 ####
 # results output
 ####
@@ -1484,25 +1438,6 @@ def write_transcript_ends_beds(args, temp_prefix, read_to_final_transcript, ends
     # FIXME: these are not real TSVs
     for suffix in ['.matchannot.ends.tsv']:
         write_transcript_ends_bed(args, temp_prefix, suffix, read_to_final_transcript, ends_fh)
-
-def combine_annot_w_novel_and_write_files(args, temp_prefix, gene_to_juncs_to_ends, genome):
-    read_to_final_transcript = {}
-    with (open(temp_prefix + '.isoforms.bed', 'w') as iso_fh,
-          open(temp_prefix + '.isoform.read.map.txt', 'w') as map_fh,
-          open(temp_prefix + '.isoforms.gtf', 'w') as gtf_fh,
-          open(temp_prefix + '.isoforms.fa', 'w') as seq_fh,
-          open(temp_prefix + '.isoform.counts.txt', 'w') as counts_fh):
-
-        combine_annot_w_novel(args, gene_to_juncs_to_ends)
-
-        # FIXME: one write file at a time, all the data is now bundled up
-        for gene_id in gene_to_juncs_to_ends:
-            write_gene_output(gene_to_juncs_to_ends, gene_id, args, genome, iso_fh, map_fh,
-                              read_to_final_transcript, counts_fh, seq_fh, gtf_fh)
-
-    if args.end_norm_dist:
-        with open(temp_prefix + '.read_ends.bed', 'w') as ends_fh:
-            write_transcript_ends_beds(args, temp_prefix, read_to_final_transcript, ends_fh)
 
 def predict_productivity(out_prefix, genome_fasta, gtf):
     cmd = ('predictProductivity',

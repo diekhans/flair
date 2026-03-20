@@ -42,7 +42,6 @@ def bed_to_sequence(query, genome, outfilename, isoform_haplotypes=False, vcfinp
     used_variants = dict()
     variant_string_to_record = dict()
     fastq = outfilename[-2:].lower() in ['fq', 'fastq']
-    unphased_variant_support = 3
 
     beddata = {}
     for line in open(query):  # or bed

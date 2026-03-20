@@ -11,7 +11,7 @@ def getCorrectGene(annot, geneannot, chr, readblocks, thisdir=None):
     # print(chr, readblocks)
     if chr not in annot:
         return chr + '-' + str(round(readblocks[0][0], -3))
-    intToCheck, geneinttocheck = set(), set()
+    intToCheck = set()
     for start, stop in readblocks:
         # for i in range(round(start, -1), round(stop, -1), 10):
         for i in range(round(start, -2), round(stop, -2) + 1, 100):
@@ -172,9 +172,6 @@ def idGenomicChimeras(bam, annot, geneannot, genetoinfo, minsup, maxloci=10, req
                         alignblocks[i][0].append(alignedloci[i][0][1])
                         alignblocks[i][1].append(alignedloci[i][1][1])
                         aligngenes[i].append((alignedloci[i][2], alignedloci[i][4])) ###gene, chr
-            # print(l, readsup, [set(x) for x in aligngenes], alignblocks)
-            shortgenes = [list(set([z[0] for z in x])) for x in aligngenes]
-            # if aligngenes[0][0][0].split('.')[0] == 'ENSG00000141510': print(shortgenes, 'readsup', readsup >= minsup)
             if readsup >= minsup:
                 consistentGenes = True
                 # print(aligngenes)

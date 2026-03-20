@@ -285,24 +285,28 @@ def check_stringentandsplice(args, exoninfo, tname, coveredpos, tlen, blockstart
 
 testtname = 'none'
 
-def identify_corrected_ends(exoninfo, startpos, endpos, transcript_to_genomic_ends, tname, output_endpos):
+def identify_corrected_ends(exoninfo, startpos, endpos, transcript_to_genomic_ends, tname, output_endpos, tlen):
     left_intron_index, left_dist, right_intron_index, right_dist = None, None, None, None
     #Can only correct read ends if assigned to spliced transcript
-    if output_endpos and len(exoninfo) > 1:
-        gtstrand = transcript_to_genomic_ends[tname][2]
-        currpos = 0
-        for i in range(len(exoninfo)-1):
-            elen = exoninfo[i]
-            currpos += elen
-            if left_intron_index == None and startpos < currpos:
-                left_intron_index = i
-                left_dist = currpos - startpos
-            if currpos < endpos:
-                right_intron_index = i
-                right_dist = endpos - currpos
-        if gtstrand == '-':
-            left_intron_index, right_intron_index = (len(exoninfo)-2) - right_intron_index, (len(exoninfo)-2) - left_intron_index
-            left_dist, right_dist = right_dist, left_dist  
+    if output_endpos: 
+        if len(exoninfo) > 1:
+            gtstrand = transcript_to_genomic_ends[tname][2]
+            currpos = 0
+            for i in range(len(exoninfo)-1):
+                elen = exoninfo[i]
+                currpos += elen
+                if left_intron_index == None and startpos < currpos:
+                    left_intron_index = i
+                    left_dist = currpos - startpos
+                if currpos < endpos:
+                    right_intron_index = i
+                    right_dist = endpos - currpos
+            if gtstrand == '-':
+                left_intron_index, right_intron_index = (len(exoninfo)-2) - right_intron_index, (len(exoninfo)-2) - left_intron_index
+                left_dist, right_dist = right_dist, left_dist
+        else:
+            left_dist = startpos
+            right_dist = tlen - endpos
     return left_intron_index, left_dist, right_intron_index, right_dist
 
 def get_best_transcript(tinfo, args, transcript_to_exons, transcript_to_bp_ss_index, genomicclipping, transcript_to_genomic_ends, transcript_to_unique_bounds):
@@ -329,7 +333,7 @@ def get_best_transcript(tinfo, args, transcript_to_exons, transcript_to_bp_ss_in
             print('indel', indel_detected)
         if not indel_detected and (not args.trimmedreads or genomicclipping == None or sum(queryclipping) <= genomicclipping+args.soft_clipping_buffer):
             if check_stringentandsplice(args, exoninfo, thist.name, coveredpos, thist.tlen, blockstarts, blocksizes, thist.startpos, tendpos, transcript_to_bp_ss_index, transcript_to_unique_bounds):
-                left_intron_index, left_dist, right_intron_index, right_dist = identify_corrected_ends(exoninfo, thist.startpos, tendpos, transcript_to_genomic_ends, tname, args.output_endpos)
+                left_intron_index, left_dist, right_intron_index, right_dist = identify_corrected_ends(exoninfo, thist.startpos, tendpos, transcript_to_genomic_ends, tname, args.output_endpos, thist.tlen)
                 passingtranscripts.append([-1 * thist.alignscore, -1 * sum(matchvals), sum(queryclipping), thist.tlen, tname, (left_intron_index, left_dist), (right_intron_index, right_dist)])
 
 
@@ -424,8 +428,7 @@ def write_output(args, transcripttoreads):
         countout.write(t + '\t' + str(len(transcripttoreads[t])) + '\n')
         if args.output_endpos:
             for r, s, e in transcripttoreads[t]:
-                if s[0] != None:
-                    endout.write('\t'.join([str(x) for x in [r, t, s[0], s[1], e[0], e[1]]]) + '\n')
+                endout.write('\t'.join([str(x) for x in [r, t, s[0], s[1], e[0], e[1]]]) + '\n')
     if args.output_endpos:
         endout.close()
 

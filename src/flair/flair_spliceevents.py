@@ -15,6 +15,7 @@ from flair.bed_to_sequence import bed_to_sequence
 from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
+from flair.isoform_data import ReadRec
 import scipy.stats as sps
 
 
@@ -1272,7 +1273,7 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
                     gene_to_juncs[gene] = {}
                 if juncs not in gene_to_juncs[gene]:
                     gene_to_juncs[gene][juncs] = []
-                gene_to_juncs[gene][juncs].append(ft.ReadRec(None, int(start), int(end), readname, None, strand, ()))
+                gene_to_juncs[gene][juncs].append(ft.ReadRec(None, strand, (), int(start), int(end), readname, None))
             allgenetojuncs.append(gene_to_juncs)
         
         process_gene_to_events(partition.file_prefix, partition.region.name, [x[0] for x in allsamples], allgenetojuncs, gene_to_strand, args.junc_support, args.output_read_ends, args.event_frac_of_tot, args.junc_frac_of_event, args.event_support, annot_afe_ss, annot_ale_ss, args.check_outliers)

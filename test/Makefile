@@ -465,7 +465,7 @@ test-transcriptome-seg1: mkdirs  ${SEG1_ALIGN_BAM}
 test-transcripome-mutant-splice: mkdirs ${KRAS_MUT_SPLICE_BAM}
 	flair transcriptome -b ${KRAS_MUT_SPLICE_BAM} -g ${GENOME_FA} \
 	   --junction_bed=${KRAS_MUT_SPLICE_SJ_BED} \
-	   -t 4 -f ${BASIC_ANNOTATION} -o $O/$@
+	   -t 4 -f ${BASIC_ANNOTATION} -o $O/$@ --sjc_support 2
 	$(diff_bed_gtf)
 
 

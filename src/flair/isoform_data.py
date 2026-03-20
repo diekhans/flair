@@ -268,8 +268,8 @@ class IsoWithReads:
     @property
     def exons(self):
         if self.start == None:
-            self.start = median(self.starts)
-            self.end = median(self.ends)
+            self.start = int(median(self.starts))
+            self.end = int(median(self.ends))
         return get_exons(self)
     
     @property
@@ -317,6 +317,6 @@ class IsoWithReads:
         return cls(readrec.chrom, readrec.strand, readrec.juncs)
 
     @classmethod
-    def from_other(cls, iso, newstart, newend, newreads):
+    def from_other(cls, iso, newstart=None, newend=None, newreads=[]):
         return cls(iso.chrom, iso.strand, iso.juncs, newstart, newend, newreads, iso.gene_id, iso.transcript_id)
     

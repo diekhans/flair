@@ -147,7 +147,6 @@ with open(outfilename, 'wt') as outfile:
         if not junctions:
             exon = (int(line[15]), int(line[16]))
             i = bin_search(exon, all_se[chrom])
-            iscontained = False  # boolean: single-exon gene matches another s-e gene
             for e in all_se[chrom][i-2:i+2]:
                 overlap = contained(exon, e, 20)
                 if overlap:

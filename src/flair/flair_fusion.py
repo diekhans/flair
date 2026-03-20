@@ -146,10 +146,10 @@ def detectfusions():
     print('read gtf')
     intronLocs, intronToGenome = {}, {}
     for g in genetoexons:
-        chrom, start, end, strand, end5s = genetoinfo[g]
+        chrom, start, end, strand, _ = genetoinfo[g]
         for t in genetoexons[g]:
             myexons = sorted(genetoexons[g][t])
-            first, last = myexons[0], myexons[-1]
+            last = myexons[-1]
             mylocs = [[0, myexons[0][0] - 500, myexons[0][0]]]  ##add start of transcript
             runningtot = 0
             for i in range(len(myexons) - 1):
@@ -194,8 +194,7 @@ def detectfusions():
         genes = f.split('__')
         for g in genes:
             startdiststr = ','.join([str(x) for x in combchim[f]['disttostart']])
-            qdiststr = ','.join([str(x) for x in combchim[f]['qdist']])
-            bedname = g + '__' + '--'.join(genes) #+ '__' + startdiststr + '__' + qdiststr
+            bedname = g + '__' + '--'.join(genes)
             strand = '+' if combchim[f][g][1] < combchim[f][g][2] else '-'
             bedpos = [str(x) for x in sorted(combchim[f][g][1:])]
 

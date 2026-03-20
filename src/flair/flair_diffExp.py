@@ -66,7 +66,7 @@ class Gene(object):
 ########################################################################
 
 
-def multipletests(pvals, alpha=0.05, method='hs'):
+def multipletests(pvals, alpha=0.05):
     """adapted from statsmodels.stats.multitest
     does holm-sidak correction"""
     pvals = np.asarray(pvals)

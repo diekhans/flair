@@ -7,17 +7,20 @@ import pipettor
 import shutil
 import pysam
 import logging
+import scipy.stats as sps
 from flair.partition_runner import PartitionRunner
-from flair import FlairInputDataError, SeqRange, range_overlap
-import flair.flair_transcriptome as ft
+from flair import FlairInputDataError, SeqRange
 from statistics import median
 from flair.bed_to_sequence import bed_to_sequence
 from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
-import scipy.stats as sps
+from flair.isoform_data import (Junc, ReadRec)
+from flair.read_processing import (should_process_read, generate_genomic_alignment_read_to_clipping_file,
+                                   read_correct_to_readrec, add_corrected_read_to_groups)
 
-
+#FIXME: this is temp, need to move into a
+import flair.flair_transcriptome as ft
 
 def get_args():
     parser = argparse.ArgumentParser(description='identifies counts of different splicing events directly from a '
@@ -37,6 +40,7 @@ def get_args():
                         help='GTF annotation file, used for renaming FLAIR isoforms '
                              'to annotated isoforms and adjusting TSS/TESs')
 
+    # FIXME:
     # parser.add_argument('--junction_tab', help='short-read junctions in SJ.out.tab format. '
     #                                            'Use this option if you aligned your short-reads with STAR, '
     #                                            'STAR will automatically output this file')
@@ -85,20 +89,15 @@ def get_args():
 
     args.trust_ends = False
     args.remove_internal_priming = False
-    args.quality = 0 #should only be used for genomic alignment
+    args.quality = 0 # should only be used for genomic alignment
 
     if not os.path.exists(args.genome):
         parser.error(f'Genome file path does not exist: {args.genome}')
     return args
 
-
-
-def get_annot_tstart_tend(tinfo):
-    tstart, tend, strand = tinfo[0]
-    if tstart is None:
-        tstart = min([x[0] for x in tinfo[1]])
-        tend = max([x[1] for x in tinfo[1]])
-    return tstart, tend, strand
+TERMINAL_JUNCTION_DIST_FROM_ANNOT = 20
+MIN_TERMINAL_JUNCTION_SEPARATION = 100
+MIN_TERMINAL_SS_FRACTION = 0.1
 
 def get_annot_gene_hits(gene_to_exons, exons):
     gene_hits = []
@@ -375,10 +374,6 @@ def extract_splicing_info(allsamples, allgenetojuncs, gene, strand, thischrom, o
 
 
     return ss5to3, ss3to5, alljuncs, exonjpairs, allblocks, t_starts_ends, t_first_last_sj, interval_to_reads, afe, ale, outer_junc_to_exons
-
-
-
-
 
 def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gene, mycolor, min_read_support, interval_to_reads, junc_frac_of_event, event_support, outer_junc_to_exons):
     # outer_junc_to_exons = {}
@@ -1095,7 +1090,7 @@ def get_juncs_single_sample(listofargs):
 
     print(region.name, region.start, region.end, sample, 'getting annot match')
     bam_file = pysam.AlignmentFile(bamfile_name, 'rb')
-    clipping_file = ft.generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
+    clipping_file = generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
     bam_file.close()
 
     goodannotaligns = generate_good_match_to_annot(args, temp_prefix, region, bamfile_name, region_annot, region_annot_fa, clipping_file)
@@ -1113,7 +1108,7 @@ def get_juncs_single_sample(listofargs):
     bamfile = pysam.AlignmentFile(bamfile_name, 'rb')
     c, d, e, f = 0, 0, 0, 0
     for read in bamfile.fetch(region.name, region.start, region.end):
-        if not ft._should_process_read(read, region, args.quality, args.keep_sup, False):
+        if not should_process_read(read, region, args.quality, args.keep_sup, False):
             continue
         corrected_read = None
         if read.query_name in read_to_transcript:
@@ -1122,22 +1117,22 @@ def get_juncs_single_sample(listofargs):
             if len(juncs) > 0:
                 newstart = juncs[startindex][0] - startdist
                 newend = juncs[endindex][1] + enddist
-                juncs = tuple([ft.Junc(x[0], x[1]) for x in juncs[startindex:endindex+1]])
+                juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex+1]])
                 strand = gene_to_strand[transcript.split('_')[-1]]
-                corrected_read = ft.ReadRec.from_junctions(read.reference_name, newstart, newend,
-                                                          read.query_name, read.mapping_quality,
-                                                          strand, juncs)
+                corrected_read = ReadRec.from_junctions(read.reference_name, newstart, newend,
+                                                        read.query_name, read.mapping_quality,
+                                                        strand, juncs)
                 c += 1
             else:
                 c += 1
         else:
-            corrected_read = ft.read_correct_to_readrec(junction_corrector, read)
+            corrected_read = read_correct_to_readrec(junction_corrector, read)
             if corrected_read:
                 d += 1
             else:
                 e += 1
         if corrected_read:
-            ft._add_corrected_read_to_groups(corrected_read, sj_to_ends)
+            add_corrected_read_to_groups(corrected_read, sj_to_ends)
     bamfile.close()
     # print(c, 'annotated match')
     # print(d, 'corrected reads')
@@ -1266,7 +1261,7 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
                     gene_to_juncs[gene] = {}
                 if juncs not in gene_to_juncs[gene]:
                     gene_to_juncs[gene][juncs] = []
-                gene_to_juncs[gene][juncs].append(ft.ReadRec(None, int(start), int(end), readname, None, strand, ()))
+                gene_to_juncs[gene][juncs].append(ReadRec(None, int(start), int(end), readname, None, strand, ()))
             allgenetojuncs.append(gene_to_juncs)
 
         process_gene_to_events(tempprefix, region.name, [x[0] for x in allsamples], allgenetojuncs, gene_to_strand, args.junc_support, args.output_read_ends, args.event_frac_of_tot, args.junc_frac_of_event, args.event_support, annot_afe_ss, annot_ale_ss, args.check_outliers)
@@ -1287,38 +1282,22 @@ def main():
     tempDir = ft.make_temp_dir(args.output)
     print('temp directory:', tempDir)
 
-    # logging.info('Getting regions')
-    # all_regions = ft.partition_input(args.parallel_mode, genome, args.genome_aligned_bam,
-    #                               args.annot_gtf, args.threads)
-    # logging.info(f'Number of regions {len(all_regions)}')
-
-    ##KRAS
-    # all_regions = [ft.SeqRange('chr12', 25205212, 25251428)]
-    ## ADAR1
-    # all_regions = [ft.SeqRange('chr1', 154581700,154628050)]
-    # all_regions = [ft.SeqRange('chr12', 25205212, 25251428), ft.SeqRange('chr1', 154581700,154628050)]
-    # RB1 chr13   48303735        48599436        RB1
-    # all_regions = [ft.SeqRange('chr13', 48303735,48599436)]
-
-    # allregions = [('chr15', 78871681, 78898928)] ##MORF4L1
-    # allregions = [('chr7', 116499621, 116509151)] ##CAV2
-
     if args.region_bed:
         all_regions = []
         for line in open(args.region_bed):
             line = line.rstrip().split('\t')
-            all_regions.append(ft.SeqRange(line[0], int(line[1]), int(line[2])))
+            all_regions.append(SeqRange(line[0], int(line[1]), int(line[2])))
     else:
         all_regions = [SeqRange(chrom, 0, genome.get_reference_length(chrom))
                        for chrom in genome.references]
 
     logging.info('pre-processing annotation')
-    annot_bed = tempDir + 'annotation.bed'
+    annot_bed = tempDir + '/annotation.bed'
     if not os.path.exists(annot_bed):
         pipettor.run([('gtf_to_bed', args.annot, annot_bed, '--include_gene')])
     args.annot = annot_bed
     if args.annot_basic:
-        annot_basic_bed = tempDir + 'annotation.basic.bed'
+        annot_basic_bed = tempDir + '/annotation.basic.bed'
         if not os.path.exists(annot_basic_bed):
             pipettor.run([('gtf_to_bed', args.annot_basic, annot_basic_bed, '--include_gene')])
         args.annot_basic = annot_basic_bed
@@ -1332,7 +1311,7 @@ def main():
             line = line.rstrip().split('\t')
             sample, bamfile = line
             allsamples.append((sample, bamfile))
-    out = open(tempDir + '0000.header.diffsplice.counts.tsv', 'w')
+    out = open(tempDir + '/0000.header.diffsplice.counts.tsv', 'w')
     out.write('\t'.join(['featureID'] + [x[0] for x in allsamples]) + '\n')
     out.close()
 
@@ -1352,6 +1331,7 @@ def main():
             out.write('\t'.join(counts_header + [x[0] for x in allsamples]) + '\n')
             for line in open(args.output + suffix + '.tsv'):
                 out.write(line)
+        # FIXME: use os.rename
         pipettor.run([('mv', args.output + suffix + '.new.tsv', args.output + suffix + '.tsv')])
 
     if args.check_outliers:
@@ -1369,10 +1349,6 @@ def main():
 
     genome.close()
 
-
-TERMINAL_JUNCTION_DIST_FROM_ANNOT = 20
-MIN_TERMINAL_JUNCTION_SEPARATION = 100
-MIN_TERMINAL_SS_FRACTION = 0.1
 
 if __name__ == "__main__":
     main()

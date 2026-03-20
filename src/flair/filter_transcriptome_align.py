@@ -88,10 +88,6 @@ def process_read_chunk(chunkinfo):
     return results
 
 
-def report_thread_error(error):
-    raise ValueError(error)
-
-
 def bam_to_read_aligns(samfile, chunksize, temp_dir, transcript_to_exons, transcript_to_bp_ss_index,
                        args, headeroutfilename, readstoclipping, transcript_to_genomic_ends, transcript_to_unique_bounds):
     lastname = None

@@ -8,7 +8,6 @@ matplotlib.use("Agg")
 import sys
 import matplotlib.pyplot as plt
 import matplotlib.patches as mplpatches
-import matplotlib.colors as mcolors
 from flair import FlairInputDataError
 
 def parse_args():
@@ -41,10 +40,11 @@ name_colors = ['xkcd:windows blue', 'xkcd:faded green', 'xkcd:dusty purple', 'xk
 gray = "xkcd:greyish"
 reverse_complement = {'C': 'G', 'G': 'C', 'A': 'T', 'T': 'A'}
 
-def parse_bed(bedfh, names=False, plotany=False, keepiso=set()):
+def parse_bed(bedfh, *, names=False, keepiso=set()):
     info = []
     usednames = []
     lowbound, upbound = 1e9, 0
+    # FIXME: use BedReader
     for line in bedfh:
         line = line.rstrip().split('\t')
         name, start, end = line[3], int(line[1]), int(line[2])
@@ -299,8 +299,6 @@ def plot_isoform_usage(args):
     plt.savefig(args.o+'_usage.png', dpi=600)
 
     # plotting isoform structures
-    fig_0 = plt.figure(figsize=(9, 3))
-
     panel = plt.axes([0.005, 0.015, .99, 0.97], frameon=True)  # annotation
 
 

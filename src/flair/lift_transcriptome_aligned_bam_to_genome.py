@@ -1,5 +1,6 @@
 import pysam
 import sys
+from flair.isoform_data import get_reverse_complement
 
 def bed_line_to_info(line):
     line = line.rstrip().split('\t')
@@ -72,14 +73,6 @@ def generate_new_segment(s=None, newname=None, newseq=None, newquals=None, newfl
     a.cigartuples = newcigart if newcigart != None else s.cigartuples
     return a
 
-compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N', 
-                'R':'Y', 'Y':'R','K':'M','M':'K','S':'S','W':'W', 'B':'V','V':'B','D':'H','H':'D'}
-def revcomp(seq):
-    newseq = []
-    for base in seq.upper(): newseq.append(compbase[base])
-    return ''.join(newseq[::-1])
-
-
 
 isoformbed = sys.argv[1]
 transcriptomebam = sys.argv[2]
@@ -110,7 +103,7 @@ for s in samfile:
             totalaligneddist = sum([x[1] for x in newcigart if x[0] not in {1,4,5}])
             newrefstart = newrefstart - totalaligneddist ##was read end, correct to read start
             newflag = s.flag - 16 if s.is_reverse else s.flag + 16
-            newseq = revcomp(s.query_sequence) if s.query_sequence else None
+            newseq = get_reverse_complement(s.query_sequence) if s.query_sequence else None
             newquals = s.query_qualities[::-1] if s.query_qualities else None
             a = generate_new_segment(s, newrefid=newrefid, newrefstart=newrefstart, newcigart=newcigart,
                                      newflag=newflag, newquals=newquals, newseq=newseq)

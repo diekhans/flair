@@ -3,6 +3,7 @@ from statistics import median,stdev
 from datetime import date
 import itertools
 import pysam
+from flair.isoform_data import get_reverse_complement
 
 parser = argparse.ArgumentParser(description='make synthetic fusion reference')
 parser.add_argument('-c', '--chimbp', action='store', help='bed file of fusion breakpoints')
@@ -13,12 +14,6 @@ args = parser.parse_args()
 
 prefix = args.output#'.'.join(args.chimbp.split('.')[:-2])
 
-def revComp(seq):
-    newseq = ''
-    comp = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N':'N'}
-    for char in seq[::-1].upper():
-        newseq += comp[char]
-    return newseq
 
 #####DONELoad in transcriptome and genome breakpoints and process them into one list of breakpoint locations
 ####DONEGo through transcript reference and load in gene start/end locations
@@ -99,7 +94,7 @@ for fusion in allBP:
             else: rightbound = fgenes[gene][1]
 
         if leftbound < rightbound: sequence.append(genome.fetch(thisChr, leftbound, rightbound))#genome[thisChr][leftbound:rightbound])
-        else: sequence.append(revComp(genome.fetch(thisChr, rightbound, leftbound)))#genome[thisChr][rightbound:leftbound]))
+        else: sequence.append(get_reverse_complement(genome.fetch(thisChr, rightbound, leftbound)))#genome[thisChr][rightbound:leftbound]))
         labels.append('..'.join([str(x) for x in [gene, thisChr, leftbound, rightbound]]))
 
         ###Add a justends isoform here

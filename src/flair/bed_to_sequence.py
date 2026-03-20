@@ -3,6 +3,7 @@ import sys, csv, os, argparse, pysam, subprocess
 import pysam
 import logging
 from flair import FlairInputDataError
+from flair.isoform_data import get_reverse_complement
 
 def main():
     parser = argparse.ArgumentParser(description='options')
@@ -105,7 +106,7 @@ def bed_to_sequence(query, genome, outfilename, isoform_haplotypes=False, vcfinp
         for block in range(len(blockstarts)):
             pulled_seq += seq[blockstarts[block]:blockstarts[block]+blocksizes[block]]
         if strand == '-':
-            pulled_seq = revcomp(pulled_seq)
+            pulled_seq = get_reverse_complement(pulled_seq)
         return pulled_seq
 
     def add_variants_to_seq(variant_list, no_variant_sequence, starts, sizes, strand = '+', chrom='chr1', iso_name=''):
@@ -180,7 +181,7 @@ def bed_to_sequence(query, genome, outfilename, isoform_haplotypes=False, vcfinp
             names = [name]
 
         if strand == '-':
-            pulled_seq = [revcomp(x) for x in pulled_seq]
+            pulled_seq = [get_reverse_complement(x) for x in pulled_seq]
 
         return names, pulled_seq
 
@@ -215,17 +216,6 @@ def bed_to_sequence(query, genome, outfilename, isoform_haplotypes=False, vcfinp
                     writer.writerow(['+'])
                     writer.writerow(['@'*len(pulled_seq)])
         return models
-
-
-    revcomp_dict = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N', 'R': 'Y',
-    'Y':'R', 'K': 'M', 'M': 'K', 'S': 'S', 'W': 'W', 'B': 'V', 'V': 'B', 'D': 'H', 'H': 'D'}
-
-
-    def revcomp(seq):
-        rev_seq = ''
-        for i in reversed(range(len(seq))):
-            rev_seq += revcomp_dict[seq[i]]
-        return rev_seq
 
 
     with open(outfilename, 'wt') as outfile:

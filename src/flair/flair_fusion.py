@@ -11,7 +11,7 @@ from flair.gtf_to_bed import gtf_to_bed
 from flair.bed_to_sequence import bed_to_sequence
 from flair.convert_synthetic_to_genome_bed import convert_synthetic_isos, get_paralog_ref
 # from flair import transcriptomic_chimeras
-from flair.genomic_chimeras import id_chimeras
+from flair.identify_prelim_fusions import id_chimeras
 from collections import defaultdict
 from flair import FlairInputDataError
 
@@ -429,6 +429,13 @@ def detectfusions():
     out.close()
     out = open(args.output + '.syntheticAligned.isoform.read.map.txt', 'w')
     for line in open(args.output + '.syntheticAligned.flair.isoform.read.map.txt'):
+        line = line.split('\t', 1)
+        if line[0] in oldnametonewname:
+            line[0] = oldnametonewname[line[0]]
+            out.write('\t'.join(line))
+    out.close()
+    out = open(args.output + '.syntheticAligned.isoform.counts.txt', 'w')
+    for line in open(args.output + '.syntheticAligned.flair.isoform.counts.txt'):
         line = line.split('\t', 1)
         if line[0] in oldnametonewname:
             line[0] = oldnametonewname[line[0]]

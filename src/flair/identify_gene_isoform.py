@@ -34,8 +34,8 @@ def main():
 
 def get_junctions(line):
     junctions = set()
-    starts = [int(n) + 1 for n in line[20].split(',')[:-1]]
-    sizes = [int(n) - 1 for n in line[18].split(',')[:-1]]  # for indexing pupropses
+    starts = [int(n) + 1 for n in line[20].rstrip(',').split(',')]
+    sizes = [int(n) - 1 for n in line[18].rstrip(',').split(',')]  # for indexing pupropses
     if len(starts) == 1:
         return
     for b in range(len(starts)-1): # block
@@ -46,8 +46,8 @@ def get_junctions(line):
 def get_junctions_bed12(line):
     junctions = set()
     chrstart = int(line[1])
-    starts = [int(n) + chrstart + 1 for n in line[11].split(',')[:-1]]
-    sizes = [int(n) - 1 for n in line[10].split(',')[:-1]]
+    starts = [int(n) + chrstart + 1 for n in line[11].rstrip(',').split(',')]
+    sizes = [int(n) - 1 for n in line[10].rstrip(',').split(',')]
     if len(starts) == 1:
         return
     for b in range(len(starts)-1): # block

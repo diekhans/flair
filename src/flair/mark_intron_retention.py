@@ -21,8 +21,8 @@ isoforms = {}
 for line in bedfh:
     line = line.rstrip().split('\t')
     chrom, name, start, end, strand = line[0], line[3], int(line[1]), int(line[2]), line[5]
-    blockstarts = [int(n) + start for n in line[11].split(',')[:-1]]
-    blocksizes = [int(n) for n in line[10].split(',')[:-1]]
+    blockstarts = [int(n) + start for n in line[11].rstrip(',').split(',')]
+    blocksizes = [int(n) for n in line[10].rstrip(',').split(',')]
     if chrom not in isoforms:
         isoforms[chrom] = {}
     isoforms[chrom][name] = {}

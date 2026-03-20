@@ -139,8 +139,8 @@ def bed_to_sequence(query, genome, outfilename, isoform_haplotypes=False, vcfinp
     def get_sequence_with_variants(entry, seq):
         ''' Entry is the isoform model line, seq is the genomic sequence for this chromosome'''
         start = int(entry[1])
-        blockstarts = [int(n) + start for n in entry[11].split(',')[:-1]]
-        blocksizes = [int(n) for n in entry[10].split(',')[:-1]]
+        blockstarts = [int(n) + start for n in entry[11].rstrip(',').split(',')]
+        blocksizes = [int(n) for n in entry[10].rstrip(',').split(',')]
         strand = entry[5]
         name = entry[3]
 

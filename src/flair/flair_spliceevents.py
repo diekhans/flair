@@ -15,6 +15,7 @@ from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
 from flair.isoform_data import ReadRec
+from flair.read_processing import get_sequence_from_bed
 import scipy.stats as sps
 
 
@@ -1191,18 +1192,7 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
         region_annot_fa = None
         if not args.noaligntoannot:
             region_annot_fa = partition.file_prefix + '.annotation.fa'
-            pipettor.run([('bedtools','getfasta','-s', '-split','-nameOnly',
-                   '-fi', args.genome,
-                   '-bed',region_annot, 
-                   '-fo', region_annot_fa)])
-            # bedtools appends strand to transcript name, remove that
-            out = open(partition.file_prefix + '.annotation.fixed.fa', 'w')
-            for line in open(region_annot_fa):
-                if line[0] == '>':
-                    line = line.split('(')[0] + '\n'
-                out.write(line)
-            out.close()
-            pipettor.run([('mv', partition.file_prefix + '.annotation.fixed.fa', region_annot_fa)])
+            get_sequence_from_bed(args.genome, region_annot, region_annot_fa)
 
         region_juncs = None
         if args.junction_bed:

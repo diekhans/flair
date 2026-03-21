@@ -1,6 +1,7 @@
 """Shared read-processing logic for FLAIR modules."""
 
 import pysam
+import pipettor
 from flair.isoform_data import ReadRec, Junc, IsoWithReads, convert_to_bed
 
 
@@ -17,6 +18,21 @@ def should_process_read(read, region, min_quality, keep_sup, allow_secondary, al
     if not (region.start <= read.reference_start and read.reference_end <= region.end) and not allow_outside_range:
         return False
     return True
+
+
+def get_sequence_from_bed(genome, input_bed, output_fa):
+    bed_cmd = ('bedtools','getfasta','-nameOnly', '-s', '-split',
+                '-fi', genome,
+                '-bed',input_bed, 
+                '-fo', output_fa)
+    pipettor.run([bed_cmd])
+    out = open(output_fa.split('.fa')[0] + '.fixed.fa', 'w')
+    for line in open(output_fa):
+        if line[0] == '>':
+            line = line.split('(')[0] + '\n'
+        out.write(line)
+    out.close()
+    pipettor.run([('mv', output_fa.split('.fa')[0] + '.fixed.fa', output_fa)])
 
 
 def add_corrected_read_to_groups(corrected_read, sj_to_ends):

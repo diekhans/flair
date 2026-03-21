@@ -14,7 +14,48 @@ from collections import defaultdict
 from flair import FlairInputDataError
 from flair.read_processing import get_sequence_from_bed
 
+def parse_args():
+    parser = argparse.ArgumentParser()
+    required = parser.add_argument_group('required named arguments')
+    required.add_argument('-g', '--genome',
+                          type=str, required=True, help='FastA of reference genome')
+    parser.add_argument('-f', '--gtf',
+                        type=str, required=True, help='GTF annotation file, used for renaming FLAIR isoforms to annotated isoforms and adjusting TSS/TESs')
+    required.add_argument('-b', '--genome_aligned_bam',
+                          type=str, required=True, help='bam file of chimeric reads from genomic alignment from flair align')
+    parser.add_argument('-o', '--output', default='flair.fusion',
+                        help='output file name base for FLAIR isoforms (default: flair.collapse)')
+    parser.add_argument('-t', '--threads', type=int, default=4,
+                        help='minimap2 number of threads (4)')
+    parser.add_argument('--minfragmentsize', type=int, default=40,
+                        help='minimum size of alignment kept, used in minimap -s. More important when doing downstream fusion detection')
+    parser.add_argument('-s', '--support', type=float, default=3.0,
+                        help='''minimum number of supporting reads for a fusion (3)''')
+    parser.add_argument('--maxloci', type=int, default=2,
+                        help='''max loci detected in fusion. Set higher for detection of 3-gene+ fusions''')
+    parser.add_argument('--max_dist_to_TSS', type=int, default=15000,
+                        help='''maximum allowed distance of 5' alignment to TSS of annotated transcript. To not check this, set to -1''')
+    parser.add_argument('--keep_intermediate', default=False, action='store_true',
+                        help='''keep intermediate and temporary files for debugging purposes''')
 
+    # FIXME: incorrect way to check for missing arguments
+    no_arguments_passed = len(sys.argv) == 1
+    if no_arguments_passed:
+        parser.print_help()
+        parser.error("No arguments passed. Please provide a bam file, reads, genome, and annotation file")
+
+    args = parser.parse_args()
+    if args.max_dist_to_TSS == -1:
+        args.max_dist_to_TSS = None
+
+    if not os.path.exists(args.genome):
+        raise FlairInputDataError(f'Genome file path does not exist: {args.genome}')
+    if not os.path.exists(args.gtf):
+        if not args.gtf:
+            raise FlairInputDataError('Please specify annotated gtf with -f ')
+        else:
+            raise FlairInputDataError('GTF file path does not exist')
+    return args
 
 def def_value():
     return set()
@@ -35,105 +76,44 @@ def align_to_synth_genome(genome, reads, output, additional_options):
 
 
 def detectfusions():
-    parser = argparse.ArgumentParser()
-    required = parser.add_argument_group('required named arguments')
-    required.add_argument('-g', '--genome',
-                          type=str, required=True, help='FastA of reference genome')
-    parser.add_argument('-f', '--gtf',
-                        type=str, required=True, help='GTF annotation file, used for renaming FLAIR isoforms to annotated isoforms and adjusting TSS/TESs')
-    parser.add_argument('-r', '--reads', nargs='+',
-                          type=str, help='FastA/FastQ files of raw reads, can specify multiple files')
-    required.add_argument('-b', '--genomechimbam',
-                          type=str, required=True, help='bam file of chimeric reads from genomic alignment from flair align')
-    parser.add_argument('--transcriptchimbam',
-                        help='Optional: bam file of chimeric reads from transcriptomic alignment. If not provided, this will be made for you')
-    parser.add_argument('-o', '--output', default='flair.fusion',
-                        help='output file name base for FLAIR isoforms (default: flair.collapse)')
-    parser.add_argument('-t', '--threads', type=int, default=4,
-                        help='minimap2 number of threads (4)')
-    parser.add_argument('--minfragmentsize', type=int, default=40,
-                        help='minimum size of alignment kept, used in minimap -s. More important when doing downstream fusion detection')
-    parser.add_argument('-s', '--support', type=float, default=3.0,
-                        help='''minimum number of supporting reads for a fusion (3)''')
-    parser.add_argument('--maxloci', type=int, default=2,
-                        help='''max loci detected in fusion. Set higher for detection of 3-gene+ fusions''')
-    parser.add_argument('--max_dist_to_TSS', type=int, default=15000,
-                        help='''maximum allowed distance of 5' alignment to TSS of annotated transcript. To not check this, set to -1''')
-    parser.add_argument('--keep_intermediate', default=False, action='store_true',
-                        help='''keep intermediate and temporary files for debugging purposes''')
+    args = parse_args()
     path = os.path.dirname(os.path.realpath(__file__)) + '/'
-
-    # FIXME: incorrect way to check for missing arguments
-    no_arguments_passed = len(sys.argv) == 1
-    if no_arguments_passed:
-        parser.print_help()
-        parser.error("No arguments passed. Please provide a bam file, reads, genome, and annotation file")
-
-    args = parser.parse_args()
-    if args.max_dist_to_TSS == -1:
-        args.max_dist_to_TSS = None
-
-    if not (args.reads or args.transcriptchimbam):
-        raise FlairInputDataError(f'please provide either a fastq/fasta reads file or a bam file of chimeric alignments to the transcriptome')
-    if args.reads:
-        if ',' in args.reads[0]:
-            args.reads = args.reads[0].split(',')
-        for rfile in args.reads:
-            if not os.path.exists(rfile):
-                raise FlairInputDataError(f'Read file path does not exist: {rfile}')
-
-    if not os.path.exists(args.genome):
-        raise FlairInputDataError(f'Genome file path does not exist: {args.genome}')
-    if not os.path.exists(args.gtf):
-        if not args.gtf:
-            raise FlairInputDataError('Please specify annotated gtf with -f ')
-        else:
-            raise FlairInputDataError('GTF file path does not exist')
-
-
-    # if args.annotated_fa == 'generate':
-    # get transcript sequences
-    
-    
 
     ####NEED TO REMEMBER THAT FUSION DETECTION RELIES ON HAVING PROPERLY STRANDED READS - need to add stranding step and/or better documentation on this
 
     ###Processing the gtf file so many times is really inefficient, how can we resolve this??
+    genomechimbam = args.output + '.genomealigned.chim.bam'
+    transcriptchimbam = args.output + '.transcriptomealigned.chim.bam'
+    
+    if not os.path.exists(genomechimbam):
+        logging.info('getting chimeric reads from genome')
+        infile = pysam.AlignmentFile(args.genome_aligned_bam, 'rb')
+        outfile = pysam.AlignmentFile(genomechimbam, 'wb', template=infile)
+        for align in infile:
+            if align.is_mapped and not align.is_secondary:
+                if align.has_tag('SA'):
+                    outfile.write(align)
+        infile.close()
+        outfile.close()
+        pysam.index(genomechimbam)
 
-    ###align to transcriptome with --secondary=no
-
-    if not args.transcriptchimbam:
+    if not os.path.exists(transcriptchimbam):
+        logging.info('aligning to transcriptome and getting chimeric reads')
         args.annotated_bed = args.output + '.annotated_transcripts.bed'
         gtf_to_bed(args.annotated_bed, args.gtf, include_gene=True)
         args.annotated_fa = args.output + '.annotated_transcripts.fa'
         get_sequence_from_bed(args.genome, args.output + '.annotated_transcripts.bed', args.annotated_fa)
         
-        mm2_cmd = ['minimap2', '-a', '-s', str(args.minfragmentsize), '-t', str(args.threads), '--secondary=no',
-                   args.annotated_fa] + args.reads
-        mm2_cmd = tuple(mm2_cmd)
-
-        # samtools; the dash at the end means STDIN
-        samtools_sort_cmd = ('samtools', 'sort', '-@', str(args.threads), '-o', args.output + '_unfilteredtranscriptome.bam', '-')
+        fa_cmd = ('samtools', 'fasta', args.genome_aligned_bam)
+        mm2_cmd = ('minimap2', '-a', '-s', str(args.minfragmentsize), '-t', str(args.threads), '--secondary=no',
+                   args.annotated_fa, '-')
+        filter_cmd = ('python3', path + 'filter_transcriptome_chim.py', '-', transcriptchimbam)
+        sort_cmd = ('samtools', 'sort', '-o', args.output + '.transcriptomealigned.chim.sorted.bam', transcriptchimbam)
         samtools_index_cmd = ('samtools', 'index', args.output + '_unfilteredtranscriptome.bam')
-        pipettor.run([mm2_cmd, samtools_sort_cmd])
-        pipettor.run([samtools_index_cmd])
-
-        ##filter transcriptome alignment to chimeric only and remove the rest
-
-        ##run filtering
-        samfile = pysam.AlignmentFile(args.output + '_unfilteredtranscriptome.bam', "rb")
-        withsup = pysam.AlignmentFile(args.output + '_transcriptomechimeric.bam', "wb", template=samfile)
-        for read in samfile.fetch():
-            if read.is_mapped and not read.is_secondary:
-                if read.has_tag('SA'):
-                    withsup.write(read)
-        samfile.close()
-        withsup.close()
-        pysam.index(args.output + '_transcriptomechimeric.bam')
-
-        pipettor.run([('rm', args.output + '_unfilteredtranscriptome.bam', args.output + '_unfilteredtranscriptome.bam.bai')])
-        args.transcriptchimbam = args.output + '_transcriptomechimeric.bam'
-        print('aligned to transcriptome')
+        pipettor.run([fa_cmd, mm2_cmd, filter_cmd])
+        pipettor.run([('samtools', 'sort', '-o', args.output + '.transcriptomealigned.chim.sorted.bam', transcriptchimbam)])
+        pipettor.run([('mv', args.output + '.transcriptomealigned.chim.sorted.bam', transcriptchimbam)])
+        pysam.index(transcriptchimbam)
 
 
     print('reading gtf')
@@ -202,7 +182,6 @@ def detectfusions():
         gene_to_all_exons[gene] = newexons
 
     
-    
     intronLocs, intronToGenome = {}, {}
     for g in genetoexons:
         chrom, start, end, strand, end5s = genetoinfo[g]
@@ -227,10 +206,10 @@ def detectfusions():
     gene_to_paralogs = get_paralog_ref(os.path.realpath(__file__).split('flair_fusion')[0] + 'dgd_Hsa_all_v71.tsv')
     
     print('loading transcriptomic chimeras')
-    tchim = id_chimeras('transcriptomic', args.transcriptchimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=args.max_dist_to_TSS, maxpromiscuity=4, intronLocs=intronLocs, intronToGenome=intronToGenome)
+    tchim = id_chimeras('transcriptomic', transcriptchimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=args.max_dist_to_TSS, maxpromiscuity=4, intronLocs=intronLocs, intronToGenome=intronToGenome)
     print('loading genomic chimeras')
     
-    combchim = id_chimeras('genomic', args.genomechimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=args.max_dist_to_TSS, maxpromiscuity=4)
+    combchim = id_chimeras('genomic', genomechimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=args.max_dist_to_TSS, maxpromiscuity=4)
     
     print('combining genomic and transcriptomic')
     #
@@ -277,13 +256,13 @@ def detectfusions():
     seenreads = set()
     freadsname = args.output + '.fusionreads.prelim.fa'
     out_fa = open(freadsname, 'w')
-    bamfile = pysam.AlignmentFile(args.genomechimbam, 'rb')
+    bamfile = pysam.AlignmentFile(genomechimbam, 'rb')
     for a in bamfile:
         if not a.is_secondary and not a.is_supplementary and a.query_name in fusionreads:
             out_fa.write('>' + a.query_name + '\n' + a.get_forward_sequence() + '\n')
             seenreads.add(a.query_name)
     bamfile.close()
-    bamfile = pysam.AlignmentFile(args.genomechimbam, 'rb')
+    bamfile = pysam.AlignmentFile(transcriptchimbam, 'rb')
     for a in bamfile:
         if not a.is_secondary and not a.is_supplementary and a.query_name in fusionreads and not a.query_name in seenreads:
             out_fa.write('>' + a.query_name + '\n' + a.get_forward_sequence() + '\n')

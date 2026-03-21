@@ -836,7 +836,7 @@ def _process_junc_ends(args, isoforms, firstpass_unfiltered, firstpass_junc_to_n
     # if isoforms[0].juncs == ():
     #     filtered_isoforms = [x for x in isoforms if len(x.reads) >= args.se_support]
     # else:
-    filtered_isoforms = filter_ends_by_redundant_and_support(isoforms, args.se_support, args.sjc_support, args.no_redundant, args.max_ends)
+    filtered_isoforms = filter_ends_by_redundant_and_support(isoforms, args.sjc_support, args.se_support, args.no_redundant, args.max_ends)
     for isoform in filtered_isoforms:
         firstpass_unfiltered[isoform.name] = isoform
         _add_end_to_firstpass(isoform, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh)

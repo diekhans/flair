@@ -70,6 +70,11 @@ test-base: align-tests quantify-tests \
 	plot-usage-tests transcriptome-tests fusion-tests variants-tests \
 	spliceevents-tests partition-tests lib-tests
 
+test-no-align: quantify-tests \
+	combine-tests predict-productivity-tests diff-iso-usage-tests \
+	plot-usage-tests transcriptome-tests fusion-tests variants-tests \
+	spliceevents-tests partition-tests lib-tests
+
 test-with-R: diffexp-tests diffsplice-tests
 
 test-installed:

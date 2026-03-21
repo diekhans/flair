@@ -8,9 +8,7 @@ import pysam
 import logging
 import gzip
 from flair.gtf_to_bed import gtf_to_bed
-from flair.bed_to_sequence import bed_to_sequence
 from flair.convert_synthetic_to_genome_bed import convert_synthetic_isos, get_paralog_ref
-# from flair import transcriptomic_chimeras
 from flair.identify_prelim_fusions import id_chimeras
 from collections import defaultdict
 from flair import FlairInputDataError
@@ -106,8 +104,19 @@ def detectfusions():
         args.annotated_bed = args.output + '.annotated_transcripts.bed'
         gtf_to_bed(args.annotated_bed, args.gtf, include_gene=True)
         args.annotated_fa = args.output + '.annotated_transcripts.fa'
-        bed_to_sequence(query=args.output + '.annotated_transcripts.bed', genome=args.genome,
-                    outfilename=args.annotated_fa)
+        bed_cmd = ('bedtools','getfasta','-nameOnly', '-s', '-split',
+                   '-fi', args.genome,
+                   '-bed',args.output + '.annotated_transcripts.bed', 
+                   '-fo', args.annotated_fa)
+        pipettor.run([bed_cmd])
+        out = open(args.output + '.annotated_transcripts.fixed.fa', 'w')
+        for line in open(args.output + '.annotated_transcripts.fa'):
+            if line[0] == '>':
+                line = line.split('(')[0] + '\n'
+            out.write(line)
+        out.close()
+        pipettor.run([('mv', args.output + '.annotated_transcripts.fixed.fa', args.output + '.annotated_transcripts.fa')])
+        
         mm2_cmd = ['minimap2', '-a', '-s', str(args.minfragmentsize), '-t', str(args.threads), '--secondary=no',
                    args.annotated_fa] + args.reads
         mm2_cmd = tuple(mm2_cmd)

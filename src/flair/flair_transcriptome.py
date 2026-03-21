@@ -14,7 +14,6 @@ from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
 from flair.partition_runner import parallel_mode_parse, partition_runner_factory
 from flair.pycbio.hgdata.bed import BedReader
-from flair.bed_to_sequence import bed_to_sequence
 from flair.bed_to_gtf import bed_to_gtf
 from flair.isoform_data import (Junc, Exon, ReadRec, IsoWithReads, exons_to_juncs, bed_to_junctions,
                               get_rgb, get_bed_exons_from_juncs, get_bed_exons_from_exons,

@@ -64,10 +64,7 @@ for line in open(referencetranscriptfile):
         if 'fusiongene' in tname: tname = '_'.join(tname.split('_')[1:])
         transcriptToInfo[(tname, gname)] = TranscriptInfo(seq, int(orfstart), int(orfstop), propred, ptcpoint)
 
-cl = modtranscriptsfile.split('-')[0]
 out = open(outfile, 'w')
-
-
 
 last = None
 for line in open(modtranscriptsfile):
@@ -126,7 +123,7 @@ for line in open(modtranscriptsfile):
             ###Is there a base change before the predicted start?
             prestartvars = [x for x in seqvars if x[0] < thist.origstart]
             hasnovelstart = False
-            startposchange = 0
+            startposchange = 0   # FIXME: never used.
             newstart, newend = thist.origstart, thist.origstop
 
             if len(prestartvars) > 0:
@@ -135,7 +132,8 @@ for line in open(modtranscriptsfile):
                     if ref == 'I':
                         checkend += len(alt)
                         startposchange += len(alt)
-                    elif ref == 'D': startposchange -= int(alt)
+                    elif ref == 'D':
+                        startposchange -= int(alt)
                     checkseq = modseq[checkstart:checkend]
                     hasstart = checkseq.find('ATG')
                     if hasstart >= 0:

@@ -48,8 +48,6 @@ DEF_CONFIDENCE = 1.0
 # of bases in the resulting alignments
 DEF_BEG_JCN_OVERHANG = 25
 
-SHELL = "/bin/tcsh"
-
 MAX_CHAR = 60
 
 CIGAR_OPER = {0:"M",
@@ -559,12 +557,6 @@ def main():
             confident_jcns.add("%s:%d-%d" % (jcn2JcnInfo[jcn_str].chr,
                                              jcn2JcnInfo[jcn_str].intron_start,
                                              jcn2JcnInfo[jcn_str].intron_end))
-#            # If junction name has ":::", then the type of junction is known
-#            if ":::" in jcn_str:
-#                rgb_str = getRGB(jcn_str)
-#            else:
-#                rgb_str = K_RGB_STR
-
             intron_left = jcn_str[jcn_str.find(':')+1:jcn_str.find('-')]
             intron_right = jcn_str[jcn_str.find('-')+1:]
             if jcn2JcnInfo[jcn_str].strand in {'+', '-'}:
@@ -572,18 +564,6 @@ def main():
                 jcn_strand = jcn2JcnInfo[jcn_str].strand
             else:
                 jcn_strand = '.'
-            # bed_line = "%s\t%d\t%d\t%s\t%d\t%s\t%d\t%d\t%s\t2\t%s\t%s\n" % (jcn2JcnInfo[jcn_str].chr,
-            #                                                                 jcn2JcnInfo[jcn_str].leftmost_start,
-            #                                                                 jcn2JcnInfo[jcn_str].rightmost_end,
-            #                                                                 jcn_str,
-            #                                                                 len(jcn2JcnInfo[jcn_str].block_list),
-            #                                                                 jcn2JcnInfo[jcn_str].strand,
-            #                                                                 jcn2JcnInfo[jcn_str].leftmost_start,
-            #                                                                 jcn2JcnInfo[jcn_str].rightmost_end,
-            #                                                                 rgb_str,
-            #                                                                 ",".join([repr(jcn2JcnInfo[jcn_str].longest_first_block),
-            #                                                                           repr(jcn2JcnInfo[jcn_str].longest_second_block)]),
-            #                                                                 ",".join(["0",repr(jcn2JcnInfo[jcn_str].second_block_start)]))
             bed_line = '\t'.join([jcn2JcnInfo[jcn_str].chr,
                                                 intron_left,
                                                 str(int(intron_right)-1),
@@ -674,14 +654,6 @@ def convert2Tags(tag_tuples):
     return "\t".join(tag_list)
 
 
-def convertFlag(flag):
-    # Bitwise operation to get strand information
-    if flag & 16:
-        return "-"
-    else:
-        return "+"
-
-
 def extended_to_simple_cigar(cigar):
     matches = re.findall(r'([0-9]+)([A-Z]|=)', cigar)
     newcigar = ''
@@ -738,16 +710,6 @@ def getForcedJunctions(forced_junction_file):
     jcn_file.close()
 
     return forced_junctions
-
-
-def getRGB(jcn_str):
-    elems = jcn_str.split(":::")
-
-    for elem in elems:
-        if elem == "A":
-            return K_RGB_STR
-
-    return N_RGB_STR
 
 
 def getPos2Count(blocklist):

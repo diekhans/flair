@@ -16,37 +16,6 @@ def checkIsNearAnnotEnd(read3endpos, annotends):
     return disttoend <= 200
 
 
-def getannotends(annotfile):
-    """
-    Takes in a gtf annotation file, returns a dictionary od chromsome to sorted list of transcript end positions
-    """
-    if annotfile:
-        annottranscriptends = {}
-        lastexon = None
-        for line in open(annotfile):
-            if line[0] != '#':
-                line = line.split('\t')
-                if line[2] == 'transcript' and 'basic' in line[8]:
-                    chr, start, stop, strand = line[0], int(line[3]), int(line[4]), line[6]
-                    if chr not in annottranscriptends: annottranscriptends[chr] = set()
-                    if strand == '+':
-                        annottranscriptends[chr].add(stop)
-                    else:
-                        annottranscriptends[chr].add(start)
-                    if lastexon: ###assuming that gtf files have exons in order
-                        if lastexon[2] == '+':
-                            for i in range(lastexon[0]+200, lastexon[1], 200):
-                                annottranscriptends[chr].add(i)
-                        else:
-                            for i in range(lastexon[0], lastexon[1]-200, 200):
-                                annottranscriptends[chr].add(i)
-                elif line[2] == 'exon' and 'basic' in line[8]:
-                    lastexon = (int(line[3]), int(line[4]), line[6])
-        for chr in annottranscriptends:
-            annottranscriptends[chr] = sorted(list(annottranscriptends[chr]))
-        return annottranscriptends
-    else: return None
-
 ###add annotation-reliant check for transcript end, implement binary search
 def checkInternalPriming(read3endpos, thischr, genome, reqfreq, threshold):
     """
@@ -54,6 +23,7 @@ def checkInternalPriming(read3endpos, thischr, genome, reqfreq, threshold):
     a frequency >= reqfreq and a length >= threshold
     """
     genomeseqnearend = genome.fetch(thischr, max(read3endpos - 30, 0), min(read3endpos + 30, genome.get_reference_length(thischr))).upper()
+    # FIXME: maxfreq never used
     maxlen, maxfreq = 0, 0
     if len(genomeseqnearend) > threshold*2:
         halfseqlen = int(len(genomeseqnearend)/2)
@@ -61,7 +31,8 @@ def checkInternalPriming(read3endpos, thischr, genome, reqfreq, threshold):
             thisseq = genomeseqnearend[min(i + halfseqlen, halfseqlen): max(i + halfseqlen, halfseqlen)]
             thiscount = max(thisseq.count('A'), thisseq.count('T'))
             thisfreq = thiscount / len(thisseq) if len(thisseq) > 0 else 0
-            if thisfreq >= reqfreq and len(thisseq) > maxlen: maxlen, maxfreq = len(thisseq), thisfreq
+            if thisfreq >= reqfreq and len(thisseq) > maxlen:
+                maxlen, maxfreq = len(thisseq), thisfreq
     return maxlen >= threshold
 
 def removeinternalpriming(refname, refstart, refend, isrev, genome, annottranscriptends, annotexons, threshold, fracAs):
@@ -92,7 +63,6 @@ def removeinternalpriming(refname, refstart, refend, isrev, genome, annottranscr
     if ((refname not in genome.references) or
         (not checkInternalPriming(read3endpos, refname, genome, fracAs, threshold))):
         return True
-    # if annot provided + read has strech of As, check if end near annot end
     elif annottranscriptends and refname in annottranscriptends:
         isnearannotend = checkIsNearAnnotEnd(read3endpos, annottranscriptends[refname])
         if isnearannotend:

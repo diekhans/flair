@@ -8,7 +8,6 @@ import pysam
 import logging
 from statistics import median
 from collections import Counter, namedtuple
-from flair.flair_align import intron_chain_to_exon_starts
 from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
@@ -23,9 +22,6 @@ from flair.read_processing import (should_process_read, add_corrected_read_to_gr
                                     read_correct_to_readrec,
                                     generate_genomic_alignment_read_to_clipping_file)
 from flair.count_sam_transcripts import TRUST_ENDS_WINDOW
-# keep old private names as aliases for any callers using ft._should_process_read etc.
-_should_process_read = should_process_read
-_add_corrected_read_to_groups = add_corrected_read_to_groups
 
 # FIXME: temporarily disabled C901 (too complex) in .flake8
 # FIXME: add object for all file names
@@ -468,28 +464,6 @@ def _check_junction_subset(juncs, first_exon, last_exon, otheriso_score, otheris
                                          terminal_exon_is_subset, superset_support, unique_seq_bound)
 
 
-def identify_spliced_iso_subset_annot(annot_iso_id, sup_annot_transcript_to_juncs, annots,
-                                      juncs, first_exon, last_exon, terminal_exon_is_subset,
-                                      superset_support, unique_seq_bound):
-    """Check if query isoform is subset of an annotated isoform.
-    annot_iso_id is (transcript_id, gene_id) tuple."""
-    if sup_annot_transcript_to_juncs is not None:
-        # using only supported annotated
-        if annot_iso_id not in sup_annot_transcript_to_juncs:
-            return
-        otheriso_score, otheriso_juncs = sup_annot_transcript_to_juncs[annot_iso_id]
-        otheriso_exons = annots.transcript_to_exons[annot_iso_id]
-    elif annot_iso_id in annots.transcript_to_exons:
-        # using all annotated
-        otheriso_exons = annots.transcript_to_exons[annot_iso_id]
-        otheriso_juncs = exons_to_juncs(otheriso_exons)
-        otheriso_score = 0
-    else:
-        return
-    _check_junction_subset(juncs, first_exon, last_exon, otheriso_score, otheriso_juncs, otheriso_exons,
-                           terminal_exon_is_subset, superset_support, unique_seq_bound)
-
-
 def identify_spliced_iso_subset_novel(novel_iso_id, firstpass_unfiltered,
                                       juncs, first_exon, last_exon, terminal_exon_is_subset,
                                       superset_support, unique_seq_bound):
@@ -747,20 +721,21 @@ def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_cor
         else:
             # FIXME add strand correction based on polyA tail here
             # throw out reads with no polyA tail
+            # Actually maybe don't throw out here, save single exon correction for after overlap grouping
             corrected_read = read_correct_to_readrec(junction_corrector, readrec)
     else:
         corrected_read = read_correct_to_readrec(junction_corrector, readrec)
     if corrected_read:
-        _add_corrected_read_to_groups(corrected_read, sj_to_ends)
+        add_corrected_read_to_groups(corrected_read, sj_to_ends)
 
 def filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_annot_transcript, annots,
-                               junction_corrector, generate_fasta=True, sj_to_ends=None,
+                               junction_corrector, *, sj_to_ends=None,
                                allow_secondary=False):
     """Filter reads, correct splice junctions, and group by junction chain."""
     if sj_to_ends is None:
         sj_to_ends = {}
     for read in bam_file.fetch(region.name, region.start, region.end):
-        if _should_process_read(read, region, args.quality, args.keep_sup, allow_secondary):
+        if should_process_read(read, region, args.quality, args.keep_sup, allow_secondary):
             _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends)
     return sj_to_ends
 
@@ -832,9 +807,7 @@ def _add_end_to_firstpass(isoform, firstpass_unfiltered, firstpass_junc_to_name,
 
 def _process_junc_ends(args, isoforms, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh):
     # this assumes single exons are pre-grouped by overlap
-    # if isoforms[0].juncs == ():
-    #     filtered_isoforms = [x for x in isoforms if len(x.reads) >= args.se_support]
-    # else:
+    # previously treated single exons separately due to them being in larger groups
     filtered_isoforms = filter_ends_by_redundant_and_support(isoforms, args.sjc_support, args.se_support, args.no_redundant, args.max_ends)
     for isoform in filtered_isoforms:
         firstpass_unfiltered[isoform.name] = isoform
@@ -846,6 +819,7 @@ def _process_junc(args, isoform, firstpass_unfiltered, firstpass_junc_to_name, f
     _process_junc_ends(args, these_firstpass, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh)
 
 def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, region_chrom):
+    # FIXME separate into separate method
     sjc_with_overlap_groups = {}
     for juncs, isoform in sj_to_ends.items():
         if len(juncs) > 0:
@@ -857,6 +831,9 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, regio
             for r in reads:
                 if r.start >= last_end:
                     if group != []:
+                        # FIXME here is where you might want to add single exon strand correction
+                        # assign new strand, filter out reads that don't match strand??
+                        # and/or separate by strand?
                         new_key = (median([x.start for x in group]), median([x.end for x in group]), juncs)
                         sjc_with_overlap_groups[new_key] = IsoWithReads.from_other(isoform, newreads = group)
                     last_start, last_end = r.start, r.end
@@ -865,6 +842,9 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, regio
                     last_end = r.end
                 group.append(r)
             if group != []:
+                # FIXME here is where you might want to add single exon strand correction
+                # assign new strand, filter out reads that don't match strand??
+                # and/or separate by strand?
                 new_key = (median([x.start for x in group]), median([x.end for x in group]), juncs)
                 sjc_with_overlap_groups[new_key] = IsoWithReads.from_other(isoform, newreads = group)
     

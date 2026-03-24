@@ -1,6 +1,5 @@
 import sys, os, argparse
-from statistics import median,stdev
-from datetime import date
+from statistics import median
 import itertools
 import pysam
 from flair.isoform_data import get_reverse_complement

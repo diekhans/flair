@@ -10,7 +10,7 @@ from flair import FlairInputDataError
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 
-compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N', 
+compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N',
                 'R':'Y', 'Y':'R','K':'M','M':'K','S':'S','W':'W', 'B':'V','V':'B','D':'H','H':'D'}
 
 def getStarts(gtf):
@@ -38,19 +38,10 @@ class Isoform(object):
     def __init__(self, name=None):
         self.name = name
         self.chrom = ""
-        self.seqvariants = {}
         self.exons = set()
         self.starts = set()
         self.exonSizes = list()
         self.ptcpoint = 0
-        self.startcodons = []
-
-class SeqVar(object):
-    def __init__(self, name=None, seq=None):
-        self.name = name
-        self.pro = "UNK"
-        self.sequence = seq
-        self.orfs = list()
 
 def getStartRelPos(genomicStartPos, exon, exons, isoObj):
     '''
@@ -278,6 +269,7 @@ def parse_isoform_fa(isoformfile):
     return isotoseq
 
 def make_temp_dir(outprefix):
+    # FIXME: move to common functio
     dir = outprefix + '_tempvarfiles/'
     if os.path.exists(dir):
         shutil.rmtree(dir)

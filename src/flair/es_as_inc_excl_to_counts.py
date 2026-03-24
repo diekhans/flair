@@ -21,7 +21,7 @@ with open(sys.argv[2]) as fin2:
         if int(cols[3]) == 0:
             continue
         else:
-            exon, strand, inc, exc, incIsos, excIsos = cols
+            exon, strand, _, exc, incIsos, excIsos = cols
         incVals = np.asarray([data.get(x,np.zeros(nSamps)) for x in incIsos.split(",")])
         excVals = np.asarray([data.get(x,np.zeros(nSamps)) for x in excIsos.split(",")])
 

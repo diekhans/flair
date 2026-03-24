@@ -37,16 +37,16 @@ def get_sequence_from_bed(genome, input_bed, output_fa):
 
 def add_corrected_read_to_groups(corrected_read, sj_to_ends):
     """Add a corrected read to the junction-to-ends mapping"""
-    junc_key = tuple(sorted(corrected_read.juncs))
+    junc_key = tuple(sorted(corrected_read.juncs)) # FIXME add chromosome and strand to key
+    # FIXME check to see if a given junction chain is on both strands, throw error
     if junc_key not in sj_to_ends:
         sj_to_ends[junc_key] = IsoWithReads.from_readrec(corrected_read)
     sj_to_ends[junc_key].reads.append(corrected_read)
 
 
-def read_correct_to_readrec(junction_corrector, read):
+def read_correct_to_readrec(junction_corrector, readrec):
     # FIXME: remove unnecessary initial build of ReadRec and make junctions from
     # read, correct, and then make bed
-    readrec = ReadRec.from_read(read)
     corrected_bed = junction_corrector.correct_read_bed(convert_to_bed(readrec))
     if corrected_bed is None:
         return None

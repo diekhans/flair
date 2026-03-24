@@ -1113,6 +1113,7 @@ def get_juncs_single_sample(listofargs):
     b, c, d, e = 0, 0, 0, 0
     for read in bamfile.fetch(region.name, region.start, region.end):
         if not read.is_secondary and (not read.is_supplementary or args.keep_sup):
+            readrec = ft.ReadRec.from_read(read)
             if read.query_name in read_to_transcript:
                 transcript, startindex, startdist, endindex, enddist = read_to_transcript[read.query_name]
                 juncs = transcript_to_sjc[transcript]
@@ -1128,7 +1129,7 @@ def get_juncs_single_sample(listofargs):
                 else:
                     c += 1
             elif read.mapping_quality >= args.quality:
-                corrected_read = ft.read_correct_to_readrec(junction_corrector, read)
+                corrected_read = ft.read_correct_to_readrec(junction_corrector, readrec)
                 
                 if corrected_read:
                     d += 1
@@ -1136,8 +1137,8 @@ def get_juncs_single_sample(listofargs):
                     e += 1
             else:
                 b += 1
-        else:
-            corrected_read = ft.read_correct_to_readrec(junction_corrector, read)
+        # else:
+        #     corrected_read = ft.read_correct_to_readrec(junction_corrector, read)
         if corrected_read:
             ft._add_corrected_read_to_groups(corrected_read, sj_to_ends)
     bamfile.close()

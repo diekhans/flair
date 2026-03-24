@@ -722,17 +722,12 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
     return read_to_transcript
 
 
-
-def _add_corrected_read_to_groups(corrected_read, sj_to_ends):
-    """Add a corrected read to the junction-to-ends mapping"""
-    junc_key = tuple(sorted(corrected_read.juncs))
-    if junc_key not in sj_to_ends:
-        sj_to_ends[junc_key] = IsoWithReads.from_readrec(corrected_read)
-    sj_to_ends[junc_key].reads.append(corrected_read)
-
-
 def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends):
     """Correct a single read's splice junctions and add it to sj_to_ends groups."""
+    
+    # FIXME add polyA and internal priming detection to building readRec
+    readrec = ReadRec.from_read(read)
+    
     if read.query_name in read_to_annot_transcript:
         transcript, startindex, startdist, endindex, enddist = read_to_annot_transcript[read.query_name]
         transcript, gene = transcript.split('_')
@@ -743,14 +738,18 @@ def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_cor
             newstart = juncs[startindex][0] - startdist
             newend = juncs[endindex][1] + enddist
             juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex + 1]])
+            # FIXME this is read correction based on annotated transcript, also correct strand based on annotated transcript strand
+            # FIXME add polyA tail and internal priming info from readrec to new corrected readrec
             strand = '-' if read.is_reverse else '+'
             corrected_read = ReadRec.from_junctions(read.reference_name, newstart, newend,
                                                    read.query_name, read.mapping_quality,
                                                    strand, juncs)
         else:
-            corrected_read = read_correct_to_readrec(junction_corrector, read)
+            # FIXME add strand correction based on polyA tail here
+            # throw out reads with no polyA tail
+            corrected_read = read_correct_to_readrec(junction_corrector, readrec)
     else:
-        corrected_read = read_correct_to_readrec(junction_corrector, read)
+        corrected_read = read_correct_to_readrec(junction_corrector, readrec)
     if corrected_read:
         _add_corrected_read_to_groups(corrected_read, sj_to_ends)
 

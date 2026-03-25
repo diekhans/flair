@@ -823,7 +823,7 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, regio
     sjc_with_overlap_groups = {}
     for juncs, isoform in sj_to_ends.items():
         if len(juncs) > 0:
-            sjc_with_overlap_groups[('NA', 'NA', juncs)] = isoform
+            sjc_with_overlap_groups[(median(isoform.starts), median(isoform.ends), juncs)] = isoform
         else:
             reads = isoform.reads
             reads.sort(key=lambda x:[x.start, x.end])
@@ -834,7 +834,7 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, regio
                         # FIXME here is where you might want to add single exon strand correction
                         # assign new strand, filter out reads that don't match strand??
                         # and/or separate by strand?
-                        new_key = (median([x.start for x in group]), median([x.end for x in group]), juncs)
+                        new_key = (int(median([x.start for x in group])), int(median([x.end for x in group])), juncs)
                         sjc_with_overlap_groups[new_key] = IsoWithReads.from_other(isoform, newreads = group)
                     last_start, last_end = r.start, r.end
                     group = []
@@ -1042,7 +1042,7 @@ def _find_gene_id_by_overlap(iso_readrec, annots):
             return None
 
 
-def get_gene_name_firstpass(isoform, annots, annot_name_to_used_counts, novel_gene_isos_to_group):
+def get_gene_name_firstpass(isoform, annots, annot_name_to_used_counts):
     transcript_id, gene_id = _get_transcript_gene_from_annot(isoform, annots, annot_name_to_used_counts)
     if transcript_id is None:
         gene_id = _find_gene_id_by_overlap(isoform, annots)
@@ -1054,8 +1054,7 @@ def get_gene_names_firstpass(firstpass, annots):
     novel_gene_isos_to_group = {'+': [], '-': []}
     for iso_key in firstpass:
         isoform = firstpass[iso_key]
-        gene_id, isoform_id = get_gene_name_firstpass(isoform, annots, annot_name_to_used_counts,
-                                novel_gene_isos_to_group)
+        gene_id, isoform_id = get_gene_name_firstpass(isoform, annots, annot_name_to_used_counts)
         firstpass[iso_key].transcript_id = isoform_id
         if gene_id is not None:
             # removing this strand correction breaks the unusual junction (due to underlying variant?) test

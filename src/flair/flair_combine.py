@@ -226,14 +226,12 @@ def combine():  # noqa: C901 - FIXME: reduce complexity
                 ends_for_sorting = [ends_for_sorting[0]]
             elif args.end_filter.is_numeric():
                 ends_for_sorting = ends_for_sorting[:int(args.end_filter)]
-
             for _, start, end, sample, isoname, isousage, isocounts in ends_for_sorting:
                 theseisos = collapsedIsos[(start, end, sample, isoname, isousage, isocounts)]
                 theseisos.sort(key=lambda x: x[1] - x[0], reverse=True)  # longest first
                 maxisousage = max([x[4] for x in theseisos])
                 totisocounts = sum([x[5] for x in theseisos])
                 if ichainendscount == 1 or (args.end_filter.isnumeric() and (totisocounts > int(args.min_reads) or totisocounts == 0)):
-
                     if isfusion:
                         outgene = mode([x[3].split('_')[-1] for x in theseisos])
                         outname = 'flairiso' + str(isocount) + '-' + str(ichainendscount) + '_' + outgene

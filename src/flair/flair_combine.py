@@ -6,6 +6,7 @@ import os
 import pipettor
 import pysam
 import math
+import logging
 from flair.bed_to_gtf import bed_to_gtf
 from statistics import mode
 
@@ -73,8 +74,10 @@ def combine():
                         help="[optional] whether to convert the combined transcriptome bed file to gtf")
     parser.add_argument('-s', '--include_se', action='store_true',
                         help='whether to include single exon isoforms. Default: dont include')
-    parser.add_argument('-f', '--filter', default='usageandlongest',
-                        help='type of filtering. Options: usageandlongest(default), usageonly, none, or a number for the total count of reads required to call an isoform')
+    parser.add_argument('--end_filter', default='longest',
+                        help='type of filtering transcript ends. Options: longest(default), usage, or none, or a number for the maximum amount of ends allowed for a single splice junction chain')
+    parser.add_argument('--min_reads', type=int, default=3,
+                        help='min reads from all samples to call isoform')
 
     args = parser.parse_args()
     manifest = args.manifest
@@ -82,10 +85,12 @@ def combine():
     endwindow = int(args.endwindow)
     minpercentusage = int(args.minpercentusage) / 100.
 
+    logging.info('parsing manifest')
+    # FIXME: remove fasta file input, add genome input, generate reference by getting sequence from genome
     bedfiles, mapfiles, samples, fafiles = [], [], [], []
     for line in open(manifest):
         line = line.rstrip().split('\t')
-        print(line)
+        # print(line)
         if not (3 <= len(line) <= 5):
             raise Exception(f'Expected between 3 to 5 columns in manifest, got {len(line)} in {manifest}')
         samples.append(line[0] + '__' + line[1])
@@ -99,8 +104,10 @@ def combine():
         else:
             mapfiles.append('')
 
+    # all samples have fasta file, so fasta
     generatefa = all([len(x) > 0 for x in fafiles])
 
+    logging.info('loading isoforms from individual samples')
     intronchaintoisos = {}
     sampletoseq = {}
     for i in range(len(samples)):
@@ -188,8 +195,8 @@ def combine():
                     last = cleanisoname(last)
                     sampletoseq[sample][last] = line.rstrip()
 
+    logging.info('combining isoforms')
     finalisostosupport = {}
-
     isocount = 1
     outbed, outcounts = open(outprefix + '.bed', 'w'), open(outprefix + '.counts.tsv', 'w')
     if generatefa:
@@ -202,27 +209,33 @@ def combine():
         collapsedIsos = combineIsos(intronchaintoisos[ichainid], endwindow)
         isse = type(ichainid[-1]) == str
         isfusion = type(ichainid[0]) == tuple
-        longestEnds = (None, None)
-        biggestdiff = 0
         maxintronchainusage = 0
         totintronchaincounts = 0
         ichainendscount = 1
+        ends_for_sorting = []
         for start, end, sample, isoname, isousage, isocounts in collapsedIsos:
-            if abs(end - start) > biggestdiff:
-                longestEnds = (start, end)
             maxisousage = max([x[4] for x in collapsedIsos[(start, end, sample, isoname, isousage, isocounts)]])
             totintronchaincounts += sum([x[5] for x in collapsedIsos[(start, end, sample, isoname, isousage, isocounts)]])
             if maxisousage > maxintronchainusage:
                 maxintronchainusage = maxisousage
-        if args.filter == 'none' or maxintronchainusage > minpercentusage or (args.filter.isnumeric() and totintronchaincounts > int(args.filter)):
-            for start, end, sample, isoname, isousage, isocounts in collapsedIsos:
+            if args.end_filter == 'longest':
+                ends_for_sorting.append((abs(end - start), start, end, sample, isoname, isousage, isocounts))
+            else:
+                ends_for_sorting.append((maxisousage, start, end, sample, isoname, isousage, isocounts))
+        ends_for_sorting.sort(reverse=True)
+        if args.end_filter == 'none' or (maxintronchainusage > minpercentusage and (totintronchaincounts > args.min_reads or totintronchaincounts == 0)): # the only way for the tot counts to be 0 is if there's no map files provided, allow that
+            if args.end_filter in {'longest', 'usage'}:
+                ends_for_sorting = [ends_for_sorting[0]]
+            elif args.end_filter.is_numeric():
+                ends_for_sorting = ends_for_sorting[:int(args.end_filter)]
+            
+            for _, start, end, sample, isoname, isousage, isocounts in ends_for_sorting:
                 theseisos = collapsedIsos[(start, end, sample, isoname, isousage, isocounts)]
                 theseisos.sort(key=lambda x: x[1] - x[0], reverse=True)  # longest first
                 maxisousage = max([x[4] for x in theseisos])
                 totisocounts = sum([x[5] for x in theseisos])
-                if args.filter == 'none' or maxisousage > minpercentusage or \
-                        ((start, end) == longestEnds and not isse and args.filter == 'usageandlongest') or \
-                        (args.filter.isnumeric() and totisocounts > int(args.filter)):
+                if ichainendscount == 1 or (args.end_filter.isnumeric() and (totisocounts > int(args.min_reads) or totisocounts == 0)):
+                    
                     if isfusion:
                         outgene = mode([x[3].split('_')[-1] for x in theseisos])
                         outname = 'flairiso' + str(isocount) + '-' + str(ichainendscount) + '_' + outgene
@@ -245,7 +258,6 @@ def combine():
                             if not outgene:
                                 outgene = mode([x[3].split('_')[-1] for x in theseisos])
                             outname = 'flairiso' + str(isocount) + '-' + str(ichainendscount) + '_' + outgene
-
 
                     # output bed line
                     if isfusion:

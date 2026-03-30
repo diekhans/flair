@@ -219,10 +219,6 @@ class ReadRec:
     def exons(self):
         return get_exons(self)
 
-    # def update_from_juncs(self, new_juncs):
-    #     """Update juncs, keeping chrom, start, end, name, score, strand."""
-    #     self.juncs = tuple(new_juncs)
-
     def reset_from_exons(self, exons):
         """Update ReadRec from a list of Exon objects."""
         self.start = exons[0].start

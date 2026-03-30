@@ -63,14 +63,23 @@ default:
 	@echo "   " make make hub-check huburl=https://public.gi.ucsc.edu/~you/flair/test/hub/hub.txt >&2
 	@exit 1
 
-test: test-base test-with-R
+test:
+	${MAKE} test-base test-with-R
 
-test-base: align-tests quantify-tests \
-	combine-tests predict-productivity-tests diff-iso-usage-tests \
-	plot-usage-tests transcriptome-tests fusion-tests variants-tests \
-	spliceevents-tests partition-tests lib-tests
+test-base:
+	${MAKE} align-tests quantify-tests \
+		combine-tests predict-productivity-tests diff-iso-usage-tests \
+		plot-usage-tests transcriptome-tests fusion-tests variants-tests \
+		spliceevents-tests partition-tests lib-tests
 
-test-with-R: diffexp-tests diffsplice-tests
+test-no-align:
+	${MAKE} quantify-tests \
+		combine-tests predict-productivity-tests diff-iso-usage-tests \
+		plot-usage-tests transcriptome-tests fusion-tests variants-tests \
+		spliceevents-tests partition-tests lib-tests
+
+test-with-R:
+	${MAKE} diffexp-tests diffsplice-tests
 
 test-installed:
 	${MAKE} test use_installed_flair=yes
@@ -78,14 +87,16 @@ test-installed:
 test-base-installed:
 	${MAKE} test-base use_installed_flair=yes
 
-test-help: test-main-help test-align-help \
-           test-quantify-help test-diffexp-help test-diffsplice-help \
-           test-predict-productivity-help test-diff-iso-usage-help \
-	       test-plot-usage-help test-transcriptome-help test-variants-help test-fusion-help
+test-help:
+	${MAKE} test-main-help test-align-help \
+		test-quantify-help test-diffexp-help test-diffsplice-help \
+		test-predict-productivity-help test-diff-iso-usage-help \
+		test-plot-usage-help test-transcriptome-help test-variants-help test-fusion-help
 
-test-fast: test-combine-bed-only \
-           test-predict-productivity test-diff-iso-usage test-plot-usage test-transcriptome \
-		   test-fusion test-variants
+test-fast:
+	${MAKE} test-combine-bed-only \
+		test-predict-productivity test-diff-iso-usage test-plot-usage test-transcriptome \
+		test-fusion test-variants
 
 
 

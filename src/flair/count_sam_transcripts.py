@@ -288,7 +288,7 @@ testtname = 'none'
 def identify_corrected_ends(exoninfo, startpos, endpos, transcript_to_genomic_ends, tname, output_endpos, tlen):
     left_intron_index, left_dist, right_intron_index, right_dist = None, None, None, None
     #Can only correct read ends if assigned to spliced transcript
-    if output_endpos: 
+    if output_endpos:
         if len(exoninfo) > 1:
             gtstrand = transcript_to_genomic_ends[tname][2]
             currpos = 0
@@ -379,11 +379,11 @@ def parse_sam(args, transcript_to_exons, transcript_to_bp_ss_index, transcript_t
                 if args.remove_internal_priming:
                     intprimannot = transcript_to_exons if args.permissive_last_exons else None
                     notinternalpriming = removeinternalpriming(read.reference_name,
-                                                                                       read.reference_start,
-                                                                                       read.reference_end, False,
-                                                                                       genome, None, intprimannot,
-                                                                                       args.intprimingthreshold,
-                                                                                       args.intprimingfracAs)
+                                                               read.reference_start,
+                                                               read.reference_end, False,
+                                                               genome, None, intprimannot,
+                                                               args.intprimingthreshold,
+                                                               args.intprimingfracAs)
                 else: notinternalpriming = True
                 if notinternalpriming:
                     pos = read.reference_start

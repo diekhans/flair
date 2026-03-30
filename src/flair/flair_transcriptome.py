@@ -215,7 +215,7 @@ class AnnotData(object):
         # list of (start, end, strand, gene_id):
         # FIXME: rename once it is figured out how this works in get_single_exon_gene_overlaps
         # FIXME: make set
-        self.all_annot_SE = []
+        self.all_annot_SE = {'+':{}, '-':{}}
 
         # map of strand to map of gene_id  to set of (start, end)
         # FIXME: why is strand needed here
@@ -249,19 +249,18 @@ def save_transcript_annot_to_region(transcript_id, gene_id, region, regions_to_a
     # regions is tuple of ('chr20', 0, 64444167)
     # FIXME: t_exons are list of (32186476, 32190360)
     assert isinstance(t_exons[0], Exon)  # FIXME tmp debugging
-    sorted_exons = sorted(t_exons)
     annots = regions_to_annot_data[region]
-    annots.transcript_to_exons[(transcript_id, gene_id)] = tuple(sorted_exons)
-    juncs = exons_to_juncs(sorted_exons)
+    annots.transcript_to_exons[(transcript_id, gene_id)] = tuple(t_exons)
+    juncs = exons_to_juncs(t_exons)
     annots.transcripts.append((transcript_id, gene_id, strand))
     if gene_id not in annots.gene_to_strand:
         annots.gene_to_strand[gene_id] = strand
     if len(juncs) == 0:
-        annots.all_annot_SE.append((t_start, t_end, strand, gene_id))
+        annots.all_annot_SE[strand].append(Exon(t_start, t_end, gene_id))
     else:
         if gene_id not in annots.spliced_exons[strand]:
             annots.spliced_exons[strand][gene_id] = set()
-        annots.spliced_exons[strand][gene_id].update(set(sorted_exons))
+        annots.spliced_exons[strand][gene_id].update(set(t_exons))
         annots.juncchain_to_transcript[tuple(juncs)] = (transcript_id, gene_id)
         if gene_id not in annots.gene_to_annot_juncs:
             annots.gene_to_annot_juncs[gene_id] = set()
@@ -270,7 +269,8 @@ def save_transcript_annot_to_region(transcript_id, gene_id, region, regions_to_a
                 annots.junc_to_gene[j] = set()
             annots.junc_to_gene[j].add((transcript_id, gene_id))
             annots.gene_to_annot_juncs[gene_id].add(j)
-    annots.all_annot_SE = sorted(annots.all_annot_SE)  # FIXME: make set?
+    for strand in ['+', '-']:
+        annots.all_annot_SE[strand] = sorted(annots.all_annot_SE[strand])  # FIXME: make set? Colette note: needs to be sorted for binary search later
 
 
 def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound):
@@ -814,6 +814,7 @@ def _process_junc_ends(args, isoforms, firstpass_unfiltered, firstpass_junc_to_n
         _add_end_to_firstpass(isoform, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh)
 
 def _process_junc(args, isoform, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh, iso_unfilt_fh):
+    # NOTE: Harrison's TED code will be slotted in here to replace collapse_end_groups
     these_firstpass = collapse_end_groups(args.end_window, isoform)
     _write_unfiltered_ends(these_firstpass, iso_unfilt_fh)
     _process_junc_ends(args, these_firstpass, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh)
@@ -823,6 +824,9 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, regio
     sjc_with_overlap_groups = {}
     for juncs, isoform in sj_to_ends.items():
         if len(juncs) > 0:
+            # FIXME Add strand correction here for multi-junction genes too if needed
+            # currently strand is just randomly based off of single read in group
+            # however, if read is correctly stranded based on junctions, all reads with same junctions should have same strand, so correction here shouldn't be necessary
             sjc_with_overlap_groups[(median(isoform.starts), median(isoform.ends), juncs)] = isoform
         else:
             reads = isoform.reads
@@ -845,9 +849,15 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, regio
                 # FIXME here is where you might want to add single exon strand correction
                 # assign new strand, filter out reads that don't match strand??
                 # and/or separate by strand?
+                # FIXME Stranding needs to happen before read collapsing
+                # FIXME here we could: filter and strand based on read polyA if isoform is single exon
+                # FIXME we could filter out single exon isoforms with no polyA info or disagreeing polyA info
+                # FIXME could also consider read-level internal priming here
+                # FIXME would maybe have to generate sub-groups based on strand?
                 new_key = (median([x.start for x in group]), median([x.end for x in group]), juncs)
                 sjc_with_overlap_groups[new_key] = IsoWithReads.from_other(isoform, newreads = group)
     
+    # FIXME everything below here requires confidence in transcript strand
     novel_gene_isos_to_group = get_gene_names_firstpass(sjc_with_overlap_groups, annots)
     # generating non-gene iso groups
     for strand in novel_gene_isos_to_group:
@@ -970,22 +980,22 @@ def get_genes_with_shared_juncs(juncs, annots):
     return gene_hits
 
 
-def get_single_exon_gene_overlaps(iso_readrec, annots):
+def get_single_exon_gene_overlaps(strand, iso_readrec, annots):
     gene_hits = {}
     exon = iso_readrec.exons[0]
-    index = binary_search(exon, annots.all_annot_SE)
+    index = binary_search(exon, annots.all_annot_SE[strand])
     # FIXME: how does this ever work? all_annot_SE is [(start, end, strand, gene_id), ...]
-    for annot_exon_info in annots.all_annot_SE[index - ANNOT_SE_SEARCH_WINDOW:index + ANNOT_SE_SEARCH_WINDOW]:
+    for annot_exon_info in annots.all_annot_SE[strand][index - ANNOT_SE_SEARCH_WINDOW:index + ANNOT_SE_SEARCH_WINDOW]:
         # FIXME: make overlap a function
-        overlap = min(exon.end, annot_exon_info[1]) - max(exon.start, annot_exon_info[0])
+        overlap = min(exon.end, annot_exon_info.end) - max(exon.start, annot_exon_info.start)
         if overlap > 0:
             # base coverage of long-read isoform by the annotated isoform
             frac_of_iso = float(overlap) / (exon.end - exon.start)
             # base coverage of the annotated isoform by the long-read isoform
-            frac_of_annot = float(overlap) / (annot_exon_info[1] - annot_exon_info[0])
+            frac_of_annot = float(overlap) / (annot_exon_info.end - annot_exon_info.start)
             if frac_of_iso > MIN_ISOFORM_OVERLAP_FRAC and frac_of_annot > MIN_ANNOT_OVERLAP_FRAC:
-                if annot_exon_info[3] not in gene_hits or frac_of_iso > gene_hits[annot_exon_info[3]][0]:
-                    gene_hits[annot_exon_info[3]] = [frac_of_iso, frac_of_annot]
+                if annot_exon_info.name not in gene_hits or frac_of_iso > gene_hits[annot_exon_info.name][0]:
+                    gene_hits[annot_exon_info.name] = [frac_of_iso, frac_of_annot]
     return gene_hits
 
 def get_spliced_exon_overlaps(strand, exons, annots):
@@ -1020,10 +1030,11 @@ def _get_transcript_gene_from_annot(iso_readrec, annots, annot_name_to_used_coun
 
 def _find_gene_id_by_overlap(iso_readrec, annots):
     """Find gene_id for an isoform without a matching junction chain, using junction or exon overlap."""
+    # FIXME this all requires that we already trust the strand of the transcript
     if iso_readrec.juncs != ():
         gene_hits = get_genes_with_shared_juncs(iso_readrec.juncs, annots)
     else:
-        gene_hits = get_single_exon_gene_overlaps(iso_readrec, annots)
+        gene_hits = get_single_exon_gene_overlaps(iso_readrec.strand, iso_readrec, annots)
     if gene_hits:
         return sorted(gene_hits.items(), key=lambda x: x[1], reverse=True)[0][0]
     else:
@@ -1031,8 +1042,7 @@ def _find_gene_id_by_overlap(iso_readrec, annots):
         if iso_readrec.strand != 'ambig':
             gene_hits = get_spliced_exon_overlaps(iso_readrec.strand, iso_readrec.exons, annots)
         else:
-            gene_hits = (get_spliced_exon_overlaps('+', iso_readrec.exons, annots) +
-                         get_spliced_exon_overlaps('-', iso_readrec.exons, annots))
+            gene_hits = get_spliced_exon_overlaps(iso_readrec.strand, iso_readrec.exons, annots)
         if gene_hits:
             gene_hits.sort(reverse=True)
             if iso_readrec.strand == 'ambig':

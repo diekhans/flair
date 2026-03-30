@@ -180,8 +180,8 @@ class ReadRec:
         self.end = end
         self.name = name
         self.score = score
-        self.polyA = None
-        self.intprim = None
+        self.polyA = None # FIXME possible values could be None, left, right (right, 10)
+        self.intprim = None 
     
     @property
     def exons(self):

@@ -35,6 +35,8 @@ def parse_args():
                         help='''max loci detected in fusion. Set higher for detection of 3-gene+ fusions''')
     parser.add_argument('--max_dist_to_TSS', type=int, default=15000,
                         help='''maximum allowed distance of 5' alignment to TSS of annotated transcript. To not check this, set to -1''')
+    parser.add_argument('--min_dist_between_bp', type=int, default=100000,
+                        help='''minimum allowed distance between breakpoints when they are on the same strand. Removes read-through transcripts.''')
     parser.add_argument('--keep_intermediate', default=False, action='store_true',
                         help='''keep intermediate and temporary files for debugging purposes''')
 
@@ -321,11 +323,6 @@ def detectfusions():
     
     
     print('getting ss')
-    # bamtobedcmd = ('bedtools', 'bamtobed', '-bed12', '-i', args.output + '.syntheticAligned.bam')
-    # getsscommand = ['python3', path + 'synthetic_splice_sites.py', args.output + '.syntheticAligned.bed',
-                        # args.output + '-syntheticReferenceAnno.gtf', args.output + '.syntheticAligned.SJ.bed', args.output + '-syntheticBreakpointLoc.bed', '8', '2', args.output + '-syntheticFusionGenome.fa']#'15', '2']
-    # pipettor.run([bamtobedcmd], stdout=args.output + '.syntheticAligned.bed')
-    # pipettor.run([getsscommand])
     
     ipcmd = ('intronProspector', f'--genome-fasta={args.output}-syntheticFusionGenome.fa', f'--intron-bed6={args.output}.syntheticAligned.IPSJ.bed', '-C', '0.0', '--sj-filter=all', f'{args.output}.syntheticAligned.bam')
     pipettor.run([ipcmd])
@@ -412,7 +409,7 @@ def detectfusions():
             line[0] = oldnametonewname[line[0]]
             out.write('\t'.join(line))
     out.close()
-    out = open(args.output + '.syntheticAligned.isoform.counts.txt', 'w')
+    out = open(args.output + '.isoform.counts.txt', 'w')
     for line in open(args.output + '.syntheticAligned.flair.isoform.counts.txt'):
         line = line.split('\t', 1)
         if line[0] in oldnametonewname:
@@ -423,7 +420,7 @@ def detectfusions():
     print('converting coordinates from synthetic to genomic')
     convert_synthetic_isos(args.output + '.syntheticAligned.isoforms.bed',
                       args.output + '.syntheticAligned.isoform.read.map.txt', freadsname,
-                      args.output + '-syntheticBreakpointLoc.bed', args.output + '.fusions.isoforms.bed')
+                      args.output + '-syntheticBreakpointLoc.bed', args.output + '.fusions.isoforms.bed', args.min_dist_between_bp)
     goodisos = set()
     for line in open(args.output + '.fusions.isoforms.bed'):
         line = line.rstrip().split('\t')

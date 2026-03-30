@@ -156,12 +156,13 @@ def convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusboun
         outlines.append('\t'.join(outline) + '\n')
     return genomicbounds, outlines
 
-def check_too_close(numloci, genomicbounds):
+def check_too_close(numloci, genomicbounds, min_dist):
     for i in range(numloci - 1):
         if genomicbounds[i][0] == genomicbounds[i + 1][0] and genomicbounds[i][3] == genomicbounds[i + 1][3]: #chrom and strand are same
-            if genomicbounds[i][3] == '+' and 0 < genomicbounds[i+1][1] - genomicbounds[i][2] < 350000:
+            if genomicbounds[i][3] == '+' and 0 < genomicbounds[i+1][1] - genomicbounds[i][2] < min_dist:
                 return True
-            elif genomicbounds[i][3] == '-' and 0 < genomicbounds[i][1] - genomicbounds[i+1][2] < 350000:
+            # when in negative direction, bounds are flipped 
+            elif genomicbounds[i][3] == '-' and 0 < genomicbounds[i][2] - genomicbounds[i+1][1] < min_dist:
                 return True
     return False
 
@@ -193,7 +194,7 @@ def write_final_fusion_reads(readsfile, freadsfinal):
     freads.close()
 
 
-def convert_synthetic_isos(isoformsbed, readmapfile, readsfile, breakpointfile, outname):
+def convert_synthetic_isos(isoformsbed, readmapfile, readsfile, breakpointfile, outname, min_dist):
     isoreadsup = get_iso_to_reads(readmapfile)
     synthchrtoinfo = get_synth_info(breakpointfile)
 
@@ -214,7 +215,7 @@ def convert_synthetic_isos(isoformsbed, readmapfile, readsfile, breakpointfile, 
 
             if None not in starts:
                 genomicbounds, outlines = convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusbounds, esizes, estarts, start, iso)
-                if not check_too_close(numloci, genomicbounds):
+                if not check_too_close(numloci, genomicbounds, min_dist):
                     for l in outlines:
                         out.write(l)
                     freadsfinal.update(isoreadsup[iso])

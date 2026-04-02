@@ -160,7 +160,6 @@ def get_exons(readrec):
 #         self.strand = strand
 #         self.juncs = self._intern_juncs(juncs)
 
-
 def check_intprim(end_seq):
     i = 10
     while i < len(end_seq) and end_seq[:i].count('A') / i >= INTPRIM_MIN_FRAC:
@@ -270,7 +269,6 @@ class ReadRec:
         if junc_direction not in {'+', '-'}:
             junc_direction = "-" if read.is_reverse else "+"
         juncs = tuple(Junc(blk[0], blk[1]) for blk in intron_blocks)
-
         left_polyA, right_polyA = cls._get_both_polyA(read)
         left_intprim, right_intprim = 0, 0
         if genome is not None:

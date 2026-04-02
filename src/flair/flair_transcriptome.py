@@ -702,7 +702,6 @@ def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_cor
 
     # FIXME add polyA and internal priming detection to building readRec
     readrec = ReadRec.from_read(read, genome=genome)
-
     if read.query_name in read_to_annot_transcript:
         transcript, startindex, startdist, endindex, enddist = read_to_annot_transcript[read.query_name]
         transcript, gene = transcript.split('_')
@@ -724,7 +723,6 @@ def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_cor
             corrected_read = read_correct_to_readrec(junction_corrector, readrec)
     else:
         # FIXME add strand correction to junction correction here
-        # added arg (args.trust_strand), which should be checked here for whether or not to do strand correction
         corrected_read = read_correct_to_readrec(junction_corrector, readrec)
     if corrected_read:
         add_corrected_read_to_groups(corrected_read, sj_to_ends)

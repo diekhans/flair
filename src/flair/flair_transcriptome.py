@@ -23,6 +23,8 @@ from flair.read_processing import (should_process_read, add_corrected_read_to_gr
                                     generate_genomic_alignment_read_to_clipping_file)
 from flair.count_sam_transcripts import TRUST_ENDS_WINDOW
 
+MIN_POLYA_FRAC_DIFF_FOR_SE_STRANDING = 0.1
+
 # FIXME: temporarily disabled C901 (too complex) in .flake8
 # FIXME: add object for all file names
 # FIXME: use real TSVs
@@ -128,6 +130,8 @@ def get_args():
                         help='specify if want to allow reads to be assigned to multiple paralogs with equivalent alignment')
     parser.add_argument('--generate_map', default=False, action='store_true',
                         help='''specify this argument to generate a txt file of read-isoform assignments''')
+    parser.add_argument('--trust_strand', default=False, action='store_true',
+                        help='''specify if you want FLAIR to trust the stranding of the input reads and not attempt strand correction''')
     args = parser.parse_args()
     args.parallel_mode = parallel_mode_parse(parser, args.parallel_mode)
     args.trust_ends = False
@@ -723,6 +727,7 @@ def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_cor
             corrected_read = read_correct_to_readrec(junction_corrector, readrec)
     else:
         # FIXME add strand correction to junction correction here
+        # added arg (args.trust_strand), which should be checked here for whether or not to do strand correction
         corrected_read = read_correct_to_readrec(junction_corrector, readrec)
     if corrected_read:
         add_corrected_read_to_groups(corrected_read, sj_to_ends)
@@ -818,43 +823,73 @@ def _process_junc(args, isoform, firstpass_unfiltered, firstpass_junc_to_name, f
     _write_unfiltered_ends(these_firstpass, iso_unfilt_fh)
     _process_junc_ends(args, these_firstpass, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh)
 
-def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, region_chrom):
-    # FIXME separate into separate method
+
+def correct_se_strand_polyA(read_group, se_support):
+    # strand correction for single exon genes based on location of polyA tail sequence
+    left_polyA = [read.polyA[0] for read in read_group]
+    right_polyA = [read.polyA[1] for read in read_group]
+    num_reads = len(read_group)
+    
+    left_polyA_count = sum([1 for x in left_polyA if x > 0])
+    right_polyA_count = sum([1 for x in right_polyA if x > 0])
+
+    left_polyA_frac = left_polyA_count/num_reads
+    right_polyA_frac = right_polyA_count/num_reads
+
+    if abs(left_polyA_frac - right_polyA_frac) > MIN_POLYA_FRAC_DIFF_FOR_SE_STRANDING:
+        if max((left_polyA_count, right_polyA_count)) >= se_support:
+            if right_polyA_count > left_polyA_count:
+                return '+'
+            else:
+                return '-'
+    return None
+
+def group_reads_by_overlap(reads):
+    reads.sort(key=lambda x:[x.start, x.end])
+    last_start, last_end, read_group = -1, -1, []
+    read_groups = []
+    for r in reads:
+        if r.start >= last_end:
+            read_groups.append(read_group)
+            last_start, last_end = r.start, r.end
+            read_group = []
+        if r.end > last_end:
+            last_end = r.end
+        read_group.append(r)
+    read_groups.append(read_group)
+    return read_groups
+
+def group_se_by_overlap(isoform, se_support, trust_strand):
+    for read_group in group_reads_by_overlap(isoform.reads):
+        if read_group != []:
+            if trust_strand:
+                # get most common read strand for group
+                read_strands = [x.strand for x in read_group]
+                new_strand = max(set(read_strands), key=read_strands.count)
+            else:
+                # correct based on polyA
+                new_strand = correct_se_strand_polyA(read_group, se_support)
+            # filter out single exon groups that fail stranding
+            if new_strand is not None:
+                new_key = (median([x.start for x in read_group]), median([x.end for x in read_group]), ())
+                yield new_key, new_strand, read_group
+
+        
+def group_by_overlap(sj_to_ends, se_support, trust_strand):
     sjc_with_overlap_groups = {}
     for juncs, isoform in sj_to_ends.items():
         if len(juncs) > 0:
-            # FIXME Add strand correction here for multi-junction genes too if needed
-            # currently strand is just randomly based off of single read in group
-            # however, if read is correctly stranded based on junctions, all reads with same junctions should have same strand, so correction here shouldn't be necessary
+            # NOTE: if strand correction has already been done from junctions, shouldn't need any additional strand correction here
             sjc_with_overlap_groups[(median(isoform.starts), median(isoform.ends), juncs)] = isoform
         else:
-            reads = isoform.reads
-            reads.sort(key=lambda x:[x.start, x.end])
-            last_start, last_end, group = -1, -1, []
-            for r in reads:
-                if r.start >= last_end:
-                    if group != []:
-                        # FIXME here is where you might want to add single exon strand correction
-                        # assign new strand, filter out reads that don't match strand??
-                        # and/or separate by strand?
-                        new_key = (int(median([x.start for x in group])), int(median([x.end for x in group])), juncs)
-                        sjc_with_overlap_groups[new_key] = IsoWithReads.from_other(isoform, newreads = group)
-                    last_start, last_end = r.start, r.end
-                    group = []
-                if r.end > last_end:
-                    last_end = r.end
-                group.append(r)
-            if group != []:
-                # FIXME here is where you might want to add single exon strand correction
-                # assign new strand, filter out reads that don't match strand??
-                # and/or separate by strand?
-                # FIXME Stranding needs to happen before read collapsing
-                # FIXME here we could: filter and strand based on read polyA if isoform is single exon
-                # FIXME we could filter out single exon isoforms with no polyA info or disagreeing polyA info
-                # FIXME could also consider read-level internal priming here
-                # FIXME would maybe have to generate sub-groups based on strand?
-                new_key = (median([x.start for x in group]), median([x.end for x in group]), juncs)
-                sjc_with_overlap_groups[new_key] = IsoWithReads.from_other(isoform, newreads = group)
+            for new_key, new_strand, read_group in group_se_by_overlap(isoform, se_support, trust_strand):
+                sjc_with_overlap_groups[new_key] = IsoWithReads.from_other(isoform, newreads = read_group, newstrand=new_strand)
+            
+    return sjc_with_overlap_groups
+
+
+def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, region_chrom):
+    sjc_with_overlap_groups = group_by_overlap(sj_to_ends, args.se_support, args.trust_strand)
     
     # FIXME everything below here requires confidence in transcript strand
     novel_gene_isos_to_group = get_gene_names_firstpass(sjc_with_overlap_groups, annots)

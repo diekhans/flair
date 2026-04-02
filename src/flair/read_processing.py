@@ -38,6 +38,10 @@ def get_sequence_from_bed(genome, input_bed, output_fa):
 def add_corrected_read_to_groups(corrected_read, sj_to_ends):
     """Add a corrected read to the junction-to-ends mapping"""
     junc_key = tuple(sorted(corrected_read.juncs)) # FIXME add chromosome and strand to key
+    # FIXME
+    # For single exon reads, adding the strand to the key would automatically separate single exons by strand
+    # Is this what we want to do or do we want to group by overlap and then check for strand consensus?
+    # Current thoughts (Colette): can we group by overlap first, then do strand correction based on consensus of reads with polyA tails?
     # FIXME check to see if a given junction chain is on both strands, throw error
     if junc_key not in sj_to_ends:
         sj_to_ends[junc_key] = IsoWithReads.from_readrec(corrected_read)
@@ -64,9 +68,9 @@ def generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, regi
                 name = read.query_name
                 cigar = read.cigartuples
                 tot_clipped = 0
-                if cigar[0][0] in {4, 5}:
+                if cigar[0][0] in {pysam.CIGAR_OPS.CSOFT_CLIP, pysam.CIGAR_OPS.CHARD_CLIP}:
                     tot_clipped += cigar[0][1]
-                if cigar[-1][0] in {4, 5}:
+                if cigar[-1][0] in {pysam.CIGAR_OPS.CSOFT_CLIP, pysam.CIGAR_OPS.CHARD_CLIP}:
                     tot_clipped += cigar[-1][1]
                 clipping_fh.write(name + '\t' + str(tot_clipped) + '\n')
     return c, temp_prefix + '.reads.genomicclipping.txt'

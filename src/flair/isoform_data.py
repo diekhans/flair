@@ -6,6 +6,10 @@ from flair.pycbio.hgdata.bed import Bed
 from statistics import median
 
 
+INTPRIM_MIN_FRAC = 0.6
+INTPRIM_MIN_AS = 8
+INTPRIM_SEARCH_WINDOW = 50
+
 ####
 # basic types
 ####
@@ -152,7 +156,31 @@ def get_exons(readrec):
 #         self.strand = strand
 #         self.juncs = self._intern_juncs(juncs)
 
-    
+  
+def check_intprim(end_seq, intprimfrac, min_As):
+    i = 10
+    while i < len(end_seq) and end_seq[:i].count('A')/i >= intprimfrac:
+        i += 1
+    j = end_seq[:i].count('A')
+    if j < min_As or j/i < intprimfrac:
+        return 0
+    else: 
+        return j
+
+def check_polyA(end_seq):
+    if len(end_seq) < 5:
+        return 0
+    else:
+        i = 5
+        while i < len(end_seq) and end_seq[i-5:i].count('A')/5 >= 0.6: #check rolling average of 5bp
+            i += 1
+        # return i
+        j = end_seq[:i].rfind('A') + 1
+        if j < 10:
+            return 0
+        else:
+            return j
+
 
 class ReadRec:
     """Read alignment with location, junction, and metadata fields.
@@ -172,7 +200,7 @@ class ReadRec:
     def _intern_juncs(cls, juncs):
         return cls._juncs_cache.setdefault(juncs, juncs)
 
-    def __init__(self, chrom, strand, juncs, start, end, name, score=None):
+    def __init__(self, chrom, strand, juncs, start, end, name, *, score=None, polyA=None, intprim=None):
         self.chrom = chrom
         self.strand = strand
         self.juncs = self._intern_juncs(juncs)
@@ -180,8 +208,8 @@ class ReadRec:
         self.end = end
         self.name = name
         self.score = score
-        self.polyA = None # FIXME possible values could be None, left, right (right, 10)
-        self.intprim = None 
+        self.polyA = polyA # (left int, right int)
+        self.intprim = intprim # (left int, right int)
     
     @property
     def exons(self):
@@ -197,8 +225,31 @@ class ReadRec:
         self.end = exons[-1].end
         self.juncs = tuple(exons_to_juncs(sorted(exons)))
     
+    def _get_both_intprim(read, genome):
+        left_intprim, right_intprim = 0, 0
+        if read.reference_start > INTPRIM_SEARCH_WINDOW:
+            end_seq = get_reverse_complement(genome.fetch(read.reference_name, read.reference_start-INTPRIM_SEARCH_WINDOW, read.reference_start))
+            left_intprim = check_intprim(end_seq, INTPRIM_MIN_FRAC, INTPRIM_MIN_AS)
+        if read.reference_end + INTPRIM_SEARCH_WINDOW < genome.get_reference_length(read.reference_name):
+            end_seq = genome.fetch(read.reference_name, read.reference_end, read.reference_end + INTPRIM_SEARCH_WINDOW).upper()
+            right_intprim = check_intprim(end_seq, INTPRIM_MIN_FRAC, INTPRIM_MIN_AS)
+        return left_intprim, right_intprim 
+
+    def _get_both_polyA(read):
+        left_polyA, right_polyA = 0, 0
+        read_seq = read.query_sequence
+        if read.cigartuples[0][0] == 4: #check left polyA
+            end_seq = get_reverse_complement(read_seq[:read.cigartuples[0][1]])
+            left_polyA = check_polyA(end_seq)
+        if read.cigartuples[-1][0] == 4: #check right polyA
+            end_seq = read_seq[-1 * read.cigartuples[-1][1]:]
+            right_polyA = check_polyA(end_seq)
+        return left_polyA, right_polyA
+
+
+        
     @classmethod
-    def from_read(cls, read, junc_direction=None):
+    def from_read(cls, read, junc_direction=None, *, genome=None):
         """Create a ReadRec from a pysam aligned read."""
         # FIXME switch to pycbio.hgdata.cigar
         align_start = read.reference_start
@@ -221,12 +272,19 @@ class ReadRec:
         if junc_direction not in {'+', '-'}:
             junc_direction = "-" if read.is_reverse else "+"
         juncs = tuple(Junc(blk[0], blk[1]) for blk in intron_blocks)
-        return cls(read.reference_name, junc_direction, juncs, align_start, ref_pos, read.query_name)
+        
+        left_polyA, right_polyA = cls._get_both_polyA(read)
+        left_intprim, right_intprim = 0, 0
+        if genome is not None:
+            left_intprim, right_intprim = cls._get_both_intprim(read, genome)
+
+        
+        return cls(read.reference_name, junc_direction, juncs, align_start, ref_pos, read.query_name, polyA=(left_polyA, right_polyA), intprim=(left_intprim, right_intprim))
 
     @classmethod
-    def from_junctions(cls, chrom, start, end, name, score, strand, juncs):
+    def from_junctions(cls, chrom, start, end, name, score, strand, juncs, *, polyA=None, intprim=None):
         """Create a ReadRec from junction coordinates."""
-        return cls(chrom, strand, tuple(juncs), start, end, name, score)
+        return cls(chrom, strand, tuple(juncs), start, end, name, score=score, polyA=polyA, intprim=intprim)
 
 
 class IsoWithReads:

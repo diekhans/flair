@@ -215,7 +215,7 @@ class AnnotData(object):
         # list of (start, end, strand, gene_id):
         # FIXME: rename once it is figured out how this works in get_single_exon_gene_overlaps
         # FIXME: make set
-        self.all_annot_SE = {'+':{}, '-':{}}
+        self.all_annot_SE = {'+':[], '-':[]}
 
         # map of strand to map of gene_id  to set of (start, end)
         # FIXME: why is strand needed here
@@ -696,11 +696,11 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
     return read_to_transcript
 
 
-def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends):
+def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends, genome):
     """Correct a single read's splice junctions and add it to sj_to_ends groups."""
     
     # FIXME add polyA and internal priming detection to building readRec
-    readrec = ReadRec.from_read(read)
+    readrec = ReadRec.from_read(read, genome=genome)
     
     if read.query_name in read_to_annot_transcript:
         transcript, startindex, startdist, endindex, enddist = read_to_annot_transcript[read.query_name]
@@ -713,30 +713,29 @@ def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_cor
             newend = juncs[endindex][1] + enddist
             juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex + 1]])
             # FIXME this is read correction based on annotated transcript, also correct strand based on annotated transcript strand
-            # FIXME add polyA tail and internal priming info from readrec to new corrected readrec
+            # DONE add polyA tail and internal priming info from readrec to new corrected readrec
             strand = '-' if read.is_reverse else '+'
             corrected_read = ReadRec.from_junctions(read.reference_name, newstart, newend,
                                                    read.query_name, read.mapping_quality,
-                                                   strand, juncs)
+                                                   strand, juncs, polyA=readrec.polyA, intprim=readrec.intprim)
         else:
-            # FIXME add strand correction based on polyA tail here
-            # throw out reads with no polyA tail
-            # Actually maybe don't throw out here, save single exon correction for after overlap grouping
+            # no need to add strand correction for single exon here, will deal with it later
             corrected_read = read_correct_to_readrec(junction_corrector, readrec)
     else:
+        # FIXME add strand correction to junction correction here
         corrected_read = read_correct_to_readrec(junction_corrector, readrec)
     if corrected_read:
         add_corrected_read_to_groups(corrected_read, sj_to_ends)
 
 def filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_annot_transcript, annots,
-                               junction_corrector, *, sj_to_ends=None,
+                               junction_corrector, genome, *, sj_to_ends=None,
                                allow_secondary=False):
     """Filter reads, correct splice junctions, and group by junction chain."""
     if sj_to_ends is None:
         sj_to_ends = {}
     for read in bam_file.fetch(region.name, region.start, region.end):
         if should_process_read(read, region, args.quality, args.keep_sup, allow_secondary):
-            _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends)
+            _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends, genome)
     return sj_to_ends
 
 
@@ -1235,7 +1234,7 @@ def _run_region(*, partition, gtf_data, intron_support, args):
     # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
     # this also handles read strandedness if necessary
     sj_to_ends = filter_correct_group_reads(args, partition.file_prefix, region, bam_file, read_to_annot_transcript, annots,
-                                            junction_corrector)
+                                            junction_corrector, genome)
     bam_file.close()
 
 

@@ -1265,7 +1265,7 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
                     gene_to_juncs[gene] = {}
                 if juncs not in gene_to_juncs[gene]:
                     gene_to_juncs[gene][juncs] = []
-                gene_to_juncs[gene][juncs].append(ReadRec(None, strand, (), int(start), int(end), readname, None))
+                gene_to_juncs[gene][juncs].append(ReadRec(None, strand, (), int(start), int(end), readname))
             allgenetojuncs.append(gene_to_juncs)
         
         process_gene_to_events(partition.file_prefix, partition.region.name, [x[0] for x in allsamples], allgenetojuncs, gene_to_strand, args.junc_support, args.output_read_ends, args.event_frac_of_tot, args.junc_frac_of_event, args.event_support, annot_afe_ss, annot_ale_ss, args.check_outliers)

@@ -11,7 +11,7 @@ usage: transcriptome [-h] -b GENOME_ALIGNED_BAM -g GENOME [-o OUTPUT]
                      [--predict_cds] [--keep_intermediate] [--keep_sup]
                      [--end_norm_dist END_NORM_DIST] [--output_endpos]
                      [--output_bam] [--fusion_breakpoints FUSION_BREAKPOINTS]
-                     [--allow_paralogs] [--generate_map]
+                     [--allow_paralogs] [--generate_map] [--trust_strand]
 
 generates confident transcript models directly from a bam file of aligned long
 rna-seq reads
@@ -122,3 +122,5 @@ options:
                         multiple paralogs with equivalent alignment
   --generate_map        specify this argument to generate a txt file of read-
                         isoform assignments
+  --trust_strand        specify if you want FLAIR to trust the stranding of
+                        the input reads and not attempt strand correction

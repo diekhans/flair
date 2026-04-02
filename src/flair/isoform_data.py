@@ -4,8 +4,12 @@ from collections import namedtuple
 from flair import PosRange
 from flair.pycbio.hgdata.bed import Bed
 from statistics import median
+import pysam
 
 
+POLYA_MIN_FRAC = 0.6
+POLYA_SEARCH_WINDOW = 5
+POLYA_MIN_LEN = 10
 INTPRIM_MIN_FRAC = 0.6
 INTPRIM_MIN_AS = 8
 INTPRIM_SEARCH_WINDOW = 50
@@ -157,26 +161,26 @@ def get_exons(readrec):
 #         self.juncs = self._intern_juncs(juncs)
 
   
-def check_intprim(end_seq, intprimfrac, min_As):
+def check_intprim(end_seq):
     i = 10
-    while i < len(end_seq) and end_seq[:i].count('A')/i >= intprimfrac:
+    while i < len(end_seq) and end_seq[:i].count('A')/i >= INTPRIM_MIN_FRAC:
         i += 1
     j = end_seq[:i].count('A')
-    if j < min_As or j/i < intprimfrac:
+    if j < INTPRIM_MIN_AS or j/i < INTPRIM_MIN_FRAC:
         return 0
     else: 
         return j
 
 def check_polyA(end_seq):
-    if len(end_seq) < 5:
+    if len(end_seq) < POLYA_SEARCH_WINDOW:
         return 0
     else:
-        i = 5
-        while i < len(end_seq) and end_seq[i-5:i].count('A')/5 >= 0.6: #check rolling average of 5bp
+        i = POLYA_SEARCH_WINDOW
+        while i < len(end_seq) and end_seq[i-POLYA_SEARCH_WINDOW:i].count('A')/POLYA_SEARCH_WINDOW >= POLYA_MIN_FRAC: #check rolling average of 5bp
             i += 1
         # return i
         j = end_seq[:i].rfind('A') + 1
-        if j < 10:
+        if j < POLYA_MIN_LEN:
             return 0
         else:
             return j
@@ -229,19 +233,19 @@ class ReadRec:
         left_intprim, right_intprim = 0, 0
         if read.reference_start > INTPRIM_SEARCH_WINDOW:
             end_seq = get_reverse_complement(genome.fetch(read.reference_name, read.reference_start-INTPRIM_SEARCH_WINDOW, read.reference_start))
-            left_intprim = check_intprim(end_seq, INTPRIM_MIN_FRAC, INTPRIM_MIN_AS)
+            left_intprim = check_intprim(end_seq)
         if read.reference_end + INTPRIM_SEARCH_WINDOW < genome.get_reference_length(read.reference_name):
             end_seq = genome.fetch(read.reference_name, read.reference_end, read.reference_end + INTPRIM_SEARCH_WINDOW).upper()
-            right_intprim = check_intprim(end_seq, INTPRIM_MIN_FRAC, INTPRIM_MIN_AS)
+            right_intprim = check_intprim(end_seq)
         return left_intprim, right_intprim 
 
     def _get_both_polyA(read):
         left_polyA, right_polyA = 0, 0
         read_seq = read.query_sequence
-        if read.cigartuples[0][0] == 4: #check left polyA
+        if read.cigartuples[0][0] == pysam.CIGAR_OPS.CSOFT_CLIP: #check left polyA
             end_seq = get_reverse_complement(read_seq[:read.cigartuples[0][1]])
             left_polyA = check_polyA(end_seq)
-        if read.cigartuples[-1][0] == 4: #check right polyA
+        if read.cigartuples[-1][0] == pysam.CIGAR_OPS.CSOFT_CLIP: #check right polyA
             end_seq = read_seq[-1 * read.cigartuples[-1][1]:]
             right_polyA = check_polyA(end_seq)
         return left_polyA, right_polyA
@@ -257,7 +261,7 @@ class ReadRec:
         intron_blocks = []
         has_match = False
         for block in read.cigartuples:
-            if block[0] == 3:  # intron
+            if block[0] == pysam.CIGAR_OPS.CREF_SKIP:  # intron
                 if has_match:
                     intron_blocks.append([ref_pos, ref_pos + block[1]])
                 # this fixes weird bug if there's an intron, then an insertion, then another intron???
@@ -265,9 +269,9 @@ class ReadRec:
                     intron_blocks[-1][1] += block[1]
                 has_match = False
                 ref_pos += block[1]
-            elif block[0] in {0, 7, 8, 2}:  # consumes reference
+            elif block[0] in {pysam.CIGAR_OPS.CMATCH, pysam.CIGAR_OPS.CEQUAL, pysam.CIGAR_OPS.CDIFF, pysam.CIGAR_OPS.CDEL}:  # consumes reference
                 ref_pos += block[1]
-                if block[0] in {0, 7, 8}:
+                if block[0] in {pysam.CIGAR_OPS.CMATCH, pysam.CIGAR_OPS.CEQUAL, pysam.CIGAR_OPS.CDIFF}:
                     has_match = True
         if junc_direction not in {'+', '-'}:
             junc_direction = "-" if read.is_reverse else "+"
@@ -375,6 +379,8 @@ class IsoWithReads:
         return cls(readrec.chrom, readrec.strand, readrec.juncs)
 
     @classmethod
-    def from_other(cls, iso, newstart=None, newend=None, newreads=[]):
-        return cls(iso.chrom, iso.strand, iso.juncs, newstart, newend, newreads, iso.gene_id, iso.transcript_id)
+    def from_other(cls, iso, newstart=None, newend=None, newreads=[], newstrand=None):
+        if newstrand == None:
+            newstrand = iso.strand
+        return cls(iso.chrom, newstrand, iso.juncs, newstart, newend, newreads, iso.gene_id, iso.transcript_id)
     

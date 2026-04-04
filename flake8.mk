@@ -8,13 +8,10 @@ FLAKE8_SRC = \
 	intron_support.py \
 	filter_transcriptome_align.py \
 	partition_runner.py \
-	gtf_io.py
-
-FIXME_NOT_WORKING =\
+	gtf_io.py \
         flair_variantmodels.py \
 	flair_spliceevents.py \
         flair_variantquant.py
-
 
 FLAKE8_TEST = \
 	test_correct_lib.py \

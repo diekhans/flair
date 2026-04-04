@@ -17,3 +17,5 @@ per-file-ignores =
     # FIXME: make these less complex
     src/flair/flair_transcriptome.py: C901
     src/flair/filter_transcriptome_align.py: C901
+    src/flair/flair_variantquant.py: C901
+    src/flair/flair_spliceevents.py: C901

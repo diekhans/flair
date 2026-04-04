@@ -9,7 +9,7 @@ try:
     ref = open(sys.argv[2])
     outfilename = sys.argv[3]
     genepred = sys.argv[2][-3:].lower() == 'gp'
-except:
+except Exception:
     raise FlairInputDataError('usage: identify_annotated_gene.py psl ref.gtf/ref.gp isos_matched.psl')
 
 
@@ -19,8 +19,8 @@ def get_junctions(line):
     sizes = [int(n) - 1 for n in line[18].split(',')[:-1]]  # for indexing purposes
     if len(starts) == 1:
         return
-    for b in range(len(starts)-1): # block
-        junctions.add((starts[b]+sizes[b], starts[b+1]))
+    for b in range(len(starts) - 1):  # block
+        junctions.add((starts[b] + sizes[b], starts[b + 1]))
     return junctions
 
 
@@ -28,17 +28,17 @@ def bin_search(query, data):
     """ Query is a coordinate interval. Binary search for the query in sorted data,
     which is a list of coordinates. Finishes when an overlapping value of query and
     data exists and returns the index in data. """
-    i = int(round(len(data)/2))  # binary search prep
+    i = int(round(len(data) / 2))  # binary search prep
     lower, upper = 0, len(data)
     while True:
         if upper - lower < 2:  # stop condition but not necessarily found
             break
         if data[i][1] < query[0]:
             lower = i
-            i = int(round((i + upper)/2))
+            i = int(round((i + upper) / 2))
         elif data[i][0] > query[1]:
             upper = i
-            i = int(round((lower + i)/2))
+            i = int(round((lower + i) / 2))
         else:  # found
             break
     return i
@@ -47,7 +47,7 @@ def bin_search(query, data):
 def contained(coords0, coords1, tol=0):
     """ complete coverage of coords0 by coords1, and coords0 can be tol larger.
     if coords0 is contained by coords1, then return the number of overlapping basepairs """
-    if coords0[1] > coords1[0] and coords1[0] <= coords0[0]+tol and coords1[1] >= coords0[1]-tol:
+    if coords0[1] > coords1[0] and coords1[0] <= coords0[0] + tol and coords1[1] >= coords0[1] - tol:
         return min(coords1[1], coords0[1]) - max(coords1[0], coords0[0])
     return
 
@@ -92,14 +92,14 @@ else:
             all_se[chrom] = []
 
         if 'gene_id' in line[8]:
-            prev_gene = line[8][line[8].find('gene_id')+9:]
+            prev_gene = line[8][line[8].find('gene_id') + 9:]
             prev_gene = prev_gene[:prev_gene.find('"')]
-            this_transcript = line[8][line[8].find('transcript_id')+15:]
+            this_transcript = line[8][line[8].find('transcript_id') + 15:]
             this_transcript = this_transcript[:this_transcript.find('"')]
         elif 'geneid' in line[8].lower():
             prev_gene = line[8][line[8].find('geneid'):]
             prev_gene = prev_gene[:prev_gene.find(',')]
-            this_transcript = line[8][line[8].find('transcript_id')+14:]
+            this_transcript = line[8][line[8].find('transcript_id') + 14:]
         else:
             raise ValueError('GTF format info column gene and transcript ids not recognized')
 
@@ -147,10 +147,10 @@ with open(outfilename, 'wt') as outfile:
         if not junctions:
             exon = (int(line[15]), int(line[16]))
             i = bin_search(exon, all_se[chrom])
-            for e in all_se[chrom][i-2:i+2]:
+            for e in all_se[chrom][i - 2:i + 2]:
                 overlap = contained(exon, e, 20)
                 if overlap:
-                    gene_hits[e[2]] = float(overlap)/(exon[1]-exon[0])  # gene name, % overlap
+                    gene_hits[e[2]] = float(overlap) / (exon[1] - exon[0])  # gene name, % overlap
         else:
             for j in junctions:
                 if j in all_juncs[chrom]:

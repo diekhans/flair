@@ -11,7 +11,7 @@ try:
     colname1 = sys.argv[2]
     colname2 = sys.argv[3]
     outfilename = sys.argv[4]
-except:
+except Exception:
     raise FlairInputDataError('usage: diffsplice_fishers_exact events.quant.tsv colname1 colname2 out.fishers.tsv')
 
 header = events_quant.readline().rstrip().split('\t')
@@ -29,7 +29,7 @@ else:
 events = {}
 for line in events_quant:
     line = line.rstrip().split('\t')
-    feature = line[0][line[0].find('_')+1:]
+    feature = line[0][line[0].find('_') + 1:]
     if feature not in events:
         events[feature] = {}
         events[feature]['entries'] = []
@@ -40,7 +40,7 @@ for line in events_quant:
 features_sorted = sorted(events.keys())
 with open(outfilename, 'wt') as outfile:
     writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
-    writer.writerow(header+[colname1+'-'+colname2+'_pval'])
+    writer.writerow(header + [colname1 + '-' + colname2 + '_pval'])
     for feature in features_sorted:
         for line in events[feature]['entries']:
             writer.writerow(line + [sps.fisher_exact(events[feature]['counts'])[1]])

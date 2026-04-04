@@ -11,7 +11,7 @@ try:
         outfilename2 = sys.argv[3]
     else:
         outfilename2 = ''
-except:
+except Exception:
     raise FlairInputDataError('usage: fasta_seq_lengths fasta outfilename [outfilename2]\n')
 
 length_frequencies = {}

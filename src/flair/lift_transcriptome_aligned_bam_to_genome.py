@@ -14,8 +14,8 @@ def get_iso_info_from_bed(file):
     isotoinfo = {}
     for line in open(file):
         chrom, start, end, iso, strand, esizes, estarts = bed_line_to_info(line)
-        isizes = [estarts[i+1]-(esizes[i] + estarts[i]) for i in range(len(esizes)-1)]
-        isotoinfo[iso] = {'chrom':chrom, 'strand':strand, 'start':start, 'end':end, 'esizes':esizes, 'introns':isizes}
+        isizes = [estarts[i + 1] - (esizes[i] + estarts[i]) for i in range(len(esizes) - 1)]
+        isotoinfo[iso] = {'chrom': chrom, 'strand': strand, 'start': start, 'end': end, 'esizes': esizes, 'introns': isizes}
     return isotoinfo
 
 def convert_start_pos(isoinfo, isostart):
@@ -24,11 +24,11 @@ def convert_start_pos(isoinfo, isostart):
     if isoinfo['strand'] == '-':
         esizes, introns = esizes[::-1], introns[::-1]
     for i in range(len(esizes)):
-        if isostart < sum(esizes[:i+1]):
+        if isostart < sum(esizes[:i + 1]):
             if isoinfo['strand'] == '+':
                 return isoinfo['start'] + isostart + sum(introns[:i])
             else:
-                return isoinfo['end'] - (isostart + sum(introns[:i])) ###this is now the end position of the transcript on the genome
+                return isoinfo['end'] - (isostart + sum(introns[:i]))  # this is now the end position of the transcript on the genome
 
 
 def add_introns_to_block(exonbounds, introns, tpos, blocktype, blocklen, newcigar):
@@ -36,7 +36,7 @@ def add_introns_to_block(exonbounds, introns, tpos, blocktype, blocklen, newciga
         if tpos <= exonbounds[e] < tpos + blocklen:
             if exonbounds[e] - tpos > 0:
                 newcigar.append((blocktype, exonbounds[e] - tpos))
-            newcigar.append((3, introns[e]))  ##insert intron
+            newcigar.append((3, introns[e]))  # insert intron
             blocklen -= exonbounds[e] - tpos
             tpos += exonbounds[e] - tpos
     tpos += blocklen
@@ -49,10 +49,10 @@ def convert_cigar(isoinfo, cigar, startpos):
     introns = isoinfo['introns']
     if isoinfo['strand'] == '-':
         esizes, introns = esizes[::-1], introns[::-1]
-    exonbounds = [sum(esizes[:i+1]) for i in range(len(esizes)-1)] ##excludes last exon, that boundary is not intronic
+    exonbounds = [sum(esizes[:i + 1]) for i in range(len(esizes) - 1)]  # excludes last exon, that boundary is not intronic
     for blocktype, blocklen in cigar:
-        if blocktype in {0,2,3,7,8}: #consumes reference
-            #check if this crosses an exon boundary
+        if blocktype in {0, 2, 3, 7, 8}:  # consumes reference
+            # check if this crosses an exon boundary
             exonbounds, tpos, blocktype, blocklen, newcigar = add_introns_to_block(exonbounds, introns, tpos, blocktype, blocklen, newcigar)
 
         if blocklen > 0: ##insertions always written, but don't alter tpos. Also write any remaining part of block

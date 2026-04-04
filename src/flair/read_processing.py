@@ -21,10 +21,10 @@ def should_process_read(read, region, min_quality, keep_sup, allow_secondary, al
 
 
 def get_sequence_from_bed(genome, input_bed, output_fa):
-    bed_cmd = ('bedtools','getfasta','-nameOnly', '-s', '-split',
-                '-fi', genome,
-                '-bed',input_bed, 
-                '-fo', output_fa)
+    bed_cmd = ('bedtools', 'getfasta', '-nameOnly', '-s', '-split',
+               '-fi', genome,
+               '-bed', input_bed,
+               '-fo', output_fa)
     pipettor.run([bed_cmd])
     out = open(output_fa.split('.fa')[0] + '.fixed.fa', 'w')
     for line in open(output_fa):
@@ -37,7 +37,7 @@ def get_sequence_from_bed(genome, input_bed, output_fa):
 
 def add_corrected_read_to_groups(corrected_read, sj_to_ends):
     """Add a corrected read to the junction-to-ends mapping"""
-    junc_key = tuple(sorted(corrected_read.juncs)) # FIXME add chromosome and strand to key
+    junc_key = tuple(sorted(corrected_read.juncs))  # FIXME add chromosome and strand to key
     # FIXME
     # For single exon reads, adding the strand to the key would automatically separate single exons by strand
     # Is this what we want to do or do we want to group by overlap and then check for strand consensus?

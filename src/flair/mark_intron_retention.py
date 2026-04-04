@@ -8,13 +8,13 @@ try:
     bedfh = open(sys.argv[1])
     outfilename = sys.argv[2]
     txtout = sys.argv[3]
-except:
+except Exception:
     raise FlairInputDataError('usage: mark_intron_retention in.bed out_isoforms.bed out_introns.txt')
 
 
 def overlap(coords0, coords1):
     return coords1[0] >= coords0[0] and coords1[0] <= coords0[1] or \
-            coords1[1] >= coords0[0] and coords1[1] <= coords0[1]
+        coords1[1] >= coords0[0] and coords1[1] <= coords0[1]
 
 
 isoforms = {}
@@ -45,17 +45,17 @@ for chrom in isoforms:
                 continue
             starts0, sizes0 = isoforms[chrom][iname0]['starts'], isoforms[chrom][iname0]['sizes']
             starts1, sizes1 = isoforms[chrom][iname1]['starts'], isoforms[chrom][iname1]['sizes']
-            prev5 = starts1[0]+sizes1[0]  # previous 5' end of isoform1's intron
+            prev5 = starts1[0] + sizes1[0]  # previous 5' end of isoform1's intron
             for start1, size1 in zip(starts1[1:], sizes1[1:]):
                 if start1 - prev5 < 100:  # do not count exons spanning introns smaller than 100 bp
-                    prev5 = start1+size1
+                    prev5 = start1 + size1
                     continue
                 for start0, size0 in zip(starts0, sizes0):
                     allcoords.add((chrom, str(prev5), (start1), isoforms[chrom][iname1]['strand']))
-                    if start0 < prev5 + 10 and start0+size0 > start1-10:  # if isoform 0 has exon where isoform 1 has intron
+                    if start0 < prev5 + 10 and start0 + size0 > start1 - 10:  # if isoform 0 has exon where isoform 1 has intron
                         isoforms[chrom][iname0]['ir'] = True
                         introncoords.add((chrom, str(prev5), (start1), isoforms[chrom][iname0]['strand']))
-                prev5 = start1+size1
+                prev5 = start1 + size1
 
 with open(outfilename, 'wt') as outfile:
     writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)

@@ -19,3 +19,4 @@ per-file-ignores =
     src/flair/filter_transcriptome_align.py: C901
     src/flair/flair_variantquant.py: C901
     src/flair/flair_spliceevents.py: C901
+    src/flair/flair_diffExp.py: C901

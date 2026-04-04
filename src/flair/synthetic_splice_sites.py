@@ -6,8 +6,8 @@ alignedbedfile = sys.argv[1]
 referencegtffile = sys.argv[2]
 outfilename = sys.argv[3]
 refbpfile = sys.argv[4]
-sjwiggle = int(sys.argv[5]) #15
-readcov = int(sys.argv[6]) #2
+sjwiggle = int(sys.argv[5])  # 15
+readcov = int(sys.argv[6])  # 2
 refgenomefile = sys.argv[7]
 
 def grouper(iterable):
@@ -23,11 +23,13 @@ def grouper(iterable):
     if group:
         yield group
 
+
 fusiontoannotsj = {}
 for line in open(referencegtffile):
     line = line.rstrip().split('\t', 5)
     if line[2] == 'exon':
-        if line[0] not in fusiontoannotsj: fusiontoannotsj[line[0]] = set()
+        if line[0] not in fusiontoannotsj:
+            fusiontoannotsj[line[0]] = set()
         fusiontoannotsj[line[0]].add((int(line[3]), int(line[4])))
 
 fusiontobp = {}
@@ -46,10 +48,11 @@ c = 0
 introns_to_reads = {}
 for line in open(alignedbedfile):
     line = line.rstrip().split('\t')
-    thischr, iso, strand, start, esizes, estarts = line[0], line[3], line[5], int(line[1]), \
-                            [int(x) for x in line[10].rstrip(',').split(',')], [ int(x) for x in line[11].rstrip(',').split(',')]
+    thischr, iso, strand, start, esizes, estarts = (line[0], line[3], line[5], int(line[1]),
+                                                    [int(x) for x in line[10].rstrip(',').split(',')],
+                                                    [int(x) for x in line[11].rstrip(',').split(',')])
     for i in range(len(esizes) - 1):
-        thisintron = tuple([thischr, start + estarts[i] + esizes[i] , start + estarts[i + 1] + 1])
+        thisintron = tuple([thischr, start + estarts[i] + esizes[i], start + estarts[i + 1] + 1])
         if thisintron not in introns_to_reads:
             introns_to_reads[thisintron] = 0
         introns_to_reads[thisintron] += 1
@@ -59,12 +62,12 @@ for thisintron in introns_to_reads:
     thisintron = list(thisintron)
 
     foundSJ = False
-    if genome.fetch(thischr, thisintron[1], thisintron[1]+2) == 'GT' and \
-            genome.fetch(thischr, thisintron[2]-3, thisintron[2]-1) == 'AG':
+    if genome.fetch(thischr, thisintron[1], thisintron[1] + 2) == 'GT' and \
+            genome.fetch(thischr, thisintron[2] - 3, thisintron[2] - 1) == 'AG':
         foundSJ = True
         strand = '+'
-    elif genome.fetch(thischr, thisintron[1], thisintron[1]+2) == 'CT' and \
-            genome.fetch(thischr, thisintron[2]-3, thisintron[2]-1) == 'AC':
+    elif genome.fetch(thischr, thisintron[1], thisintron[1] + 2) == 'CT' and \
+            genome.fetch(thischr, thisintron[2] - 3, thisintron[2] - 1) == 'AC':
         foundSJ = True
         strand = '-'
     thisintron.append(strand)

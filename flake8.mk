@@ -11,7 +11,19 @@ FLAKE8_SRC = \
 	gtf_io.py \
         flair_variantmodels.py \
 	flair_spliceevents.py \
-        flair_variantquant.py
+        flair_variantquant.py \
+	fasta_seq_lengths.py \
+	diffsplice_fishers_exact.py \
+	counts_to_tpm.py \
+	mark_intron_retention.py \
+	read_processing.py \
+	annotate_group_vcf_vars.py \
+	annotate_aaseq_with_uniprot.py \
+	filter_transcriptome_chim.py \
+	flair_align.py \
+	flair_diffExp.py \
+	junction_correct.py \
+	remove_internal_priming.py
 
 FLAKE8_TEST = \
 	test_correct_lib.py \

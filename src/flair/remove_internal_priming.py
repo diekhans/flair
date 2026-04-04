@@ -9,10 +9,7 @@ polyA tail, producing a truncated read that falsely appears to end at that
 internal site.
 """
 
-import sys
-import argparse
 from bisect import bisect_left
-import pysam
 
 
 def checkIsNearAnnotEnd(read3endpos, annotends):
@@ -22,7 +19,8 @@ def checkIsNearAnnotEnd(read3endpos, annotends):
     likely ends at a real polyA site rather than an internal priming artifact.
     """
     pos1 = bisect_left(annotends, read3endpos)
-    if pos1 == len(annotends): return abs(annotends[pos1 - 1] - read3endpos) <= 200
+    if pos1 == len(annotends):
+        return abs(annotends[pos1 - 1] - read3endpos) <= 200
     disttoend = min(abs(annotends[pos1 - 1] - read3endpos), abs(annotends[pos1] - read3endpos))
     return disttoend <= 200
 
@@ -38,21 +36,20 @@ def checkInternalPriming(read3endpos, thischr, genome, reqfreq, threshold):
     indicating a genomic polyA/polyT stretch that could cause internal priming.
     """
     genomeseqnearend = genome.fetch(thischr, max(read3endpos - 30, 0), min(read3endpos + 30, genome.get_reference_length(thischr))).upper()
-    # FIXME: maxfreq is tracked but never used in any decision
-    maxlen, maxfreq = 0, 0
-    if len(genomeseqnearend) > threshold*2:
-        halfseqlen = int(len(genomeseqnearend)/2)
+    maxlen = 0
+    if len(genomeseqnearend) > threshold * 2:
+        halfseqlen = int(len(genomeseqnearend) / 2)
         # Scan windows anchored at the center (read3endpos), growing outward
         # in both directions.  Negative i values produce windows extending left
         # of center; positive i values extend right.  The min/max swap ensures
         # the slice is always [lower:upper] regardless of sign.
-        for i in list(range(-1 * halfseqlen, -1*threshold)) + list(range(threshold, halfseqlen)):
+        for i in list(range(-1 * halfseqlen, -1 * threshold)) + list(range(threshold, halfseqlen)):
             thisseq = genomeseqnearend[min(i + halfseqlen, halfseqlen): max(i + halfseqlen, halfseqlen)]
             # count whichever of A or T is more frequent (handles both strands)
             thiscount = max(thisseq.count('A'), thisseq.count('T'))
             thisfreq = thiscount / len(thisseq) if len(thisseq) > 0 else 0
             if thisfreq >= reqfreq and len(thisseq) > maxlen:
-                maxlen, maxfreq = len(thisseq), thisfreq
+                maxlen = len(thisseq)
     return maxlen >= threshold
 
 # FIXME: misleading name — returns True when read should be KEPT (no internal
@@ -84,7 +81,7 @@ def removeinternalpriming(refname, refstart, refend, isrev, genome, annottranscr
             if len(theseexons) > 1 and read3endpos > sum(theseexons) - theseexons[-1]:
                 return True
             # single-exon: keep if 3' end is within 200bp of transcript end
-            elif len(theseexons) == 1 and read3endpos >= theseexons[0]-200:
+            elif len(theseexons) == 1 and read3endpos >= theseexons[0] - 200:
                 return True
 
         # Fall-through: read didn't pass the near-end check (or had no exon annotation).
@@ -95,7 +92,7 @@ def removeinternalpriming(refname, refstart, refend, isrev, genome, annottranscr
         # chromosome in the genome, skip the check and keep the read.
         # FIXME: checking for known chromosome should happen much earlier
         if ((refname not in genome.references) or
-        (not checkInternalPriming(read3endpos, refname, genome, fracAs, threshold))):
+                (not checkInternalPriming(read3endpos, refname, genome, fracAs, threshold))):
             return True
 
     elif annottranscriptends and refname in annottranscriptends:

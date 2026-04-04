@@ -1,17 +1,12 @@
 #! /usr/bin/env python3
 
-import sys
 import argparse
-import os
-import pipettor
-import pysam
-import math
 import logging
 from flair.bed_to_gtf import bed_to_gtf
 from statistics import mode
 
-def bedReadToIntronChain(line): # line is a list of strings from a tab separated line
-    dir, start, esizes, estarts = line[5], int(line[1]), [int(x) for x in line[10].rstrip(',').split(',')], [int(x) for x in line[11].rstrip(',').split(',')]
+def bedReadToIntronChain(line):  # line is a list of strings from a tab separated line
+    start, esizes, estarts = int(line[1]), [int(x) for x in line[10].rstrip(',').split(',')], [int(x) for x in line[11].rstrip(',').split(',')]
     introns = []
     for i in range(len(esizes) - 1):
         introns.append((start + estarts[i] + esizes[i], start + estarts[i + 1]))
@@ -29,9 +24,11 @@ def intronChainToestarts(ichain, start, end):
 def getbestends(isodata):
     bestiso = (None, None, None, None, 0)
     for info in isodata:
-        if info[4] > bestiso[4]: bestiso = info
+        if info[4] > bestiso[4]:
+            bestiso = info
         elif info[4] == bestiso[4]:
-            if info[1]-info[0] > bestiso[1]-bestiso[0]: bestiso = info
+            if info[1] - info[0] > bestiso[1] - bestiso[0]:
+                bestiso = info
     return bestiso
 
 def combineIsos(isolist, endwindow):
@@ -41,7 +38,7 @@ def combineIsos(isolist, endwindow):
     currgroup = []
     for isoinfo in isolist:
         start, end = isoinfo[0], isoinfo[1]
-        if start-laststart <= endwindow and end - lastend <= endwindow:
+        if start - laststart <= endwindow and end - lastend <= endwindow:
             currgroup.append(isoinfo)
         else:
             if len(currgroup) > 0:
@@ -63,7 +60,8 @@ def cleanisoname(isoname):
 def combine():
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--manifest', required=True, type=str,
-                        help="path to manifest files that points to transcriptomes to combine. Each line of file should be tab separated with sample name, sample type (isoform or fusionisoform), path/to/isoforms.bed, path/to/isoforms.fa, path/to/combined.isoform.read.map.txt. fa and read.map.txt files are not required, although if .fa files are not provided for each sample a .fa output will not be generated")
+                        help="path to manifest files that points to transcriptomes to combine. Each line of file should be tab separated with sample name, sample type (isoform or fusionisoform), path/to/isoforms.bed, path/to/isoforms.fa, path/to/combined.isoform.read.map.txt."
+                             " fa and read.map.txt files are not required, although if .fa files are not provided for each sample a .fa output will not be generated")
     parser.add_argument('-o', '--output_prefix', default='flair.combined.isoforms',
                         help="path to collapsed_output.bed file. default: 'collapsed_flairomes'")
     parser.add_argument('-w', '--endwindow', type=int, default=200,
@@ -163,7 +161,7 @@ def combine():
                     intronchaintoisos[ichainid] = []
                 isoname = cleanisoname(isoname)
                 intronchaintoisos[ichainid].append((start, end, sample, isoname, isousage, isocounts))
-        else: # not loading fusion reads
+        else:  # not loading fusion reads
             for line in open(bedfiles[i]):
                 line = line.rstrip().split('\t')
                 chr, start, end, strand, isoname = line[0], int(line[1]), int(line[2]), line[5], line[3]
@@ -207,8 +205,8 @@ def combine():
     for ichainid in intronchaintoisos:
         # chr, strand, gene, ichain = ichainid
         collapsedIsos = combineIsos(intronchaintoisos[ichainid], endwindow)
-        isse = type(ichainid[-1]) == str
-        isfusion = type(ichainid[0]) == tuple
+        isse = isinstance(ichainid[-1], str)
+        isfusion = isinstance(ichainid[0], tuple)
         maxintronchainusage = 0
         totintronchaincounts = 0
         ichainendscount = 1
@@ -223,19 +221,19 @@ def combine():
             else:
                 ends_for_sorting.append((maxisousage, start, end, sample, isoname, isousage, isocounts))
         ends_for_sorting.sort(reverse=True)
-        if args.end_filter == 'none' or (maxintronchainusage > minpercentusage and (totintronchaincounts > args.min_reads or totintronchaincounts == 0)): # the only way for the tot counts to be 0 is if there's no map files provided, allow that
+        if args.end_filter == 'none' or (maxintronchainusage > minpercentusage and (totintronchaincounts > args.min_reads or totintronchaincounts == 0)):  # the only way for the tot counts to be 0 is if there's no map files provided, allow that
             if args.end_filter in {'longest', 'usage'}:
                 ends_for_sorting = [ends_for_sorting[0]]
             elif args.end_filter.is_numeric():
                 ends_for_sorting = ends_for_sorting[:int(args.end_filter)]
-            
+
             for _, start, end, sample, isoname, isousage, isocounts in ends_for_sorting:
                 theseisos = collapsedIsos[(start, end, sample, isoname, isousage, isocounts)]
                 theseisos.sort(key=lambda x: x[1] - x[0], reverse=True)  # longest first
                 maxisousage = max([x[4] for x in theseisos])
                 totisocounts = sum([x[5] for x in theseisos])
                 if ichainendscount == 1 or (args.end_filter.isnumeric() and (totisocounts > int(args.min_reads) or totisocounts == 0)):
-                    
+
                     if isfusion:
                         outgene = mode([x[3].split('_')[-1] for x in theseisos])
                         outname = 'flairiso' + str(isocount) + '-' + str(ichainendscount) + '_' + outgene
@@ -273,13 +271,13 @@ def combine():
                             ichainid[-1][2] = end
                         for gindex in range(len(ichainid)):
                             chr, strand, fstart, fend, ichain = ichainid[gindex]
-                            if type(ichain) == str:
+                            if isinstance(ichain, str):
                                 esizes, estarts = [fend - fstart], [0]
                             else:
                                 esizes, estarts = intronChainToestarts(ichain, fstart, fend)
                             outbed.write('\t'.join([chr, str(fstart), str(fend),
-                                                    'fusiongene' + str(gindex+1) + '_' + outname, '1000', strand,
-                                                    str(fstart), str(fend), '0',str(len(esizes)),
+                                                    'fusiongene' + str(gindex + 1) + '_' + outname, '1000', strand,
+                                                    str(fstart), str(fend), '0', str(len(esizes)),
                                                     ','.join([str(x) for x in esizes]) + ',',
                                                     ','.join([str(x) for x in estarts]) + ',']) + '\n')
                     else:
@@ -349,6 +347,7 @@ def combine():
 
     if args.convert_gtf:
         bed_to_gtf(query=outprefix + '.bed', outputfile=outprefix + '.gtf')
+
 
 def main():
     combine()

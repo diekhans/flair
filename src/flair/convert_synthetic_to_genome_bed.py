@@ -1,6 +1,4 @@
 
-import sys, os
-
 
 def get_iso_to_reads(readmapfile):
     isoreadsup = {}
@@ -25,7 +23,8 @@ def get_paralog_ref(paralogfile):
         line = line.split('\t')
         group = line[1]
         gname = line[6]
-        if group not in grouptogenes: grouptogenes[group] = set()
+        if group not in grouptogenes:
+            grouptogenes[group] = set()
         grouptogenes[group].add(gname)
 
     for group in grouptogenes:
@@ -57,13 +56,14 @@ def identify_promiscuous_genes(isoformsbed, genetoparalogs):
         for i in fnames:
             other = fnames - {i, }
             newother = frozenset([genetoparalogs[g] if g in genetoparalogs else g for g in other])
-            if i not in locustopartners: locustopartners[i] = set()
+            if i not in locustopartners:
+                locustopartners[i] = set()
             locustopartners[i].add(newother)
     return locustopartners
 
 
 def identify_fusion_problems(fgenes, locustopartners, maxpromiscuity, genetoname, genetoparalogs, genomic_chroms, isosup):
-    
+
     ispromiscuous, areparalogs, areig, allnames, gcount = False, [], [], set(), []
     for g in fgenes:
         gcount.append(list(fgenes).count(g))
@@ -90,7 +90,10 @@ def identify_fusion_problems(fgenes, locustopartners, maxpromiscuity, genetoname
                 areparalogs.append(False)
         else:
             areparalogs.append(False)
-    overall = all([x==1 for x in gcount]) and isosup >= 1 and not ispromiscuous and any(x==False for x in areparalogs) and all(x==False for x in areig) and len(allnames) > 1 and 'chrM' not in genomic_chroms and all([x[:3] == 'chr' for x in genomic_chroms])
+    overall = (all([x == 1 for x in gcount]) and isosup >= 1 and not ispromiscuous
+                and any(x is False for x in areparalogs) and all(x is False for x in areig)
+                and len(allnames) > 1 and 'chrM' not in genomic_chroms
+                and all([x[:3] == 'chr' for x in genomic_chroms]))
     # if overall:
     #     print(fgenes, 'prom', ispromiscuous, 'para', areparalogs, 'ig', areig, 'uniquenames', allnames, 'goodchroms', 'chrM' not in genomic_chroms and all([x[:3] == 'chr' for x in genomic_chroms]), 'gcount', gcount)
     return overall
@@ -112,7 +115,7 @@ def separate_exons_by_locus(esizes, estarts, numloci, locusbounds, start):
 
         for order in range(numloci):
             if locusbounds[order][0] < thisstart and thisend <= locusbounds[order][1]:
-                if starts[order] == None:
+                if starts[order] is None:
                     starts[order] = estarts[i]  # thisstart #- locusbounds[order][0]
                 exonindexes[order].append(i)
     return starts, exonindexes
@@ -158,11 +161,11 @@ def convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusboun
 
 def check_too_close(numloci, genomicbounds, min_dist):
     for i in range(numloci - 1):
-        if genomicbounds[i][0] == genomicbounds[i + 1][0] and genomicbounds[i][3] == genomicbounds[i + 1][3]: #chrom and strand are same
-            if genomicbounds[i][3] == '+' and 0 < genomicbounds[i+1][1] - genomicbounds[i][2] < min_dist:
+        if genomicbounds[i][0] == genomicbounds[i + 1][0] and genomicbounds[i][3] == genomicbounds[i + 1][3]:  # chrom and strand are same
+            if genomicbounds[i][3] == '+' and 0 < genomicbounds[i + 1][1] - genomicbounds[i][2] < min_dist:
                 return True
-            # when in negative direction, bounds are flipped 
-            elif genomicbounds[i][3] == '-' and 0 < genomicbounds[i][2] - genomicbounds[i+1][1] < min_dist:
+            # when in negative direction, bounds are flipped
+            elif genomicbounds[i][3] == '-' and 0 < genomicbounds[i][2] - genomicbounds[i + 1][1] < min_dist:
                 return True
     return False
 
@@ -179,7 +182,8 @@ def write_final_fusion_reads(readsfile, freadsfinal):
                     last = True
                 else:
                     last = False
-            if last: freads.write(line)
+            if last:
+                freads.write(line)
     else:
         linecount = 0
         for line in open(readsfile):
@@ -189,7 +193,8 @@ def write_final_fusion_reads(readsfile, freadsfinal):
                     last = True
                 else:
                     last = False
-            if last: freads.write(line)
+            if last:
+                freads.write(line)
             linecount += 1
     freads.close()
 
@@ -221,6 +226,4 @@ def convert_synthetic_isos(isoformsbed, readmapfile, readsfile, breakpointfile, 
                     freadsfinal.update(isoreadsup[iso])
     out.close()
     write_final_fusion_reads(readsfile, freadsfinal)
-
-
 

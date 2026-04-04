@@ -86,7 +86,7 @@ def detectfusions():
     ###Processing the gtf file so many times is really inefficient, how can we resolve this??
     genomechimbam = args.output + '.genomealigned.chim.bam'
     transcriptchimbam = args.output + '.transcriptomealigned.chim.bam'
-    
+
     if not os.path.exists(genomechimbam):
         logging.info('getting chimeric reads from genome')
         infile = pysam.AlignmentFile(args.genome_aligned_bam, 'rb')
@@ -105,10 +105,12 @@ def detectfusions():
         gtf_to_bed(args.annotated_bed, args.gtf, include_gene=True)
         args.annotated_fa = args.output + '.annotated_transcripts.fa'
         get_sequence_from_bed(args.genome, args.output + '.annotated_transcripts.bed', args.annotated_fa)
-        
+
         fa_cmd = ('samtools', 'fasta', args.genome_aligned_bam)
         mm2_cmd = ('minimap2', '-a', '-s', str(args.minfragmentsize), '-t', str(args.threads), '--secondary=no',
                    args.annotated_fa, '-')
+
+        # FIXME: replace with: samtools view -F 0x104 -e '[SA] != ""'
         filter_cmd = ('python3', path + 'filter_transcriptome_chim.py', '-', transcriptchimbam)
         sort_cmd = ('samtools', 'sort', '-o', args.output + '.transcriptomealigned.chim.sorted.bam', transcriptchimbam)
         samtools_index_cmd = ('samtools', 'index', args.output + '_unfilteredtranscriptome.bam')
@@ -142,16 +144,16 @@ def detectfusions():
 
             elif ty == 'exon':
                 transcript_id = line[8].split('transcript_id "')[1].split('"')[0]
-                if gene_id not in genetoexons: 
+                if gene_id not in genetoexons:
                     genetoexons[gene_id] = {}
                 if transcript_id not in genetoexons[gene_id]: genetoexons[gene_id][transcript_id] = []
                 genetoexons[gene_id][transcript_id].append((start, end))
 
-                
+
             elif ty == 'transcript':
                 end5 = start if strand == '+' else end
                 genetoinfo[gene_id][-1].append(end5)
-    
+
     print('continuing to parse annot')
     ## FOR JUNCS TO GENE, DO BY CHROM AS WELL
     for chrom in chrom_to_gene_pos:
@@ -183,7 +185,7 @@ def detectfusions():
             newexons.append((laststart, lastend))
         gene_to_all_exons[gene] = newexons
 
-    
+
     intronLocs, intronToGenome = {}, {}
     for g in genetoexons:
         chrom, start, end, strand, _ = genetoinfo[g]
@@ -201,18 +203,18 @@ def detectfusions():
                 mylocs = [[runningtot - mylocs[x][0], mylocs[x][1], mylocs[x][2]] for x in range(len(mylocs))]
             intronLocs[t] = sorted([x[0] for x in mylocs])
             intronToGenome[t] = {x[0]: (x[1], x[2]) for x in mylocs}
-    
+
 
     maxpromiscuity = 4
 
     gene_to_paralogs = get_paralog_ref(os.path.realpath(__file__).split('flair_fusion')[0] + 'dgd_Hsa_all_v71.tsv')
-    
+
     print('loading transcriptomic chimeras')
     tchim = id_chimeras('transcriptomic', transcriptchimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=args.max_dist_to_TSS, maxpromiscuity=4, intronLocs=intronLocs, intronToGenome=intronToGenome)
     print('loading genomic chimeras')
-    
+
     combchim = id_chimeras('genomic', genomechimbam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, args.support, maxloci=args.maxloci, reqdisttostart=args.max_dist_to_TSS, maxpromiscuity=4)
-    
+
     print('combining genomic and transcriptomic')
     #
     for f in tchim:
@@ -251,7 +253,7 @@ def detectfusions():
     if os.path.getsize(args.output + '.prelimfusions.bed') == 0:
         report_nofusions(args.output)
         return
-    
+
     print('obtaining fusion reads')
 
     seenreads = set()
@@ -286,11 +288,11 @@ def detectfusions():
     pipettor.run([faidxcommand])
 
     print('aligning to synthetic fusion genome')
-    align_to_synth_genome(args.output + '-syntheticFusionGenome.fa', freadsname, args.output + '.syntheticAligned.nosplice.bam', 
+    align_to_synth_genome(args.output + '-syntheticFusionGenome.fa', freadsname, args.output + '.syntheticAligned.nosplice.bam',
                           ['-s', str(args.minfragmentsize), '-t', str(args.threads), '-un', '--secondary=no', '-G', '1000k'])
-    align_to_synth_genome(args.output + '-syntheticFusionGenome.fa', freadsname, args.output + '.syntheticAligned.withsplice.bam', 
+    align_to_synth_genome(args.output + '-syntheticFusionGenome.fa', freadsname, args.output + '.syntheticAligned.withsplice.bam',
                           ['-s', str(args.minfragmentsize), '-t', str(args.threads), '--secondary=no', '-G', '1000k'])
-    
+
     rname_to_read = {}
     with pysam.AlignmentFile(args.output + '.syntheticAligned.withsplice.bam', 'rb') as bamfile:
         for a in bamfile:
@@ -317,25 +319,25 @@ def detectfusions():
 
     pipettor.run([('samtools', 'sort', '-o', args.output + '.syntheticAligned.bam', args.output + '.syntheticAligned.unsorted.bam')])
     pipettor.run([('samtools', 'index', args.output + '.syntheticAligned.bam')])
-    pipettor.run([('rm', args.output + '.syntheticAligned.withsplice.bam', args.output + '.syntheticAligned.withsplice.bam.bai', 
+    pipettor.run([('rm', args.output + '.syntheticAligned.withsplice.bam', args.output + '.syntheticAligned.withsplice.bam.bai',
                    args.output + '.syntheticAligned.nosplice.bam', args.output + '.syntheticAligned.nosplice.bam.bai',
                    args.output + '.syntheticAligned.unsorted.bam')])
-    
-    
+
+
     print('getting ss')
-    
+
     ipcmd = ('intronProspector', f'--genome-fasta={args.output}-syntheticFusionGenome.fa', f'--intron-bed6={args.output}.syntheticAligned.IPSJ.bed', '-C', '0.0', '--sj-filter=all', f'{args.output}.syntheticAligned.bam')
     pipettor.run([ipcmd])
-    
+
     fusiontobp = {}
     for line in open(f'{args.output}-syntheticBreakpointLoc.bed'):
         line = line.rstrip().split('\t')
         fusiontobp[line[0]] = int(line[1])
-    
+
 
     fusion_to_bp_sj = {f:False for f in fusiontobp}
     good_sj = []
-    
+
     for line in open(f'{args.output}.syntheticAligned.IPSJ.bed'):
         line = line.rstrip().split('\t')
         fusion = line[0]
@@ -348,7 +350,7 @@ def detectfusions():
                 good_sj.append(line)
                 if start < fusiontobp[fusion] < end:
                     fusion_to_bp_sj[fusion] = True
-    
+
     for line in open(f'{args.output}.syntheticAligned.IPSJ.bed'):
         line = line.rstrip().split('\t')
         fusion = line[0]
@@ -385,7 +387,7 @@ def detectfusions():
     junc_bed = args.output + '.syntheticAligned.SJ.bed'
     if os.path.exists(junc_bed) and (os.path.getsize(junc_bed) > 0):
         transcriptome_command.extend(['--junction_bed', junc_bed])
-    
+
     print('generating fusion transcriptome')
     print(' '.join(transcriptome_command))
     pipettor.run(transcriptome_command)

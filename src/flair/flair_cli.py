@@ -21,7 +21,7 @@ def parse_args():
 
     desc = '''Run a FLAIR module.  This program is the main entry point
     for running FLAIR analysis.'''
-    parser = argparse.ArgumentParser(description=desc)#BAD BAD
+    parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('--version', action='version', version='FLAIR ' + VERSION,
                         help="print FLAIR version")
     parser.add_argument("module", choices=VALID_MODULES, type=str.lower,

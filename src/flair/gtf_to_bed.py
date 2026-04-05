@@ -84,6 +84,5 @@ def gtf_to_bed(outputfile, gtf, include_gene=False):
             write_bed_row(include_gene, iso_to_cds, this_transcript, blockstarts, blocksizes, gene, chrom, strand, writer)
 
 
-
 if __name__ == "__main__":
     main()

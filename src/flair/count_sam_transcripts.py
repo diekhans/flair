@@ -124,7 +124,7 @@ def get_annot_info(args):
 
 
 def check_singleexon(read_start, read_end, tlen, end_norm_dist):
-    if read_end - read_start > (tlen / 2) - end_norm_dist:  ## must cover at least 50% of single exon transcript
+    if read_end - read_start > (tlen / 2) - end_norm_dist:  # must cover at least 50% of single exon transcript
         return True
     else:
         return False
@@ -149,7 +149,6 @@ def check_firstlastexon(first_blocksize, last_blocksize, read_start, read_end, t
 
 
 def check_stringent(coveredpos, exonpos, tlen, blockstarts, blocksizes, trust_ends, tname, end_norm_dist, transcript_to_unique_bounds):
-    matchpos = len([x for x in coveredpos if x == 1])
     # FIXME - could add back the 80% of the transcript rule - maybe as an option? needs further testing
     read_start, read_end = blockstarts[0], blockstarts[-1] + blocksizes[-1]
     first_blocksize, last_blocksize = exonpos[0], exonpos[-1]
@@ -175,7 +174,7 @@ def check_splicesites(coveredpos, exonpos, tstart, tend, tname):
         elen = exonpos[i]
         currpos += elen
         if tstart < currpos < tend:
-            ssvals = coveredpos[currpos - 6:currpos + 4]  ## total size = 10, need to check indexing, seems off. This worked in a couple cases but is not systematically tested.
+            ssvals = coveredpos[currpos - 6:currpos + 4]  # total size = 10, need to check indexing, seems off. This worked in a couple cases but is not systematically tested.
             totinsert = sum([x - 1 for x in ssvals if x > 1])  # value is match = 1 + insertsize
             totmatch = sum([1 for x in ssvals if x >= 1])  # insert at pos still counts as match
             if tname == testtname:
@@ -249,7 +248,7 @@ def process_cigar(matchvals, cigarblocks, startpos, exoninfo, exon_bounds):
             coveredpos.extend([0] * blen)
             if blen > LARGE_INDEL_TOLDERANCE:
                 if exoninfo:
-                    if lb + 1 < tendpos and tendpos + blen < rb - 1:  ## not in first or last exon
+                    if lb + 1 < tendpos and tendpos + blen < rb - 1:  # not in first or last exon
                         indel_detected = True
                 else:
                     indel_detected = True
@@ -262,7 +261,7 @@ def process_cigar(matchvals, cigarblocks, startpos, exoninfo, exon_bounds):
                 coveredpos[-1] += blen
             if blen > LARGE_INDEL_TOLDERANCE:
                 if exoninfo:
-                    if lb + 1 < tendpos < rb - 1:  ## not in first or last exon
+                    if lb + 1 < tendpos < rb - 1:  # not in first or last exon
                         indel_detected = True
                 else:
                     indel_detected = True
@@ -275,7 +274,9 @@ def check_transcript_in_annot(exondict, tname):
         exoninfo = exondict[tname]
     except KeyError:
         raise Exception(
-            f"The transcript name ({tname}) in the annotation fasta do not appear to match the ones in the isoforms file. You may be able to fix this by using gtf_to_bed and bedtools getfasta on your annotation gtf and using the resulting file as your annotation fasta input to this program")
+            f"The transcript name ({tname}) in the annotation fasta do not appear to match the ones in the isoforms file."
+            " You may be able to fix this by using gtf_to_bed and bedtools getfasta on your annotation gtf"
+            " and using the resulting file as your annotation fasta input to this program")
     except Exception as ex:
         raise Exception("** check_splice FAILED for %s" % (tname)) from ex
     return exoninfo

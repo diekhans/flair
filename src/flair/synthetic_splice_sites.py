@@ -74,15 +74,14 @@ for thisintron in introns_to_reads:
 
     # print(thisintron, readcount, foundSJ, thisintron[1] <= fusiontobp[thischr] <= thisintron[2])
 
-
-    if thisintron[1] <= fusiontobp[thischr] <= thisintron[2] or foundSJ: ##only process introns that have correct motifs OR cross the fusion breakpoint
+    if thisintron[1] <= fusiontobp[thischr] <= thisintron[2] or foundSJ:  # only process introns that have correct motifs OR cross the fusion breakpoint
         close_ref = False
         if thischr in fusiontoannotsj:
             # closestdist, closestpos = 1000, None
             for sj in fusiontoannotsj[thischr]:
                 d1 = abs(thisintron[1] - sj[0])
                 d2 = abs(thisintron[2] - sj[1])
-                if d1 <= sjwiggle and d2 <= sjwiggle:#== 0:
+                if d1 <= sjwiggle and d2 <= sjwiggle:  # == 0:
                     # print(iso, thisintron[i], genome.fetch(thischr, thisintron[i], thisintron[i]+2))
                     # if i == 1: print(iso, thisintron[i], genome.fetch(thischr, thisintron[i], thisintron[i]+2))
                     # else: print(iso, thisintron[i], genome.fetch(thischr, thisintron[i]-3, thisintron[i]-1))
@@ -91,9 +90,10 @@ for thisintron in introns_to_reads:
                     break
         # print(close_ref)
         if not close_ref:
-            if thischr not in chrtonovelss: chrtonovelss[thischr] = []
-            chrtonovelss[thischr].extend([thisintron[1]*readcount])
-            chrtonovelss[thischr].extend([thisintron[2]*readcount])
+            if thischr not in chrtonovelss:
+                chrtonovelss[thischr] = []
+            chrtonovelss[thischr].extend([thisintron[1] * readcount])
+            chrtonovelss[thischr].extend([thisintron[2] * readcount])
             reconsideredss[tuple(thisintron)] = readcount
 
 
@@ -106,11 +106,13 @@ for chr in chrtonovelss:
             groupsize = len(group)
             finalpos = []
             for pos, count in Counter(group).most_common():
-                if count >= readcov and count >= groupsize/10: ###needs to also be 1/10 of locus
+                if count >= readcov and count >= groupsize / 10:  # needs to also be 1/10 of locus
                     isdifferent = True
                     for fp in finalpos:
-                        if fp-sjwiggle <= pos <= fp+sjwiggle: isdifferent = False
-                    if isdifferent: finalpos.append(pos)
+                        if fp - sjwiggle <= pos <= fp + sjwiggle:
+                            isdifferent = False
+                    if isdifferent:
+                        finalpos.append(pos)
             for fp in finalpos:
                 chrtogoodss[chr].add(fp)
 
@@ -120,18 +122,21 @@ for thisintron in reconsideredss:
     readcount = reconsideredss[thisintron]
     thisintron = list(thisintron)
     thischr = thisintron[0]
-    for i in range(1, 3):  ##checking each splice site
-        ###FIXME currently processing each splice site individually
+    for i in range(1, 3):  # checking each splice site
+        # FIXME currently processing each splice site individually
         closestdist, closestpos = 1000, None
         if thischr in chrtogoodss:
             for sj in chrtogoodss[thischr]:
                 thisdist = abs(thisintron[i] - sj)
                 if thisdist <= sjwiggle:
-                    if thisdist < closestdist: closestdist, closestpos = thisdist, sj
-        if closestpos: thisintron[i] = closestpos
+                    if thisdist < closestdist:
+                        closestdist, closestpos = thisdist, sj
+        if closestpos:
+            thisintron[i] = closestpos
     thisintron[2] -= 1
     thisintron = tuple(thisintron)
-    if thisintron not in splicejunctosupport: splicejunctosupport[thisintron] = 0
+    if thisintron not in splicejunctosupport:
+        splicejunctosupport[thisintron] = 0
     splicejunctosupport[thisintron] += readcount
 
 

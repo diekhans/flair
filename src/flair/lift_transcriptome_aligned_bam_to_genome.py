@@ -55,22 +55,23 @@ def convert_cigar(isoinfo, cigar, startpos):
             # check if this crosses an exon boundary
             exonbounds, tpos, blocktype, blocklen, newcigar = add_introns_to_block(exonbounds, introns, tpos, blocktype, blocklen, newcigar)
 
-        if blocklen > 0: ##insertions always written, but don't alter tpos. Also write any remaining part of block
+        if blocklen > 0:  # insertions always written, but don't alter tpos. Also write any remaining part of block
             newcigar.append((blocktype, blocklen))
-    if isoinfo['strand'] == '-': newcigar  = newcigar[::-1]###on the negative strand, must reverse cigar string
+    if isoinfo['strand'] == '-':
+        newcigar = newcigar[::-1]  # on the negative strand, must reverse cigar string
     return newcigar
 
 def generate_new_segment(s=None, newname=None, newseq=None, newquals=None, newflag=None, newtags=None, newrefid=None, newrefstart=None, newcigart=None, newmapq=None):
     a = pysam.AlignedSegment()
-    a.query_name = newname if newname != None else s.query_name
-    a.query_sequence = newseq if newseq != None else s.query_sequence
-    a.flag = newflag if newflag != None else s.flag
-    a.mapping_quality = newmapq if newmapq != None else s.mapping_quality
-    a.query_qualities = newquals if newquals != None else s.query_qualities
-    a.tags = newtags if newtags != None else s.tags
-    a.reference_id = newrefid if newrefid != None else s.reference_id
-    a.reference_start = newrefstart if newrefstart != None else s.reference_start
-    a.cigartuples = newcigart if newcigart != None else s.cigartuples
+    a.query_name = newname if newname is not None else s.query_name
+    a.query_sequence = newseq if newseq is not None else s.query_sequence
+    a.flag = newflag if newflag is not None else s.flag
+    a.mapping_quality = newmapq if newmapq is not None else s.mapping_quality
+    a.query_qualities = newquals if newquals is not None else s.query_qualities
+    a.tags = newtags if newtags is not None else s.tags
+    a.reference_id = newrefid if newrefid is not None else s.reference_id
+    a.reference_start = newrefstart if newrefstart is not None else s.reference_start
+    a.cigartuples = newcigart if newcigart is not None else s.cigartuples
     return a
 
 
@@ -89,7 +90,7 @@ outfile = pysam.AlignmentFile(f'{outprefix}.genomelift.bam', 'wb', template=head
 
 outchroms = outfile.references
 
-###CURRENTLY NONE OF THIS WORKS FOR NEGATIVE STRAND READS
+# CURRENTLY NONE OF THIS WORKS FOR NEGATIVE STRAND READS
 for s in samfile:
     if s.is_mapped:
         thisisoinfo = isotoinfo[s.reference_name]
@@ -100,8 +101,8 @@ for s in samfile:
             a = generate_new_segment(s, newrefid=newrefid, newrefstart=newrefstart, newcigart=newcigart)
         else:
             newcigart = convert_cigar(thisisoinfo, s.cigartuples, s.reference_start)
-            totalaligneddist = sum([x[1] for x in newcigart if x[0] not in {1,4,5}])
-            newrefstart = newrefstart - totalaligneddist ##was read end, correct to read start
+            totalaligneddist = sum([x[1] for x in newcigart if x[0] not in {1, 4, 5}])
+            newrefstart = newrefstart - totalaligneddist  # was read end, correct to read start
             newflag = s.flag - 16 if s.is_reverse else s.flag + 16
             newseq = get_reverse_complement(s.query_sequence) if s.query_sequence else None
             newquals = s.query_qualities[::-1] if s.query_qualities else None

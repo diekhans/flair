@@ -60,7 +60,7 @@ def cleanisoname(isoname):
 def combine():
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--manifest', required=True, type=str,
-                        help="path to manifest files that points to transcriptomes to combine. Each line of file should be tab separated with sample name, sample type (isoform or fusionisoform), path/to/isoforms.bed, path/to/isoforms.fa, path/to/combined.isoform.read.map.txt."
+                        help="path to manifest files that points to transcriptomes to combine. Each line of file should be tab separated with sample name, sample type (isoform or fusionisoform), path/to/isoforms.bed, path/to/isoforms.fa, path/to/combined.isoform.read.map.txt."  # noqa: E501
                              " fa and read.map.txt files are not required, although if .fa files are not provided for each sample a .fa output will not be generated")
     parser.add_argument('-o', '--output_prefix', default='flair.combined.isoforms',
                         help="path to collapsed_output.bed file. default: 'collapsed_flairomes'")
@@ -351,6 +351,7 @@ def combine():
 
 def main():
     combine()
+
 
 if __name__ == "__main__":
     main()

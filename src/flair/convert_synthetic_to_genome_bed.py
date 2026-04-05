@@ -91,9 +91,9 @@ def identify_fusion_problems(fgenes, locustopartners, maxpromiscuity, genetoname
         else:
             areparalogs.append(False)
     overall = (all([x == 1 for x in gcount]) and isosup >= 1 and not ispromiscuous
-                and any(x is False for x in areparalogs) and all(x is False for x in areig)
-                and len(allnames) > 1 and 'chrM' not in genomic_chroms
-                and all([x[:3] == 'chr' for x in genomic_chroms]))
+               and any(x is False for x in areparalogs) and all(x is False for x in areig)
+               and len(allnames) > 1 and 'chrM' not in genomic_chroms
+               and all([x[:3] == 'chr' for x in genomic_chroms]))
     # if overall:
     #     print(fgenes, 'prom', ispromiscuous, 'para', areparalogs, 'ig', areig, 'uniquenames', allnames, 'goodchroms', 'chrM' not in genomic_chroms and all([x[:3] == 'chr' for x in genomic_chroms]), 'gcount', gcount)
     return overall
@@ -226,4 +226,3 @@ def convert_synthetic_isos(isoformsbed, readmapfile, readsfile, breakpointfile, 
                     freadsfinal.update(isoreadsup[iso])
     out.close()
     write_final_fusion_reads(readsfile, freadsfinal)
-

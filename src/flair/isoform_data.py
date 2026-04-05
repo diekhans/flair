@@ -21,13 +21,13 @@ class Junc(PosRange):
     """Stores start, end, just adds a type name to SeqRange for clearer code and error messages"""
     pass
 
-class Exon(namedtuple("Exon",("start", "end", "name"))):
+class Exon(namedtuple("Exon", ("start", "end", "name"))):
     def __new__(cls, start, end, name=None):
         assert start <= end
-        if name == None:
+        if name is None:
             name = ''
         return super(Exon, cls).__new__(cls, start, end, name)
-    
+
     def __len__(self):
         return self.end - self.start
 
@@ -128,9 +128,9 @@ def convert_to_bed(readrec):
     """Create and return a Bed object."""
     exon_starts, exon_sizes = get_bed_exons_from_juncs(readrec.juncs, readrec.start, readrec.end)
     bed = Bed(readrec.chrom, readrec.start, readrec.end, readrec.name,
-                score=readrec.score, strand=readrec.strand,
-                thickStart=readrec.start, thickEnd=readrec.end,
-                itemRgb=get_rgb(readrec.strand, len(readrec.juncs)))
+              score=readrec.score, strand=readrec.strand,
+              thickStart=readrec.start, thickEnd=readrec.end,
+              itemRgb=get_rgb(readrec.strand, len(readrec.juncs)))
     for i in range(len(exon_starts)):
         blk_start = readrec.start + exon_starts[i]
         bed.addBlock(blk_start, blk_start + exon_sizes[i])
@@ -154,21 +154,21 @@ def get_exons(readrec):
 #     @classmethod
 #     def _intern_juncs(cls, juncs):
 #         return cls._juncs_cache.setdefault(juncs, juncs)
-    
+
 #     def __init__(self, chrom, strand, juncs):
 #         self.chrom = chrom
 #         self.strand = strand
 #         self.juncs = self._intern_juncs(juncs)
 
-  
+
 def check_intprim(end_seq):
     i = 10
-    while i < len(end_seq) and end_seq[:i].count('A')/i >= INTPRIM_MIN_FRAC:
+    while i < len(end_seq) and end_seq[:i].count('A') / i >= INTPRIM_MIN_FRAC:
         i += 1
     j = end_seq[:i].count('A')
-    if j < INTPRIM_MIN_AS or j/i < INTPRIM_MIN_FRAC:
+    if j < INTPRIM_MIN_AS or j / i < INTPRIM_MIN_FRAC:
         return 0
-    else: 
+    else:
         return j
 
 def check_polyA(end_seq):
@@ -176,7 +176,7 @@ def check_polyA(end_seq):
         return 0
     else:
         i = POLYA_SEARCH_WINDOW
-        while i < len(end_seq) and end_seq[i-POLYA_SEARCH_WINDOW:i].count('A')/POLYA_SEARCH_WINDOW >= POLYA_MIN_FRAC: #check rolling average of 5bp
+        while i < len(end_seq) and end_seq[i - POLYA_SEARCH_WINDOW:i].count('A') / POLYA_SEARCH_WINDOW >= POLYA_MIN_FRAC:  # check rolling average of 5bp
             i += 1
         # return i
         j = end_seq[:i].rfind('A') + 1
@@ -212,46 +212,44 @@ class ReadRec:
         self.end = end
         self.name = name
         self.score = score
-        self.polyA = polyA # (left int, right int)
-        self.intprim = intprim # (left int, right int)
-    
+        self.polyA = polyA  # (left int, right int)
+        self.intprim = intprim  # (left int, right int)
+
     @property
     def exons(self):
         return get_exons(self)
-        
+
     # def update_from_juncs(self, new_juncs):
     #     """Update juncs, keeping chrom, start, end, name, score, strand."""
     #     self.juncs = tuple(new_juncs)
-    
+
     def reset_from_exons(self, exons):
         """Update ReadRec from a list of Exon objects."""
         self.start = exons[0].start
         self.end = exons[-1].end
         self.juncs = tuple(exons_to_juncs(sorted(exons)))
-    
+
     def _get_both_intprim(read, genome):
         left_intprim, right_intprim = 0, 0
         if read.reference_start > INTPRIM_SEARCH_WINDOW:
-            end_seq = get_reverse_complement(genome.fetch(read.reference_name, read.reference_start-INTPRIM_SEARCH_WINDOW, read.reference_start))
+            end_seq = get_reverse_complement(genome.fetch(read.reference_name, read.reference_start - INTPRIM_SEARCH_WINDOW, read.reference_start))
             left_intprim = check_intprim(end_seq)
         if read.reference_end + INTPRIM_SEARCH_WINDOW < genome.get_reference_length(read.reference_name):
             end_seq = genome.fetch(read.reference_name, read.reference_end, read.reference_end + INTPRIM_SEARCH_WINDOW).upper()
             right_intprim = check_intprim(end_seq)
-        return left_intprim, right_intprim 
+        return left_intprim, right_intprim
 
     def _get_both_polyA(read):
         left_polyA, right_polyA = 0, 0
         read_seq = read.query_sequence
-        if read.cigartuples[0][0] == pysam.CIGAR_OPS.CSOFT_CLIP: #check left polyA
+        if read.cigartuples[0][0] == pysam.CIGAR_OPS.CSOFT_CLIP:  # check left polyA
             end_seq = get_reverse_complement(read_seq[:read.cigartuples[0][1]])
             left_polyA = check_polyA(end_seq)
-        if read.cigartuples[-1][0] == pysam.CIGAR_OPS.CSOFT_CLIP: #check right polyA
+        if read.cigartuples[-1][0] == pysam.CIGAR_OPS.CSOFT_CLIP:  # check right polyA
             end_seq = read_seq[-1 * read.cigartuples[-1][1]:]
             right_polyA = check_polyA(end_seq)
         return left_polyA, right_polyA
 
-
-        
     @classmethod
     def from_read(cls, read, junc_direction=None, *, genome=None):
         """Create a ReadRec from a pysam aligned read."""
@@ -276,13 +274,12 @@ class ReadRec:
         if junc_direction not in {'+', '-'}:
             junc_direction = "-" if read.is_reverse else "+"
         juncs = tuple(Junc(blk[0], blk[1]) for blk in intron_blocks)
-        
+
         left_polyA, right_polyA = cls._get_both_polyA(read)
         left_intprim, right_intprim = 0, 0
         if genome is not None:
             left_intprim, right_intprim = cls._get_both_intprim(read, genome)
 
-        
         return cls(read.reference_name, junc_direction, juncs, align_start, ref_pos, read.query_name, polyA=(left_polyA, right_polyA), intprim=(left_intprim, right_intprim))
 
     @classmethod
@@ -299,7 +296,7 @@ class IsoWithReads:
     def _intern_juncs(cls, juncs):
         return cls._juncs_cache.setdefault(juncs, juncs)
 
-    def __init__(self, chrom, strand, juncs, start=None, end=None, reads = None, gene_id = None, transcript_id = None):
+    def __init__(self, chrom, strand, juncs, start=None, end=None, reads=None, gene_id=None, transcript_id=None):
         self.chrom = chrom
         self.strand = strand
         self.juncs = self._intern_juncs(juncs)
@@ -307,16 +304,16 @@ class IsoWithReads:
         self.end = end
         self._name = None
         self._score = None
-        self.reads = reads if reads != None else []
+        self.reads = reads if reads is not None else []
         self.gene_id = gene_id
         self.transcript_id = transcript_id
         self.end5confidence = None
         self.end3confidence = None
-    
+
     @property
     def name(self):
-        if self._name == None:
-            if self.start == None:
+        if self._name is None:
+            if self.start is None:
                 return 'FLISO' + str(abs(hash(tuple(self.juncs))))
             else:
                 return 'FLISO' + str(abs(hash(tuple(self.exons))))
@@ -326,18 +323,18 @@ class IsoWithReads:
     @name.setter
     def name(self, new_name):
         self._name = new_name
-    
+
     @property
     def exons(self):
-        if self.start == None:
+        if self.start is None:
             self.start = int(median(self.starts))
             self.end = int(median(self.ends))
         return get_exons(self)
-    
+
     @property
     def starts(self):
         return [x.start for x in self.reads]
-    
+
     @property
     def ends(self):
         return [x.end for x in self.reads]
@@ -348,7 +345,7 @@ class IsoWithReads:
 
     @property
     def score(self):
-        if self._score == None:
+        if self._score is None:
             return len(self.reads)
         else:
             return self._score
@@ -356,31 +353,30 @@ class IsoWithReads:
     @score.setter
     def score(self, new_score):
         self._score = new_score
-    
+
     @property
     def genomic_length(self):
-        if self.start == None or self.end == None:
+        if self.start is None or self.end is None:
             return None
         return self.end - self.start
-    
+
     def reset_from_exons(self, exons):
         """Update ReadRec from a list of Exon objects."""
         self.start = exons[0].start
         self.end = exons[-1].end
         self.juncs = tuple(exons_to_juncs(sorted(exons)))
-    
+
     def get_sequence(self, genome):
-        if self.start == None or self.end == None:
+        if self.start is None or self.end is None:
             return None
         return get_sequence_for_exons(genome, self.chrom, self.strand, self.exons)
-    
+
     @classmethod
     def from_readrec(cls, readrec):
         return cls(readrec.chrom, readrec.strand, readrec.juncs)
 
     @classmethod
     def from_other(cls, iso, newstart=None, newend=None, newreads=[], newstrand=None):
-        if newstrand == None:
+        if newstrand is None:
             newstrand = iso.strand
         return cls(iso.chrom, newstrand, iso.juncs, newstart, newend, newreads, iso.gene_id, iso.transcript_id)
-    

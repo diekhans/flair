@@ -563,12 +563,11 @@ def main():
                 jcn_strand = jcn2JcnInfo[jcn_str].strand
             else:
                 jcn_strand = '.'
-            bed_line = '\t'.join([jcn2JcnInfo[jcn_str].chr,
-                                 intron_left,
-                                 str(int(intron_right) - 1),
-                                 '.',
-                                 str(min(1000, len(jcn2JcnInfo[jcn_str].block_list))),
-                                 jcn_strand]) + '\n'
+            num_blocks = min(1000, len(jcn2JcnInfo[jcn_str].block_list))
+            bed_fields = [jcn2JcnInfo[jcn_str].chr, intron_left,
+                          str(int(intron_right) - 1), '.',
+                          str(num_blocks), jcn_strand]
+            bed_line = '\t'.join(bed_fields) + '\n'
             junction_bed_file.write(bed_line)
 
     junction_bed_file.close()

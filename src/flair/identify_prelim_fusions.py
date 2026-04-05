@@ -38,12 +38,12 @@ def getGenomicPreciseLoc(tname, bpCoord, genedir, intronLocs, intronToGenome):
     bpIntronEnds = intronToGenome[tname][closestSS]
     genomeSS = None
     diffFromSS = bpCoord - closestSS
-    if closestSS == 0:  ## start of gene
+    if closestSS == 0:  # start of gene
         if genedir == '+':
             genomeSS = bpIntronEnds[1]
         else:
             genomeSS = bpIntronEnds[0]
-    elif closestSS == max(intronLocs[tname]):  ### end of gene
+    elif closestSS == max(intronLocs[tname]):  # end of gene
         if genedir == '+':
             genomeSS = bpIntronEnds[0]
         else:
@@ -134,7 +134,7 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
     withsup = pysam.AlignmentFile(bam, "rb")
     readToAligns = {}
     for read in withsup:
-        if read.is_mapped and not read.is_secondary and read.has_tag('SA') and (mode == 'genomic' or not read.is_reverse):  ## if aligned to transcriptome, must match strand of transcript
+        if read.is_mapped and not read.is_secondary and read.has_tag('SA') and (mode == 'genomic' or not read.is_reverse):  # if aligned to transcriptome, must match strand of transcript
             rname = read.query_name
             if rname not in readToAligns:
                 readToAligns[rname] = []
@@ -143,7 +143,7 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
             qstart, qend = read.query_alignment_start, read.query_alignment_end
             readlen = read.infer_read_length()
             cigar = read.cigartuples
-            if cigar[0][0] == 5:  ## just hard clipping
+            if cigar[0][0] == 5:  # just hard clipping
                 qstart += cigar[0][1]
                 qend += cigar[0][1]
 
@@ -261,7 +261,7 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
                             simscore.append(qdistlist[i] - qdistlist[i - 1])
                         simscores.append(median(simscore))
                     if max([abs(median(x)) for x in qdist]) <= 10 \
-                            or (max([abs(min(x)) for x in qdist]) <= 10 and max(simscores) <= 3):  ### alignments have to either have few gaps or be very consistent
+                            or (max([abs(min(x)) for x in qdist]) <= 10 and max(simscores) <= 3):  # alignments have to either have few gaps or be very consistent
                         fname = '__'.join(fgenes)
                         fusiontoinfo[fname] = {'reads': set(goodreads), 'disttostart': [mindisttostart], 'qdist': qdist}
                         for i in range(numloci):

@@ -18,7 +18,7 @@ CHR20_REGION = SeqRange("chr20", 0, 70000000)
 
 # KRAS transcripts expected in chr12 region
 KRAS_TRANS_IDS = sorted(["ENST00000256078.9", "ENST00000311936.8",
-                          "ENST00000556131.1", "ENST00000557334.5"])
+                         "ENST00000556131.1", "ENST00000557334.5"])
 
 
 @pytest.fixture(scope="session")

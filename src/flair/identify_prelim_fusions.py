@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 
-import pysam, sys, argparse
-from collections import defaultdict, Counter
+import pysam
+import argparse
+from collections import Counter
 from statistics import median
 from flair.convert_synthetic_to_genome_bed import identify_fusion_problems
 
 
 def binarySearch(arr, t):
-    if t <= arr[0]: return arr[0]
-    if t >= arr[-1]: return arr[-1]
+    if t <= arr[0]:
+        return arr[0]
+    if t >= arr[-1]:
+        return arr[-1]
     i, j, mid = 0, len(arr) - 1, 0
     while i < j:
         mid = int((i + j) / 2)
@@ -34,22 +37,32 @@ def getGenomicPreciseLoc(tname, bpCoord, genedir, intronLocs, intronToGenome):
     closestSS = binarySearch(intronLocs[tname], bpCoord)
     bpIntronEnds = intronToGenome[tname][closestSS]
     genomeSS = None
-    diffFromSS = bpCoord-closestSS
-    if closestSS == 0: ##start of gene
-        if genedir == '+': genomeSS = bpIntronEnds[1]
-        else: genomeSS = bpIntronEnds[0]
-    elif closestSS == max(intronLocs[tname]): ###end of gene
-        if genedir == '+': genomeSS = bpIntronEnds[0]
-        else: genomeSS = bpIntronEnds[1]
+    diffFromSS = bpCoord - closestSS
+    if closestSS == 0:  # start of gene
+        if genedir == '+':
+            genomeSS = bpIntronEnds[1]
+        else:
+            genomeSS = bpIntronEnds[0]
+    elif closestSS == max(intronLocs[tname]):  # end of gene
+        if genedir == '+':
+            genomeSS = bpIntronEnds[0]
+        else:
+            genomeSS = bpIntronEnds[1]
     elif genedir == '+':
-        if bpCoord >= closestSS: genomeSS = bpIntronEnds[1]
-        else: genomeSS = bpIntronEnds[0]
+        if bpCoord >= closestSS:
+            genomeSS = bpIntronEnds[1]
+        else:
+            genomeSS = bpIntronEnds[0]
     else:
-        if bpCoord >= closestSS: genomeSS = bpIntronEnds[0]
-        else: genomeSS = bpIntronEnds[1]
+        if bpCoord >= closestSS:
+            genomeSS = bpIntronEnds[0]
+        else:
+            genomeSS = bpIntronEnds[1]
     genomepos = None
-    if genedir == '+': genomepos = genomeSS + diffFromSS
-    else: genomepos = genomeSS - diffFromSS
+    if genedir == '+':
+        genomepos = genomeSS + diffFromSS
+    else:
+        genomepos = genomeSS - diffFromSS
     return genomepos
 
 
@@ -79,8 +92,9 @@ def get_exon_intron_blocks(read):
     if len(intron_blocks) == 0:
         exon_blocks = [(align_start, align_end),]
     else:
-        exon_blocks = [(align_start, intron_blocks[0][0])] + [(intron_blocks[x][1], intron_blocks[x+1][0]) for x in range(len(intron_blocks)-1)] + [(intron_blocks[-1][1], align_end)]
+        exon_blocks = [(align_start, intron_blocks[0][0])] + [(intron_blocks[x][1], intron_blocks[x + 1][0]) for x in range(len(intron_blocks) - 1)] + [(intron_blocks[-1][1], align_end)]
     return intron_blocks, exon_blocks
+
 
 def getCorrectGene(chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, chrom, readblocks, thisdir):
     intron_blocks, exon_blocks = readblocks
@@ -97,9 +111,9 @@ def getCorrectGene(chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, chrom, r
             s, e = exon_blocks[0][0], exon_blocks[-1][1]
             gene_overlaps = []
             for start, end, strand, gene in chrom_to_gene_pos[chrom]:
-                if start > e: #assumes sorted
+                if start > e:  # assumes sorted
                     break
-                if strand == thisdir and min(e, end) > max(start, s): #require strand match
+                if strand == thisdir and min(e, end) > max(start, s):  # require strand match
                     totoverlap = 0
                     for es, ee in gene_to_all_exons[gene]:
                         overlap = min(e, ee) - max(es, s)
@@ -114,25 +128,24 @@ def getCorrectGene(chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, chrom, r
     return my_gene
 
 
-
 def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, minsup, maxloci=10, reqdisttostart=None, maxpromiscuity=4, intronLocs=None, intronToGenome=None):
     isrevtosign = {True: '-', False: '+'}
     withsup = pysam.AlignmentFile(bam, "rb")
     readToAligns = {}
     for read in withsup:
-        if read.is_mapped and not read.is_secondary and read.has_tag('SA') and (mode == 'genomic' or not read.is_reverse): ##if aligned to transcriptome, must match strand of transcript
+        if read.is_mapped and not read.is_secondary and read.has_tag('SA') and (mode == 'genomic' or not read.is_reverse):  # if aligned to transcriptome, must match strand of transcript
             rname = read.query_name
             if rname not in readToAligns:
                 readToAligns[rname] = []
-            
+
             refstart, refend, readdir = read.reference_start, read.reference_end, isrevtosign[read.is_reverse]
             qstart, qend = read.query_alignment_start, read.query_alignment_end
             readlen = read.infer_read_length()
             cigar = read.cigartuples
-            if cigar[0][0] == 5:  ##just hard clipping
+            if cigar[0][0] == 5:  # just hard clipping
                 qstart += cigar[0][1]
                 qend += cigar[0][1]
-            
+
             if mode == 'genomic':
                 refchr = read.reference_name
                 genename = getCorrectGene(chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, refchr, get_exon_intron_blocks(read), readdir)
@@ -143,7 +156,7 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
             else:
                 genename = read.reference_name.split('_')[-1].split('.')[0]
                 tname = '_'.join(read.reference_name.split('_')[:-1])
-                refchr, genedir = genetoinfo[genename][0], genetoinfo[genename][3] # can do this because already required the read to be forward strand
+                refchr, genedir = genetoinfo[genename][0], genetoinfo[genename][3]  # can do this because already required the read to be forward strand
                 refstart = getGenomicPreciseLoc(tname, refstart, genedir, intronLocs, intronToGenome)
                 refend = getGenomicPreciseLoc(tname, refend, genedir, intronLocs, intronToGenome)
                 refstart, refend = min(refstart, refend), max(refstart, refend)
@@ -159,11 +172,12 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
 
         readgenes = [x[2] for x in alignedloci]
         if 2 <= len(set(readgenes)) <= maxloci:
-            if readgenes[0] in gene_to_all_exons: #5' gene is annotated
+            if readgenes[0] in gene_to_all_exons:  # 5' gene is annotated
                 info = tuple(readgenes)
-                if info not in interestingloci: interestingloci[info] = []
+                if info not in interestingloci:
+                    interestingloci[info] = []
                 interestingloci[info].append(read)
-    
+
     goodcov = []
     for l in interestingloci:
         if len(interestingloci[l]) >= minsup:
@@ -174,16 +188,17 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
         for i in fgenes:
             other = set(fgenes) - {i, }
             newother = frozenset([gene_to_paralogs[g] if g in gene_to_paralogs else g for g in other])
-            if i not in locustopartners: locustopartners[i] = set()
+            if i not in locustopartners:
+                locustopartners[i] = set()
             locustopartners[i].add(newother)
-    
+
     fusiontoinfo = {}
     for fgenes in goodcov:
         genomic_chroms = [genetoinfo[g][0] if g in genetoinfo else g.split(':')[0] for g in fgenes]
         is_good_fusion = identify_fusion_problems(fgenes, locustopartners, maxpromiscuity, genetoname, gene_to_paralogs, genomic_chroms, len(interestingloci[fgenes]))
         if is_good_fusion:
             numloci = len(fgenes)
-            qdist = [[] for x in range(numloci-1)]
+            qdist = [[] for x in range(numloci - 1)]
             alignblocks = [[[], []] for x in range(numloci)]
             goodreads = []
             for r in interestingloci[fgenes]:
@@ -197,7 +212,7 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
                         alignblocks[i][1].append(alignedloci[i][1][1])
 
             # check that gene orders for all reads are consistent
-            ###to start, no clustering, take simple min/max
+            # to start, no clustering, take simple min/max
             for i in range(numloci):
                 strand = '+' if median(alignblocks[i][1]) > median(alignblocks[i][0]) else '-'
                 for j in range(2):
@@ -206,14 +221,16 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
                     groups, g = [], [-500]
                     for p in poslist:
                         if p - g[-1] > 300:
-                            if g[0] != -500: groups.append(g)
+                            if g[0] != -500:
+                                groups.append(g)
                             g = [p]
                         else:
                             g.append(p)
                     groups.append(g)
                     goodpos = []
                     for g in groups:
-                        if len(g) > 1: goodpos.extend(g)
+                        if len(g) > 1:
+                            goodpos.extend(g)
                     if (strand == '+' and j == 0) or (strand == '-' and j == 1):
                         outpos = int(min(simplemed, min(goodpos))) - 1000 if len(goodpos) > 0 else int(simplemed) - 1000
                     else:
@@ -221,36 +238,35 @@ def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, jun
                     outpos = max(0, outpos)
                     alignblocks[i][j] = outpos
 
-            ###check that 5' gene is in the forward direction, implies plausible promoter
+            # check that 5' gene is in the forward direction, implies plausible promoter
             if fgenes[0] in genetoinfo:
                 firstgenedir = genetoinfo[fgenes[0]][3]
                 firstgenetstarts = genetoinfo[fgenes[0]][-1]
-                end5 = alignblocks[0][0] #if firstgenedir == '+' else alignblocks[0][1]
-                if alignblocks[0][0] > alignblocks[0][1]: 
+                end5 = alignblocks[0][0]  # if firstgenedir == '+' else alignblocks[0][1]
+                if alignblocks[0][0] > alignblocks[0][1]:
                     end5 -= 1000
-                else: 
+                else:
                     end5 += 1000
-                mindisttostart = min([abs(end5-x) for x in firstgenetstarts])
+                mindisttostart = min([abs(end5 - x) for x in firstgenetstarts])
 
-                if ((firstgenedir == '+' and alignblocks[0][0] < alignblocks[0][1]) \
-                or (firstgenedir == '-' and alignblocks[0][0] > alignblocks[0][1])) \
-                and (reqdisttostart == None or mindisttostart <= reqdisttostart):
+                if ((firstgenedir == '+' and alignblocks[0][0] < alignblocks[0][1])
+                        or (firstgenedir == '-' and alignblocks[0][0] > alignblocks[0][1]))\
+                        and (reqdisttostart is None or mindisttostart <= reqdisttostart):
                     simscores = []
                     for qdistlist in qdist:
                         simscore = []
                         qdistlist = sorted(qdistlist)
                         for i in range(1, len(qdistlist)):
-                            simscore.append(qdistlist[i] - qdistlist[i-1])
+                            simscore.append(qdistlist[i] - qdistlist[i - 1])
                         simscores.append(median(simscore))
                     if max([abs(median(x)) for x in qdist]) <= 10 \
-                    or (max([abs(min(x)) for x in qdist]) <= 10 and max(simscores) <= 3): ###alignments have to either have few gaps or be very consistent
+                            or (max([abs(min(x)) for x in qdist]) <= 10 and max(simscores) <= 3):  # alignments have to either have few gaps or be very consistent
                         fname = '__'.join(fgenes)
-                        fusiontoinfo[fname] = {'reads': set(goodreads), 'disttostart':[mindisttostart], 'qdist':qdist}
+                        fusiontoinfo[fname] = {'reads': set(goodreads), 'disttostart': [mindisttostart], 'qdist': qdist}
                         for i in range(numloci):
                             fusiontoinfo[fname][fgenes[i]] = [genomic_chroms[i], alignblocks[i][0], alignblocks[i][1]]
 
     return fusiontoinfo
-
 
 
 if __name__ == '__main__':
@@ -264,7 +280,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # annot, geneannot, genetoinfo = gchimparsegtf(args.gtf)
-
-
-
-

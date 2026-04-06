@@ -2,24 +2,20 @@
 
 import argparse
 import os
-import glob
 import pipettor
 import shutil
 import pysam
 import logging
 import scipy.stats as sps
 from flair.partition_runner import PartitionRunner
-from flair import FlairInputDataError, SeqRange
+from flair import SeqRange
 from statistics import median
-from flair.gtf_io import gtf_data_parser, gtf_write_row, GtfTranscript, GtfExon
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
 from flair.isoform_data import (Junc, ReadRec)
-from flair.read_processing import (should_process_read, generate_genomic_alignment_read_to_clipping_file,
-                                   read_correct_to_readrec, add_corrected_read_to_groups, get_sequence_from_bed)
-import scipy.stats as sps
+from flair.read_processing import (add_corrected_read_to_groups, get_sequence_from_bed)
 
-#FIXME: this is temp, need to move into a
+# FIXME: this is temp, need to move into a
 import flair.flair_transcriptome as ft
 
 def get_args():
@@ -89,11 +85,12 @@ def get_args():
 
     args.trust_ends = False
     args.remove_internal_priming = False
-    args.quality = 0 # should only be used for genomic alignment
+    args.quality = 0  # should only be used for genomic alignment
 
     if not os.path.exists(args.genome):
         parser.error(f'Genome file path does not exist: {args.genome}')
     return args
+
 
 TERMINAL_JUNCTION_DIST_FROM_ANNOT = 20
 MIN_TERMINAL_JUNCTION_SEPARATION = 100
@@ -222,15 +219,15 @@ def determine_juncs_are_subset(juncs, alljuncs):
         if juncs != otherjuncs and len(juncs) < len(otherjuncs):
             if str(juncs)[1:-1].rstrip(',') in str(otherjuncs):
                 is_subset = True
-                other_internal_exons = [(otherjuncs[x][1], otherjuncs[x+1][0]) for x in range(len(otherjuncs)-1)]
+                other_internal_exons = [(otherjuncs[x][1], otherjuncs[x + 1][0]) for x in range(len(otherjuncs) - 1)]
                 for other_exon in other_internal_exons:
                     if juncs[0][0] == other_exon[1]:
                         unique_seq_bound[0].append(other_exon[1] - other_exon[0])
                     if juncs[-1][1] == other_exon[0]:
                         unique_seq_bound[1].append(other_exon[1] - other_exon[0])
     if is_subset:
-        unique_seq_bound[0] = max(unique_seq_bound[0]) if len(unique_seq_bound[0])>0 else None
-        unique_seq_bound[1] = max(unique_seq_bound[1]) if len(unique_seq_bound[1])>0 else None
+        unique_seq_bound[0] = max(unique_seq_bound[0]) if len(unique_seq_bound[0]) > 0 else None
+        unique_seq_bound[1] = max(unique_seq_bound[1]) if len(unique_seq_bound[1]) > 0 else None
         return unique_seq_bound
     else:
         return [None, None]
@@ -240,12 +237,12 @@ def get_start_end_counts(readinfo, subset_info, sample, first_junc, last_junc, t
         # if subset_info[0] == None or first_junc-start > subset_info[0]:
         t_starts_ends[0].append((r.start, sample))
         if first_junc not in t_first_last_sj[0]:
-            t_first_last_sj[0][first_junc] = {s:0 for s in allsamples}
+            t_first_last_sj[0][first_junc] = {s: 0 for s in allsamples}
         t_first_last_sj[0][first_junc][sample] += 1
         # if subset_info[1] == None or end-last_junc > subset_info[1]:
         t_starts_ends[1].append((r.end, sample))
         if last_junc not in t_first_last_sj[1]:
-            t_first_last_sj[1][last_junc] = {s:0 for s in allsamples}
+            t_first_last_sj[1][last_junc] = {s: 0 for s in allsamples}
         t_first_last_sj[1][last_junc][sample] += 1
     return t_starts_ends, t_first_last_sj
 
@@ -267,7 +264,7 @@ def group_ends(t_starts_ends, allsamples, window):
                         end_to_counts[g][e[1]] += 1
                 curr_group = []
             curr_group.append(end)
-            last_end=end[0]
+            last_end = end[0]
         # all_groups.append(curr_group)
         # end_to_counts[median(curr_group)] = len(curr_group)
         g = int(median([x[0] for x in curr_group]))
@@ -326,37 +323,33 @@ def extract_tandem_splicing_info(sjc, alljuncs, outer_junc_to_exons, allsamples,
     return outer_junc_to_exons
 
 
-
-
-
 def extract_splicing_info(allsamples, allgenetojuncs, gene, strand, thischrom, outends):
     ss5to3, ss3to5, alljuncs, exonjpairs, allblocks = {}, {}, {}, {}, {}
     afe, ale = {}, {}
-    t_starts_ends, t_first_last_sj = [[],[]], [{},{}]
+    t_starts_ends, t_first_last_sj = [[], []], [{}, {}]
     interval_to_reads = {}
     outer_junc_to_exons = {}
-    ##get valid read ends by excluding subset junction chains (check for whether end is within exon)
-        ##only check relative to other reads, not reference?
-    ##get list of valid read ends after excluding subset junction chains
-    ##cluster within window, take median/mode of window (use code from transcriptome)?
+    # get valid read ends by excluding subset junction chains (check for whether end is within exon)
+    # only check relative to other reads, not reference?
+    # get list of valid read ends after excluding subset junction chains
+    # cluster within window, take median/mode of window (use code from transcriptome)?
 
     # process each sample for each gene - only ever storing data for one gene at a time
     for s in range(len(allsamples)):
         sample = allsamples[s]
-        ##TODO: change to genetojuncs being all juncs from all samples!!
+        # TODO: change to genetojuncs being all juncs from all samples!!
         genetojuncs = allgenetojuncs[s]
         if gene in genetojuncs:
             for juncs in genetojuncs[gene]:
                 readinfo = genetojuncs[gene][juncs]
                 numreads = len(readinfo)
 
-                ###get intervals for calculating coverage
+                # get intervals for calculating coverage
                 for r in readinfo:
-                    interval = (round(r.start,-1), round(r.end, -1))
+                    interval = (round(r.start, -1), round(r.end, -1))
                     if interval not in interval_to_reads:
                         interval_to_reads[interval] = {s: 0 for s in allsamples}
                     interval_to_reads[interval][sample] += 1
-
 
                 ss5to3, ss3to5, alljuncs = extract_35ss_info(juncs, strand, allsamples, sample, numreads,
                                                              ss5to3, ss3to5, alljuncs)
@@ -369,7 +362,6 @@ def extract_splicing_info(allsamples, allgenetojuncs, gene, strand, thischrom, o
                 subset_info = determine_juncs_are_subset(juncs, genetojuncs[gene])
                 t_starts_ends, t_first_last_sj = get_start_end_counts(readinfo, subset_info, sample, juncs[0][0], juncs[-1][1],
                                                                       t_starts_ends, t_first_last_sj, allsamples)
-
 
     return ss5to3, ss3to5, alljuncs, exonjpairs, allblocks, t_starts_ends, t_first_last_sj, interval_to_reads, afe, ale, outer_junc_to_exons
 
@@ -386,14 +378,14 @@ def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gen
 
         if exon not in exon_to_outer_juncs:
             exon_to_outer_juncs[exon] = set()
-            exon_to_all_inc[exon] = {s:0 for s in allsamples}
-            exon_to_all_exc[exon] = {s:0 for s in allsamples}
+            exon_to_all_inc[exon] = {s: 0 for s in allsamples}
+            exon_to_all_exc[exon] = {s: 0 for s in allsamples}
         exon_to_outer_juncs[exon].add(outerjunc)
         exon_to_all_inc[exon] = add_counts_to_dict(exon_to_all_inc[exon], exonjpairs[(prevjunc, nextjunc)])
         if outerjunc in alljuncs:
             # if outerjunc not in outer_junc_to_exons:
-                # outer_junc_to_exons[outerjunc] = set()
-                # outer_junc_to_all_inc[outerjunc] = {s:0 for s in allsamples}
+            #     outer_junc_to_exons[outerjunc] = set()
+            #     outer_junc_to_all_inc[outerjunc] = {s: 0 for s in allsamples}
             exon_to_all_exc[exon] = add_counts_to_dict(exon_to_all_exc[exon], alljuncs[outerjunc])
             # outer_junc_to_exons[outerjunc].add(exon)
             # outer_junc_to_all_inc[outerjunc] = add_counts_to_dict(outer_junc_to_all_inc[outerjunc], exonjpairs[(prevjunc, nextjunc)])
@@ -404,51 +396,55 @@ def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gen
         tot_counts = exon_to_all_inc[exon]
         tot_counts = add_counts_to_dict(tot_counts, exon_to_all_exc[exon])
 
-        inc_frac_list = [exon_to_all_inc[exon][s]/tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
+        inc_frac_list = [exon_to_all_inc[exon][s] / tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
         if len(inc_frac_list) >= 1 \
-        and any([exon_to_all_inc[exon][s] >= min_read_support for s in allsamples]) \
-        and any([exon_to_all_exc[exon][s] >= min_read_support for s in allsamples]) \
-        and (max(inc_frac_list)-min(inc_frac_list) >= junc_frac_of_event \
-        or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1-junc_frac_of_event)):
+                and any([exon_to_all_inc[exon][s] >= min_read_support for s in allsamples]) \
+                and any([exon_to_all_exc[exon][s] >= min_read_support for s in allsamples]) \
+                and (max(inc_frac_list) - min(inc_frac_list) >= junc_frac_of_event
+                     or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1 - junc_frac_of_event)):
             outer_juncs = exon_to_outer_juncs[exon]
 
             bedlines = []
             goodouterjuncs = set()
             innerjuncs = set()
             for outerjunc in outer_juncs:
-                if any([exonjpairs[((outerjunc[0], exon[0]), (exon[1], outerjunc[1]))][s] >= min_read_support for s in allsamples]) \
-                        and any([junc_frac_of_event <= exonjpairs[((outerjunc[0], exon[0]), (exon[1], outerjunc[1]))][s]/(exon_to_all_inc[exon][s] + exon_to_all_exc[exon][s]) <= 1-junc_frac_of_event if (exon_to_all_inc[exon][s] + exon_to_all_exc[exon][s]) > 0 else False for s in allsamples]):
+                ejpair = exonjpairs[((outerjunc[0], exon[0]), (exon[1], outerjunc[1]))]
+                if any([ejpair[s] >= min_read_support for s in allsamples]) \
+                        and any([junc_frac_of_event <= ejpair[s] / (exon_to_all_inc[exon][s] + exon_to_all_exc[exon][s]) <= 1 - junc_frac_of_event
+                                 if (exon_to_all_inc[exon][s] + exon_to_all_exc[exon][s]) > 0 else False for s in allsamples]):
                     goodouterjuncs.add(outerjunc)
                     innerjuncs.add((outerjunc[0], exon[0]))
                     innerjuncs.add((exon[1], outerjunc[1]))
 
             # oj_string = [f'{thischrom}:{j[0]}-{j[1]}' for j in sorted(list(goodouterjuncs))]
-            ename = f'es-of-{thischrom}:{exon[0]}-{exon[1]}' #-relTo-{",".join(oj_string)}({strand})-{gene}'
+            ename = f'es-of-{thischrom}:{exon[0]}-{exon[1]}'  # -relTo-{",".join(oj_string)}({strand})-{gene}'
 
             for outerjunc in goodouterjuncs:
-                bedlines.append([thischrom, outerjunc[0]-10, outerjunc[1]+10, f'inc_{ename}', 0, strand, outerjunc[0]-10, outerjunc[1]+10, mycolor, 3, f'10,{exon[1]-exon[0]},10', f'0,{10+exon[0]-outerjunc[0]},{10+outerjunc[1]-outerjunc[0]}'])
+                bedlines.append([thischrom, outerjunc[0] - 10, outerjunc[1] + 10, f'inc_{ename}', 0, strand,
+                                 outerjunc[0] - 10, outerjunc[1] + 10, mycolor, 3,
+                                 f'10,{exon[1] - exon[0]},10',
+                                 f'0,{10 + exon[0] - outerjunc[0]},{10 + outerjunc[1] - outerjunc[0]}'])
                 if (outerjunc[0], exon[0]) not in esjuncs:
                     esjuncs[(outerjunc[0], exon[0])] = {}
                 if outerjunc not in esjuncs[(outerjunc[0], exon[0])]:
-                    esjuncs[(outerjunc[0], exon[0])][outerjunc] = {s:0 for s in allsamples}
+                    esjuncs[(outerjunc[0], exon[0])][outerjunc] = {s: 0 for s in allsamples}
                 esjuncs[(outerjunc[0], exon[0])][outerjunc] = add_counts_to_dict(esjuncs[(outerjunc[0], exon[0])][outerjunc], exonjpairs[((outerjunc[0], exon[0]), (exon[1], outerjunc[1]))])
                 if (exon[1], outerjunc[1]) not in esjuncs:
                     esjuncs[(exon[1], outerjunc[1])] = {}
                 if outerjunc not in esjuncs[(exon[1], outerjunc[1])]:
-                    esjuncs[(exon[1], outerjunc[1])][outerjunc] = {s:0 for s in allsamples}
+                    esjuncs[(exon[1], outerjunc[1])][outerjunc] = {s: 0 for s in allsamples}
                 esjuncs[(exon[1], outerjunc[1])][outerjunc] = add_counts_to_dict(esjuncs[(exon[1], outerjunc[1])][outerjunc], exonjpairs[((outerjunc[0], exon[0]), (exon[1], outerjunc[1]))])
 
             event_to_info[ename] = SplicingEvent(ename, 'es', gene, thischrom, strand, tot_counts, allsamples)
 
-            event_to_info[ename].events['inc'] = SplicingEventJunction('inc', bedlines, exon_to_all_inc[exon], innerjuncs, set(), goodouterjuncs, {exon,})
+            event_to_info[ename].events['inc'] = SplicingEventJunction('inc', bedlines, exon_to_all_inc[exon], innerjuncs, set(), goodouterjuncs, {exon, })
 
-            event_to_info[ename].events['exc'] = SplicingEventJunction('exc', [], exon_to_all_exc[exon], set(), innerjuncs, goodouterjuncs, {exon,})
+            event_to_info[ename].events['exc'] = SplicingEventJunction('exc', [], exon_to_all_exc[exon], set(), innerjuncs, goodouterjuncs, {exon, })
 
             if len(goodouterjuncs) > 0:
                 event_to_info[ename].totoverlap = get_overlapping_reads((max([x[0] for x in goodouterjuncs]), min([x[1] for x in goodouterjuncs])), interval_to_reads, allsamples)
             else:
                 event_to_info[ename].totoverlap = get_overlapping_reads((max([x[0] for x in outer_juncs]), min([x[1] for x in outer_juncs])), interval_to_reads, allsamples)
-
 
             finaljuncs = goodouterjuncs | innerjuncs
             seen_junc_combos.add(frozenset(finaljuncs))
@@ -458,23 +454,23 @@ def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gen
         if any([alljuncs[outerjunc][s] >= min_read_support for s in allsamples]):
             goodB = set()
             all_exons = set()
-            my_juncs = set()#{outerjunc,}
-            othercounts = {s:0 for s in allsamples}
+            my_juncs = set()  # {outerjunc,}
+            othercounts = {s: 0 for s in allsamples}
             tot_counts = alljuncs[outerjunc]
             for innerjuncs in innerjuncs_to_counts:
                 tot_counts = add_counts_to_dict(tot_counts, innerjuncs_to_counts[innerjuncs])
-            inc_frac_list = [alljuncs[outerjunc][s]/tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
+            inc_frac_list = [alljuncs[outerjunc][s] / tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
             if len(inc_frac_list) > 0 \
-            and any([alljuncs[outerjunc][s] >= min_read_support for s in allsamples]) \
-            and (max(inc_frac_list)-min(inc_frac_list) >= junc_frac_of_event \
-            or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1-junc_frac_of_event)):
+                and any([alljuncs[outerjunc][s] >= min_read_support for s in allsamples]) \
+                and (max(inc_frac_list) - min(inc_frac_list) >= junc_frac_of_event
+                     or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1 - junc_frac_of_event)):
                 for innerjuncs in innerjuncs_to_counts:
-                    inc_frac_list = [innerjuncs_to_counts[innerjuncs][s]/tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
+                    inc_frac_list = [innerjuncs_to_counts[innerjuncs][s] / tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
                     if any([innerjuncs_to_counts[innerjuncs][s] >= min_read_support for s in allsamples]) \
-                    and (max(inc_frac_list)-min(inc_frac_list) >= junc_frac_of_event \
-                    or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1-junc_frac_of_event)):
+                        and (max(inc_frac_list) - min(inc_frac_list) >= junc_frac_of_event
+                             or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1 - junc_frac_of_event)):
                         goodB.add(innerjuncs)
-                        my_exons = [(innerjuncs[i][1], innerjuncs[i+1][0]) for i in range(len(innerjuncs)-1)]
+                        my_exons = [(innerjuncs[i][1], innerjuncs[i + 1][0]) for i in range(len(innerjuncs) - 1)]
                         all_exons.update(set(my_exons))
                         for j in innerjuncs:
                             my_juncs.add(j)
@@ -482,33 +478,30 @@ def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gen
                         othercounts = add_counts_to_dict(othercounts, innerjuncs_to_counts[innerjuncs])
 
                 if len(goodB) > 0 \
-                        and frozenset(my_juncs | {outerjunc,}) not in seen_junc_combos:  #only require one exon relative to outer junction
+                        and frozenset(my_juncs | {outerjunc, }) not in seen_junc_combos:  # only require one exon relative to outer junction
                     ename = f'ces-relTo-{thischrom}:{outerjunc[0]}-{outerjunc[1]}({strand})-{gene}'
                     event_to_info[ename] = SplicingEvent(ename, 'ces', gene, thischrom, strand, tot_counts, allsamples)
 
-
-                    bedline = [thischrom, outerjunc[0]-10, outerjunc[1]+10, f'exc_{ename}', 0, strand, outerjunc[0]-10, outerjunc[1]+10,
-                                mycolor, 2, '10,10', f'0,{10+outerjunc[1]-outerjunc[0]}']
-                    event_to_info[ename].events['exc'] = SplicingEventJunction('exc', [bedline], alljuncs[outerjunc], set(), my_juncs, {outerjunc,}, all_exons)
-
+                    bedline = [thischrom, outerjunc[0] - 10, outerjunc[1] + 10, f'exc_{ename}', 0, strand, outerjunc[0] - 10, outerjunc[1] + 10,
+                               mycolor, 2, '10,10', f'0,{10 + outerjunc[1] - outerjunc[0]}']
+                    event_to_info[ename].events['exc'] = SplicingEventJunction('exc', [bedline], alljuncs[outerjunc], set(), my_juncs, {outerjunc, }, all_exons)
 
                     for innerjuncs in goodB:
-                        my_exons = [(innerjuncs[i][1], innerjuncs[i+1][0]) for i in range(len(innerjuncs)-1)]
+                        my_exons = [(innerjuncs[i][1], innerjuncs[i + 1][0]) for i in range(len(innerjuncs) - 1)]
                         exonstring = ','.join([f'{thischrom}:{x[0]}-{x[1]}' for x in my_exons])
                         jname = f'inc-of-{exonstring}'
-                        esizes = ','.join([str(x[1]-x[0]) for x in my_exons])
-                        estarts = ','.join([str(10+x[0]-outerjunc[0]) for x in my_exons])
-                        bedline = [thischrom, outerjunc[0]-10, outerjunc[1]+10, f'{jname}_{ename}', 0, strand, outerjunc[0]-10, outerjunc[1]+10,
-                                mycolor, 3, f'10,{esizes},10', f'0,{estarts},{10+outerjunc[1]-outerjunc[0]}']
-                        event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], innerjuncs_to_counts[innerjuncs], \
-                                                                                    set(innerjuncs), my_juncs-set(innerjuncs), {outerjunc,}, set(my_exons))
-
+                        esizes = ','.join([str(x[1] - x[0]) for x in my_exons])
+                        estarts = ','.join([str(10 + x[0] - outerjunc[0]) for x in my_exons])
+                        bedline = [thischrom, outerjunc[0] - 10, outerjunc[1] + 10, f'{jname}_{ename}', 0, strand, outerjunc[0] - 10, outerjunc[1] + 10,
+                                   mycolor, 3, f'10,{esizes},10', f'0,{estarts},{10 + outerjunc[1] - outerjunc[0]}']
+                        event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], innerjuncs_to_counts[innerjuncs],
+                                                                                   set(innerjuncs), my_juncs - set(innerjuncs), {outerjunc, }, set(my_exons))
 
                         for j in innerjuncs:
                             if j not in esjuncs:
                                 esjuncs[j] = {}
                             if outerjunc not in esjuncs[j]:
-                                esjuncs[j][outerjunc] = {s:0 for s in allsamples}
+                                esjuncs[j][outerjunc] = {s: 0 for s in allsamples}
                             esjuncs[j][outerjunc] = add_counts_to_dict(esjuncs[j][outerjunc], innerjuncs_to_counts[innerjuncs])
 
                     if any([othercounts[s] >= min_read_support for s in allsamples]):
@@ -519,7 +512,7 @@ def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gen
 
 
 def get_overlapping_reads(ref_junc, interval_to_reads, allsamples):
-    tot_counts = {s:0 for s in allsamples}
+    tot_counts = {s: 0 for s in allsamples}
     for i in interval_to_reads:
         if i[0] < ref_junc[0] and ref_junc[1] < i[1]:
             tot_counts = add_counts_to_dict(tot_counts, interval_to_reads[i])
@@ -527,30 +520,30 @@ def get_overlapping_reads(ref_junc, interval_to_reads, allsamples):
 
 
 def add_counts_to_dict(a, b):
-    return {s:a[s] + b[s] for s in a.keys()}
+    return {s: a[s] + b[s] for s in a.keys()}
 
 def process_terminal_exons(termExon, eventtype, thischrom, strand, gene, allsamples, mycolor, min_read_support, junc_frac_of_event, event_support, interval_to_reads, alljuncs, annot_terminal_ss):
     event_to_info = {}
     junc_combos = set()
     if len(termExon) > 1:
-        tot_counts = {s:0 for s in allsamples}
-        othercounts = {s:0 for s in allsamples}
+        tot_counts = {s: 0 for s in allsamples}
+        othercounts = {s: 0 for s in allsamples}
         ss_to_counts = {}
         ss_to_junc_qual = {}
         actual_terminal = []
         for termSS in termExon:
-            ss_to_counts[termSS] = {s:0 for s in allsamples}
+            ss_to_counts[termSS] = {s: 0 for s in allsamples}
             ss_to_junc_qual[termSS] = []
             is_annot_terminal = False
             if gene in annot_terminal_ss:
                 for ss in annot_terminal_ss[gene]:
-                    if ss-20 <= termSS <= ss+20:
+                    if ss - 20 <= termSS <= ss + 20:
                         is_annot_terminal = True
                         break
             for termJunc in termExon[termSS]:
                 ss_to_counts[termSS] = add_counts_to_dict(ss_to_counts[termSS], termExon[termSS][termJunc])
-                ## here we determine whether this splice site is really a terminal exon
-                ## either all reads terminate here, or it's annotated as a terminal junction
+                # here we determine whether this splice site is really a terminal exon
+                # either all reads terminate here, or it's annotated as a terminal junction
                 if is_annot_terminal:
                     ss_to_junc_qual[termSS].append(True)
                 else:
@@ -563,42 +556,41 @@ def process_terminal_exons(termExon, eventtype, thischrom, strand, gene, allsamp
                 othercounts = add_counts_to_dict(othercounts, ss_to_counts[termSS])
             tot_counts = add_counts_to_dict(tot_counts, ss_to_counts[termSS])
 
-
         if any([tot_counts[s] >= event_support for s in allsamples]):
             goodB = []
             goodBstrict = []
             my_juncs = set()
             my_juncs = set()
             for termSS in actual_terminal:
-                inc_frac_list = [ss_to_counts[termSS][s]/tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
+                inc_frac_list = [ss_to_counts[termSS][s] / tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
 
                 if any([ss_to_counts[termSS][s] >= min_read_support for s in allsamples]) \
-                and (max(inc_frac_list)-min(inc_frac_list) >= junc_frac_of_event \
-                or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1-junc_frac_of_event)):
+                    and (max(inc_frac_list) - min(inc_frac_list) >= junc_frac_of_event
+                         or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1 - junc_frac_of_event)):
                     goodB.append(termSS)
-                    if any([ss_to_counts[termSS][s]/tot_counts[s] >= MIN_TERMINAL_SS_FRACTION if tot_counts[s] > 0 else False for s in allsamples]):
+                    if any([ss_to_counts[termSS][s] / tot_counts[s] >= MIN_TERMINAL_SS_FRACTION if tot_counts[s] > 0 else False for s in allsamples]):
                         goodBstrict.append(termSS)
                     for termJunc in termExon[termSS]:
                         if any([termExon[termSS][termJunc][s] >= min_read_support for s in allsamples]) \
-                                and any([junc_frac_of_event <= termExon[termSS][termJunc][s]/tot_counts[s] <= 1-junc_frac_of_event if tot_counts[s] > 0 else False for s in allsamples]):
+                                and any([junc_frac_of_event <= termExon[termSS][termJunc][s] / tot_counts[s] <= 1 - junc_frac_of_event if tot_counts[s] > 0 else False for s in allsamples]):
                             my_juncs.add(termJunc)
                 else:
                     othercounts = add_counts_to_dict(othercounts, ss_to_counts[termSS])
-            
-            ##check that the junctions involved are distant enough from each other
+
+            # check that the junctions involved are distant enough from each other
             if len(goodB) > 1 and len(goodBstrict) > 1 and max(goodBstrict) - min(goodBstrict) >= MIN_TERMINAL_JUNCTION_SEPARATION:
                 ename = f'{eventtype}-({strand})-{gene}'
                 event_to_info[ename] = SplicingEvent(ename, eventtype, gene, thischrom, strand, tot_counts, allsamples)
 
                 for ssB in goodB:
                     jname = f'{thischrom}:{ssB}'
-                    if (eventtype == 'AFE' and strand == '+') or (eventtype=='ALE' and strand == '-'):
-                        bs, be = ssB-100, ssB
+                    if (eventtype == 'AFE' and strand == '+') or (eventtype == 'ALE' and strand == '-'):
+                        bs, be = ssB - 100, ssB
                     else:
                         bs, be = ssB, ssB + 100
-                    bedline = [thischrom, bs, be, f'{jname}_{ename}', 0, strand, bs, be, mycolor, 1, be-bs, 0]
+                    bedline = [thischrom, bs, be, f'{jname}_{ename}', 0, strand, bs, be, mycolor, 1, be - bs, 0]
                     inc_juncs = {x for x in my_juncs if ssB in x}
-                    event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], ss_to_counts[ssB], inc_juncs, my_juncs-inc_juncs)
+                    event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], ss_to_counts[ssB], inc_juncs, my_juncs - inc_juncs)
 
                 if any([othercounts[s] >= min_read_support for s in allsamples]):
                     event_to_info[ename].other = othercounts
@@ -606,16 +598,10 @@ def process_terminal_exons(termExon, eventtype, thischrom, strand, gene, allsamp
                 ref_junc = (max([x[0] for x in my_juncs]), min([x[1] for x in my_juncs]))
                 event_to_info[ename].totoverlap = get_overlapping_reads(ref_junc, interval_to_reads, allsamples)
 
-            ##TODO: add initial check for all reads with junction are equal to all terminal exon reads!
-            ##TODO: identify good juncs for each terminal SS, save junc combo
-            ##Good juncs must be significant proportion of all reads for event!
+            # TODO: add initial check for all reads with junction are equal to all terminal exon reads!
+            # TODO: identify good juncs for each terminal SS, save junc combo
+            # Good juncs must be significant proportion of all reads for event!
     return event_to_info, junc_combos
-
-
-
-
-
-
 
 
 def process_junction_events(ssAtoB, esjuncs, eventtype, thischrom, strand, gene, allsamples, colordict, min_read_support, interval_to_reads, junc_frac_of_event, event_support, afe_ale_junc_comb):
@@ -626,19 +612,19 @@ def process_junction_events(ssAtoB, esjuncs, eventtype, thischrom, strand, gene,
             goodB, goodBstrict = [], []
             junccomb = set()
             my_juncs = set()
-            othercounts = {s:0 for s in allsamples}
-            tot_counts = {s:0 for s in allsamples}
+            othercounts = {s: 0 for s in allsamples}
+            tot_counts = {s: 0 for s in allsamples}
             for ssB in ssAtoB[ssA]:
                 tot_counts = add_counts_to_dict(tot_counts, ssAtoB[ssA][ssB])
 
             for ssB in ssAtoB[ssA]:
 
                 junc = (min((ssA, ssB)), max((ssA, ssB)))
-                inc_frac_list = [ssAtoB[ssA][ssB][s]/tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
+                inc_frac_list = [ssAtoB[ssA][ssB][s] / tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
 
                 if len(inc_frac_list) >= 1 \
-                and (max(inc_frac_list)-min(inc_frac_list) >= junc_frac_of_event \
-                or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1-junc_frac_of_event)):
+                    and (max(inc_frac_list) - min(inc_frac_list) >= junc_frac_of_event
+                         or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1 - junc_frac_of_event)):
 
                     goodB.append(ssB)
                     my_juncs.add(junc)
@@ -646,14 +632,14 @@ def process_junction_events(ssAtoB, esjuncs, eventtype, thischrom, strand, gene,
                     if junc not in esjuncs:
                         goodBstrict.append(ssB)
                     else:
-                        escounts = {s:0 for s in allsamples}
+                        escounts = {s: 0 for s in allsamples}
                         for ssB2 in ssAtoB[ssA]:
                             if ssB2 != ssB:
                                 junc2 = (min((ssA, ssB2)), max((ssA, ssB2)))
                                 if junc2 in esjuncs[junc]:
                                     escounts = add_counts_to_dict(escounts, esjuncs[junc][junc2])
-                        deltafrac = [(ssAtoB[ssA][ssB][s]-escounts[s])/ssAtoB[ssA][ssB][s] if ssAtoB[ssA][ssB][s] > 0 else 0 for s in allsamples]
-                        delta = [ssAtoB[ssA][ssB][s]-escounts[s] for s in allsamples]
+                        deltafrac = [(ssAtoB[ssA][ssB][s] - escounts[s]) / ssAtoB[ssA][ssB][s] if ssAtoB[ssA][ssB][s] > 0 else 0 for s in allsamples]
+                        delta = [ssAtoB[ssA][ssB][s] - escounts[s] for s in allsamples]
                         if any([deltafrac[x] > 0.1 and delta[x] > min_read_support for x in range(len(delta))]):
                             goodBstrict.append(ssB)
                 else:
@@ -667,15 +653,15 @@ def process_junction_events(ssAtoB, esjuncs, eventtype, thischrom, strand, gene,
                     ssB_groups_to_ssA[ssBgroup][ssA] = tot_counts
 
                 if any([tot_counts[s] >= event_support for s in allsamples]) \
-                and len(goodBstrict) > 1:  # only if alt splicing, not including junctions involved in exon skipping
+                        and len(goodBstrict) > 1:  # only if alt splicing, not including junctions involved in exon skipping
                     ename = f'{eventtype}-relTo-{thischrom}:{ssA}({strand})-{gene}'
                     event_to_info[ename] = SplicingEvent(ename, eventtype, gene, thischrom, strand, tot_counts, allsamples)
                     for ssB in goodB:
                         junc = (min((ssA, ssB)), max((ssA, ssB)))
                         jname = f'{thischrom}:{junc[0]}-{junc[1]}'
                         bs, be = min((ssA, ssB)), max((ssA, ssB))
-                        bedline = [thischrom, bs, be, f'{jname}_{ename}', 0, strand, bs, be, colordict[eventtype], 1, be-bs, 0]
-                        event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], ssAtoB[ssA][ssB], {junc,}, my_juncs-{junc,})
+                        bedline = [thischrom, bs, be, f'{jname}_{ename}', 0, strand, bs, be, colordict[eventtype], 1, be - bs, 0]
+                        event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], ssAtoB[ssA][ssB], {junc, }, my_juncs - {junc, })
 
                     if any([othercounts[s] >= min_read_support for s in allsamples]):
                         event_to_info[ename].other = othercounts
@@ -684,17 +670,17 @@ def process_junction_events(ssAtoB, esjuncs, eventtype, thischrom, strand, gene,
     eventtype = 'alt3' if eventtype == 'alt5' else 'alt5'
     for ssBgroup in ssB_groups_to_ssA:
         if len(ssB_groups_to_ssA[ssBgroup]) > 1:
-            tot_counts = {s:0 for s in allsamples}
-            othercounts = {s:0 for s in allsamples}
+            tot_counts = {s: 0 for s in allsamples}
+            othercounts = {s: 0 for s in allsamples}
             for ssA in ssB_groups_to_ssA[ssBgroup]:
                 tot_counts = add_counts_to_dict(tot_counts, ssB_groups_to_ssA[ssBgroup][ssA])
             if any([tot_counts[s] >= event_support for s in allsamples]):
                 good = []
                 my_juncs = set()
                 for ssA in ssB_groups_to_ssA[ssBgroup]:
-                    inc_frac_list = [ssB_groups_to_ssA[ssBgroup][ssA][s]/tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
-                    if (max(inc_frac_list)-min(inc_frac_list) >= junc_frac_of_event \
-                    or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1-junc_frac_of_event)):
+                    inc_frac_list = [ssB_groups_to_ssA[ssBgroup][ssA][s] / tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
+                    if (max(inc_frac_list) - min(inc_frac_list) >= junc_frac_of_event
+                            or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1 - junc_frac_of_event)):
                         good.append(ssA)
                         for ssB in ssBgroup:
                             my_juncs.add((min((ssA, ssB)), max((ssA, ssB))))
@@ -706,21 +692,20 @@ def process_junction_events(ssAtoB, esjuncs, eventtype, thischrom, strand, gene,
                     event_to_info[ename] = SplicingEvent(ename, f'{eventtype}ss', gene, thischrom, strand, tot_counts, allsamples)
                     for ssA in good:
                         if (eventtype == 'alt5' and strand == '+') or (eventtype == 'alt3' and strand == '-'):
-                            bs, be = ssA-10, ssA
+                            bs, be = ssA - 10, ssA
                         else:
-                            bs, be = ssA, ssA+10
+                            bs, be = ssA, ssA + 10
                         jname = f'{thischrom}:{ssA}'
                         inc_juncs = set()
                         for ssB in ssBgroup:
                             inc_juncs.add((min((ssA, ssB)), max((ssA, ssB))))
 
-                        bedline = [thischrom, bs, be, f'{jname}_{ename}', 0, strand, bs, be, colordict[eventtype], 1, be-bs, 0]
-                        event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], ssB_groups_to_ssA[ssBgroup][ssA], inc_juncs, my_juncs-inc_juncs)
+                        bedline = [thischrom, bs, be, f'{jname}_{ename}', 0, strand, bs, be, colordict[eventtype], 1, be - bs, 0]
+                        event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], ssB_groups_to_ssA[ssBgroup][ssA], inc_juncs, my_juncs - inc_juncs)
                     if any([othercounts[s] >= min_read_support for s in allsamples]):
-                            event_to_info[ename].other = othercounts
+                        event_to_info[ename].other = othercounts
                     ref_junc = (max(good), min(ssBgroup)) if median(good) < median(ssBgroup) else (max(ssBgroup), min(good))
                     event_to_info[ename].totoverlap = get_overlapping_reads(ref_junc, interval_to_reads, allsamples)
-
 
     return event_to_info
 
@@ -735,7 +720,7 @@ class SplicingEvent:
         self.totjunc = totjunc
         self.events = {}
         self.totoverlap = None
-        self.other = {s:0 for s in allsamples}
+        self.other = {s: 0 for s in allsamples}
 
 class SplicingEventJunction:
     """represents metadata about a specific junction in a splicing event"""
@@ -747,9 +732,9 @@ class SplicingEventJunction:
         self.samplecounts = samplecounts
         self.inc_exon = set()
         self.outer_juncs = set()
-        if outer_junc != None:
+        if outer_junc is not None:
             self.outer_juncs = outer_junc
-        if inc_exon != None:
+        if inc_exon is not None:
             self.inc_exon = inc_exon
 
 
@@ -766,20 +751,20 @@ def write_intron_retention(alljuncs, allsamples, allblocks, thischrom, strand, g
         tot_counts = splicedcounts
         tot_counts = add_counts_to_dict(tot_counts, retainedcounts)
 
-        inc_frac_list = [retainedcounts[s]/tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
+        inc_frac_list = [retainedcounts[s] / tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
         if len(inc_frac_list) >= 1 \
-        and any([splicedcounts[s] >= min_read_support for s in allsamples]) \
-        and any([retainedcounts[s] >= min_read_support for s in allsamples]) \
-        and (max(inc_frac_list)-min(inc_frac_list) >= junc_frac_of_event \
-        or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1-junc_frac_of_event)):
+            and any([splicedcounts[s] >= min_read_support for s in allsamples]) \
+            and any([retainedcounts[s] >= min_read_support for s in allsamples]) \
+            and (max(inc_frac_list) - min(inc_frac_list) >= junc_frac_of_event
+                 or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1 - junc_frac_of_event)):
             ename = f'ir-of-{thischrom}:{j[0]}-{j[1]}({strand})-{gene}'
             event_to_info[ename] = SplicingEvent(ename, 'ir', gene, thischrom, strand, tot_counts, allsamples)
 
-            bedline = [thischrom, j[0]-10, j[1]+10, f'spliced_{ename}', 0, strand, j[0]-10, j[1]+10, mycolor, 2, '10,10', f'0,{10+j[1]-j[0]}']
-            event_to_info[ename].events['spliced'] = SplicingEventJunction('spliced', [bedline], splicedcounts, {j,}, {})
+            bedline = [thischrom, j[0] - 10, j[1] + 10, f'spliced_{ename}', 0, strand, j[0] - 10, j[1] + 10, mycolor, 2, '10,10', f'0,{10 + j[1] - j[0]}']
+            event_to_info[ename].events['spliced'] = SplicingEventJunction('spliced', [bedline], splicedcounts, {j, }, {})
 
-            bedline = [thischrom, j[0], j[1], f'retained_{ename}', 0, strand, j[0], j[1], mycolor, 1, j[1]-j[0], 0]
-            event_to_info[ename].events['retained'] = SplicingEventJunction('retained', [bedline], retainedcounts, {}, {j,})
+            bedline = [thischrom, j[0], j[1], f'retained_{ename}', 0, strand, j[0], j[1], mycolor, 1, j[1] - j[0], 0]
+            event_to_info[ename].events['retained'] = SplicingEventJunction('retained', [bedline], retainedcounts, {}, {j, })
 
             event_to_info[ename].totoverlap = get_overlapping_reads(j, interval_to_reads, allsamples)
     return event_to_info
@@ -787,17 +772,17 @@ def write_intron_retention(alljuncs, allsamples, allblocks, thischrom, strand, g
 def write_ends(grouped_ends, allsamples, thischrom, strand, gene, eventtype, mycolor, support, junc_frac_of_event, event_support):
     good_ends = set()
     event_to_info = {}
-    othercounts = {s:0 for s in allsamples}
-    tot_counts = {s:0 for s in allsamples}
+    othercounts = {s: 0 for s in allsamples}
+    tot_counts = {s: 0 for s in allsamples}
     for e in grouped_ends:
         tot_counts = add_counts_to_dict(tot_counts, grouped_ends[e])
     if any([tot_counts[s] >= event_support for s in allsamples]):
         for e in grouped_ends:
-            inc_frac_list = [grouped_ends[e][s]/tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
+            inc_frac_list = [grouped_ends[e][s] / tot_counts[s] for s in allsamples if tot_counts[s] >= event_support]
 
-            if any([grouped_ends[e][s] >=support for s in allsamples]) \
-            and (max(inc_frac_list)-min(inc_frac_list) >= junc_frac_of_event \
-            or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1-junc_frac_of_event)):
+            if any([grouped_ends[e][s] >= support for s in allsamples]) \
+                and (max(inc_frac_list) - min(inc_frac_list) >= junc_frac_of_event
+                     or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1 - junc_frac_of_event)):
                 good_ends.add(e)
             else:
                 othercounts = add_counts_to_dict(othercounts, grouped_ends[e])
@@ -807,8 +792,8 @@ def write_ends(grouped_ends, allsamples, thischrom, strand, gene, eventtype, myc
 
             for e in good_ends:
                 jname = f'{thischrom}:{e}'
-                bedline = [thischrom,e-1, e, f'{jname}_{ename}', 0, strand, e-1, e, mycolor, 1, 1, 0]
-                event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], grouped_ends[e], {e,}, good_ends-{e,})
+                bedline = [thischrom, e - 1, e, f'{jname}_{ename}', 0, strand, e - 1, e, mycolor, 1, 1, 0]
+                event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], grouped_ends[e], {e, }, good_ends - {e, })
             if any([othercounts[s] >= support for s in allsamples]):
                 event_to_info[ename].other = othercounts
     return event_to_info
@@ -817,10 +802,10 @@ def write_ends(grouped_ends, allsamples, thischrom, strand, gene, eventtype, myc
 def write_counts_psi(info, ncounts, junctot, fulltot, allsamples, outcounts, outpsijunc, outpsitot, event_support):
     outline = info + [str(ncounts[s]) for s in allsamples]
     outcounts.write('\t'.join(outline) + '\n')
-    juncpsi = [ncounts[s]/junctot[s] if junctot[s] >= event_support else 'NA' for s in allsamples]
-    outline = info + [str(round(ncounts[s]/junctot[s], 4)) if junctot[s] >= event_support else '' for s in allsamples]
+    juncpsi = [ncounts[s] / junctot[s] if junctot[s] >= event_support else 'NA' for s in allsamples]
+    outline = info + [str(round(ncounts[s] / junctot[s], 4)) if junctot[s] >= event_support else '' for s in allsamples]
     outpsijunc.write('\t'.join(outline) + '\n')
-    outline = info + [str(round(ncounts[s]/fulltot[s], 4)) if fulltot[s] >= event_support else '' for s in allsamples]
+    outline = info + [str(round(ncounts[s] / fulltot[s], 4)) if fulltot[s] >= event_support else '' for s in allsamples]
     outpsitot.write('\t'.join(outline) + '\n')
     return juncpsi
 
@@ -840,20 +825,19 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
     etype_to_sig = {}
     for ename in event_to_info:
         event = event_to_info[ename]
-        if event.totoverlap == None:
+        if event.totoverlap is None:
             event.totoverlap = event.totjunc
 
-        if any([event_frac_of_tot <= event.totjunc[s]/event.totoverlap[s] if event.totoverlap[s] > 0 else False for s in allsamples]): #check that junction/event is expressed enough relative to all reads covering locus
-            goodB = set()
-            ##do an extra check that one junction that is not exclusion is at least junc_frac_of_event of total locus
+        if any([event_frac_of_tot <= event.totjunc[s] / event.totoverlap[s] if event.totoverlap[s] > 0 else False for s in allsamples]):  # check that junction/event is expressed enough relative to all reads covering locus
+            # do an extra check that one junction that is not exclusion is at least junc_frac_of_event of total locus
             one_event_pass = False
             for jname in event.events:
                 jinfo = event.events[jname]
-                inc_frac_list = [jinfo.samplecounts[s]/event.totoverlap[s] for s in allsamples if event.totoverlap[s] > 0]
+                inc_frac_list = [jinfo.samplecounts[s] / event.totoverlap[s] for s in allsamples if event.totoverlap[s] > 0]
 
                 if (event.eventtype not in {'es', 'ces'} or jname != 'exc') \
-                and (max(inc_frac_list)-min(inc_frac_list) >= junc_frac_of_event \
-                or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1-junc_frac_of_event)):
+                    and (max(inc_frac_list) - min(inc_frac_list) >= junc_frac_of_event
+                         or (len(allsamples) == 1 and junc_frac_of_event <= inc_frac_list[0] <= 1 - junc_frac_of_event)):
                     one_event_pass = True
 
             if one_event_pass:
@@ -861,14 +845,14 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                     jinfo = event.events[jname]
 
                     outinfo = [f'{jname}_{ename}', event.eventtype, event.gene, get_junc_string(event.chrom, jinfo.inc_juncs),
-                                get_junc_string(event.chrom, jinfo.exc_juncs), get_junc_string(event.chrom, jinfo.outer_juncs), get_junc_string(event.chrom, jinfo.inc_exon)]
+                               get_junc_string(event.chrom, jinfo.exc_juncs), get_junc_string(event.chrom, jinfo.outer_juncs), get_junc_string(event.chrom, jinfo.inc_exon)]
                     juncpsi = write_counts_psi(outinfo, jinfo.samplecounts, event.totjunc, event.totoverlap, allsamples, outcounts, outpsijunc, outpsitot, event_support)
 
-                    if outoutlier != None:
+                    if outoutlier is not None:
                         vals_for_outlier = [x for x in juncpsi if x != 'NA']
                         med = median(vals_for_outlier)
                         for line in jinfo.bedlines:
-                            line[4] = round(med*100)
+                            line[4] = round(med * 100)
                             outbed.write('\t'.join([str(x) for x in line]) + '\n')
 
                         if len(vals_for_outlier) >= 5:
@@ -876,15 +860,15 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                             for s in allsamples:
                                 thiscount = jinfo.samplecounts[s]
                                 thistot = event.totjunc[s]
-                                thispsi = thiscount/thistot if thistot > event_support else 'NA'
-                                if thispsi != 'NA' and abs(thispsi-med) >= 0.1: ##10% PSI
-                                    delta = abs(thispsi-med)
+                                thispsi = thiscount / thistot if thistot > event_support else 'NA'
+                                if thispsi != 'NA' and abs(thispsi - med) >= 0.1:  # 10% PSI
+                                    delta = abs(thispsi - med)
                                     countsstr = f'{thiscount};{thistot}'
-                                    #event_name, gene, median, dev, psi, numsamplesused, thiscount/junctot, absdeltapsi, numberofdev
-                                    if (dev == 0 and thispsi != med) or delta > dev*3:
+                                    # event_name, gene, median, dev, psi, numsamplesused, thiscount/junctot, absdeltapsi, numberofdev
+                                    if (dev == 0 and thispsi != med) or delta > dev * 3:
                                         outline = outinfo[:3] + [s, round(med, 6), round(dev, 6), round(thispsi, 6), len(vals_for_outlier), countsstr, round(delta, 6), 100000]
                                         if dev != 0:
-                                            outline[-1] = round(delta/dev, 6)
+                                            outline[-1] = round(delta / dev, 6)
                                         sig_events.append(outline)
                                         if event.eventtype not in etype_to_sig:
                                             etype_to_sig[event.eventtype] = {}
@@ -895,17 +879,16 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                 if any([event.other[s] > 0 for s in allsamples]):
                     outinfo = [f'other_{ename}', event.eventtype, event.gene, '', '', '', '']
                     write_counts_psi(outinfo, event.other, event.totjunc, event.totoverlap, allsamples, outcounts, outpsijunc, outpsitot, event_support)
-    if outoutlier != None:
-        sig_events.sort(reverse=True, key=lambda x:x[::-1])
+    if outoutlier is not None:
+        sig_events.sort(reverse=True, key=lambda x: x[::-1])
         for line in sig_events:
             outoutlier.write('\t'.join([str(x) for x in line]) + '\n')
 
         seen_junctions, condensed_sig = {}, []
         seen_es_juncs = {}
         TEMP_OUTLIER_DEV_THRESHOLD = 6
-        event_types = ['es', 'AFE', 'ALE', 'ces', 'alt5ss', 'alt3ss', 'alt5', 'alt3', 'ir', ]
 
-        for et in ['es', 'AFE', 'ALE', 'ir', 'alt5ss', 'alt3ss']: # alt5ss and alt3ss overlaps with ALE and AFE should have already been filtered out when generating events
+        for et in ['es', 'AFE', 'ALE', 'ir', 'alt5ss', 'alt3ss']:  # alt5ss and alt3ss overlaps with ALE and AFE should have already been filtered out when generating events
             if et in etype_to_sig:
                 for juncs in etype_to_sig[et]:
                     sample_to_vals = etype_to_sig[et][juncs]
@@ -913,10 +896,10 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                         inc_juncs, exc_juncs, outer_juncs = juncs
                         for j1 in inc_juncs:
                             for j2 in outer_juncs:
-                                k = frozenset((j1,j2))
+                                k = frozenset((j1, j2))
                                 if k not in seen_junctions:
                                     seen_junctions[k] = {}
-                                seen_junctions[k][juncs] =  sample_to_vals
+                                seen_junctions[k][juncs] = sample_to_vals
                         if et == 'es':
                             all_juncs = (inc_juncs | exc_juncs) | outer_juncs
                             seen_es_juncs[all_juncs] = sample_to_vals
@@ -931,13 +914,13 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                     sample_to_vals = etype_to_sig[et][juncs]
                     good_s = set()
                     has_overlap = False
-                    if et == 'ces': ##only for ces, check for subet of full es juncs
+                    if et == 'ces':  # only for ces, check for subet of full es juncs
                         if len(inc_juncs) == 0:
-                            all_juncs = exc_juncs | outer_juncs #exclusion
+                            all_juncs = exc_juncs | outer_juncs  # exclusion
                         else:
-                            all_juncs = inc_juncs | outer_juncs # include only the specific exon that is significatn
+                            all_juncs = inc_juncs | outer_juncs  # include only the specific exon that is significatn
                         for j2 in seen_es_juncs:
-                            if all_juncs-j2 == frozenset(): ##is subset of other
+                            if all_juncs - j2 == frozenset():  # is subset of other
                                 has_overlap = True
                                 for s in sample_to_vals:
                                     if s not in seen_es_juncs[j2]:
@@ -945,12 +928,12 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                                     else:
                                         this_dev = sample_to_vals[s][-1]
                                         other_dev = seen_es_juncs[j2][s][-1]
-                                        if other_dev/this_dev < 0.8: ##deviation is 20% better for this event
+                                        if other_dev / this_dev < 0.8:  # deviation is 20% better for this event
                                             good_s.add(s)
                     else:
                         all_juncs = inc_juncs | exc_juncs
                         for jkey in seen_junctions:
-                            if all_juncs-jkey == frozenset(): ##is subset of other
+                            if all_juncs - jkey == frozenset():  # is subset of other
                                 has_overlap = True
                                 for j2 in seen_junctions[jkey]:
                                     for s in sample_to_vals:
@@ -959,69 +942,61 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                                         else:
                                             this_dev = sample_to_vals[s][-1]
                                             other_dev = seen_junctions[jkey][j2][s][-1]
-                                            if other_dev/this_dev < 0.8: ##deviation is 20% better for this event
+                                            if other_dev / this_dev < 0.8:  # deviation is 20% better for this event
                                                 good_s.add(s)
 
-                    ##adding good values to output
+                    # adding good values to output
                     if not has_overlap:
                         good_s = sample_to_vals.keys()
-                        ##adding junctions to reference
+                        # adding junctions to reference
                         if all_juncs not in seen_junctions:
                             seen_junctions[all_juncs] = {}
-                        seen_junctions[all_juncs][juncs] =  sample_to_vals
+                        seen_junctions[all_juncs][juncs] = sample_to_vals
                     for s in good_s:
                         condensed_sig.append(sample_to_vals[s])
-        condensed_sig.sort(reverse=True, key=lambda x:x[::-1])
+        condensed_sig.sort(reverse=True, key=lambda x: x[::-1])
         for line in condensed_sig:
             if line[-1] > TEMP_OUTLIER_DEV_THRESHOLD:
                 outolfilt.write('\t'.join([str(x) for x in line]) + '\n')
 
 
-
-
-
-
-
-
-
 def process_gene_to_events(temp_prefix, thischrom, allsamples, allgenetojuncs, genetostrand, junc_support, output_read_ends, event_frac_of_tot, junc_frac_of_event, event_support, annot_afe_ss, annot_ale_ss, check_outliers):
     etypetocolor = {'skipped_exons': '66,105,245', 'retained_introns': '144,66,245',
-                    'alt3': '245,215,66', 'alt5': '43,184,39', 'tss':'255,0,0', 'tts':'0,0,255'}
-    ##outends is just for writing out read ends for Harrison - he can group them more intelligently
+                    'alt3': '245,215,66', 'alt5': '43,184,39', 'tss': '255,0,0', 'tts': '0,0,255'}
+    # outends is just for writing out read ends for Harrison - he can group them more intelligently
     outends = None
     if output_read_ends:
         outends = open(temp_prefix + '.diffsplice.readends.bed', 'w')
-    
+
     allgenes = set.union(*[set(allgenetojuncs[s].keys()) for s in range(len(allgenetojuncs))])
     outoutlier, outolfilt = None, None
     if check_outliers:
-        outoutlier = open(temp_prefix + '.diffsplice.outliers.tsv', 'w') 
+        outoutlier = open(temp_prefix + '.diffsplice.outliers.tsv', 'w')
         outolfilt = open(temp_prefix + '.diffsplice.outliers.filtered.tsv', 'w')
     with open(temp_prefix + '.diffsplice.bed', 'w') as outbed, open(temp_prefix + '.diffsplice.counts.tsv', 'w') as outcounts, \
-         open(temp_prefix + '.diffsplice.PSIjunc.tsv', 'w') as outpsijunc, open(temp_prefix + '.diffsplice.PSItot.tsv', 'w') as outpsitot:
-        
-        for gene in allgenes:
+            open(temp_prefix + '.diffsplice.PSIjunc.tsv', 'w') as outpsijunc, open(temp_prefix + '.diffsplice.PSItot.tsv', 'w') as outpsitot:
 
+        for gene in allgenes:
 
             # get gene strand - this is not optimal, def need to revamp how getting annot info
             strand = genetostrand[gene]
             ss5to3, ss3to5, alljuncs, exonjpairs, allblocks, t_starts_ends, t_first_last_sj, interval_to_reads, afe, ale, outer_junc_to_exons = extract_splicing_info(allsamples, allgenetojuncs,
-                                                                                    gene, strand, thischrom, outends)
+                                                                                                                                                                      gene, strand, thischrom, outends)
 
             # exon skipping
             # TODO combine exon skipping at multiple junctions (so all junctions that skip exon are combined)
             es_info, esjuncs = write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gene,
-                                        etypetocolor['skipped_exons'], junc_support, interval_to_reads, junc_frac_of_event, event_support, outer_junc_to_exons)
+                                                   etypetocolor['skipped_exons'], junc_support, interval_to_reads, junc_frac_of_event, event_support, outer_junc_to_exons)
             afe_info, afe_junc_comb = process_terminal_exons(afe, 'AFE', thischrom, strand, gene, allsamples, etypetocolor['tss'], junc_support, junc_frac_of_event, event_support, interval_to_reads, alljuncs, annot_afe_ss)
             ale_info, ale_junc_comb = process_terminal_exons(ale, 'ALE', thischrom, strand, gene, allsamples, etypetocolor['tts'], junc_support, junc_frac_of_event, event_support, interval_to_reads, alljuncs, annot_ale_ss)
             afe_ale_junc_comb = afe_junc_comb | ale_junc_comb
             a3_info = process_junction_events(ss5to3, esjuncs, 'alt3', thischrom, strand, gene, allsamples, etypetocolor,
-                                    junc_support, interval_to_reads, junc_frac_of_event, event_support, afe_ale_junc_comb)
+                                              junc_support, interval_to_reads, junc_frac_of_event, event_support, afe_ale_junc_comb)
             a5_info = process_junction_events(ss3to5, esjuncs, 'alt5', thischrom, strand, gene, allsamples, etypetocolor,
-                                    junc_support, interval_to_reads, junc_frac_of_event, event_support, afe_ale_junc_comb)
+                                              junc_support, interval_to_reads, junc_frac_of_event, event_support, afe_ale_junc_comb)
             # intron retention
             ir_info = write_intron_retention(alljuncs, allsamples, allblocks, thischrom, strand, gene,
-                                etypetocolor['retained_introns'], junc_support, interval_to_reads, junc_frac_of_event, event_support)
+                                             etypetocolor['retained_introns'], junc_support, interval_to_reads, junc_frac_of_event, event_support)
 
             grouped_ends = group_ends(t_starts_ends, allsamples, 100)
             if strand == '-':
@@ -1036,8 +1011,8 @@ def process_gene_to_events(temp_prefix, thischrom, allsamples, allgenetojuncs, g
             get_psi_and_filter(all_info, allsamples, event_frac_of_tot, junc_frac_of_event, outbed, outcounts, outpsijunc, outpsitot, event_support, outoutlier, outolfilt)
 
     if check_outliers:
-            outoutlier.close()
-            outolfilt.close()
+        outoutlier.close()
+        outolfilt.close()
     if output_read_ends:
         outends.close()
 
@@ -1045,8 +1020,8 @@ def process_gene_to_events(temp_prefix, thischrom, allsamples, allgenetojuncs, g
 def generate_good_match_to_annot(args, temp_prefix, region, bamfile_name, region_annot, region_annot_fa, clipping_file):
     if not args.noaligntoannot:
         pipettor.run([('samtools', 'view', '-h', bamfile_name, f'{region.name}:{region.start}-{region.end}'),
-                  ('samtools', 'fasta', '-')],
-                 stdout=temp_prefix + '.reads.fasta')
+                      ('samtools', 'fasta', '-')],
+                     stdout=temp_prefix + '.reads.fasta')
         mm2_cmd = ('minimap2', '-a', '-N', '4', '--MD',
                    region_annot_fa, temp_prefix + '.reads.fasta')
         flairpath = '/'.join(os.path.realpath(__file__).split('/')[:-1])
@@ -1056,17 +1031,17 @@ def generate_good_match_to_annot(args, temp_prefix, region, bamfile_name, region
                      '-o', temp_prefix + '.matchannot.counts.tsv',
                      '-t', 1,  # feeding 1 thread in because this is already multithreaded here
                      '--quality', 0,
-                    #  '--generate_map', temp_prefix + '.matchannot.read.map.txt',
+                     #  '--generate_map', temp_prefix + '.matchannot.read.map.txt',
                      '--check_splice',
                      '-i', region_annot,
                      '--trimmedreads', clipping_file,
                      '--allow_UTR_indels',
                      '--soft_clipping_buffer', 10,
                      '--output_endpos', temp_prefix + '.readtoends.txt',
-        )
+                     )
 
         pipettor.run([mm2_cmd, count_cmd])
-        return temp_prefix + '.readtoends.txt' #temp_prefix + '.matchannot.read.map.txt'
+        return temp_prefix + '.readtoends.txt'  # temp_prefix + '.matchannot.read.map.txt'
     else:
         return None
 
@@ -1085,7 +1060,6 @@ def get_juncs_single_sample(listofargs):
 
     temp_prefix = temp_prefix + '_' + sample
 
-
     # print(region.name, region.start, region.end, sample, 'getting annot match')
     bam_file = pysam.AlignmentFile(bamfile_name, 'rb')
     num_reads, clipping_file = ft.generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
@@ -1099,9 +1073,9 @@ def get_juncs_single_sample(listofargs):
         read, transcript = line[:2]
         startindex, startdist, endindex, enddist = [int(x) for x in line[2:]]
         read_to_transcript[read] = (transcript, startindex, startdist, endindex, enddist)
-    
+
     # print(region.name, region.start, region.end, sample, 'correcting reads')
-    
+
     sj_to_ends = {}
     bamfile = pysam.AlignmentFile(bamfile_name, 'rb')
     b, c, d, e = 0, 0, 0, 0
@@ -1114,10 +1088,10 @@ def get_juncs_single_sample(listofargs):
                 if len(juncs) > 0:
                     newstart = juncs[startindex][0] - startdist
                     newend = juncs[endindex][1] + enddist
-                    juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex+1]])
+                    juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex + 1]])
                     strand = gene_to_strand[transcript.split('_')[-1]]
                     corrected_read = ReadRec.from_junctions(read.reference_name, newstart, newend,
-                                                            read.query_name, read.mapping_quality, 
+                                                            read.query_name, read.mapping_quality,
                                                             strand, juncs)
                     c += 1
                 else:
@@ -1139,7 +1113,7 @@ def get_juncs_single_sample(listofargs):
     # print(sample, e, 'failed correction')
 
     genetojuncs, nogenejuncs, sereads = group_juncs_by_annot_gene(sj_to_ends, sjc_to_gene, junc_to_gene, gene_to_exons, gene_to_juncs)
-    
+
     c = 0
     with open(temp_prefix + '_gene_to_juncs.txt', 'w') as out:
         for gene in genetojuncs:
@@ -1158,13 +1132,11 @@ def process_bed_line(line):
     transcript = line[3]
     gene = line[3].split('_')[-1]
     start, esizes, estarts = int(line[1]), [int(x) for x in line[-2].rstrip(',').split(',')], \
-                        [int(x) for x in line[-1].rstrip(',').split(',')]
+        [int(x) for x in line[-1].rstrip(',').split(',')]
     exons = [(start + estarts[i], start + estarts[i] + esizes[i]) for i in range(len(esizes))]
-    junctions = [(start + estarts[i] + esizes[i], start + estarts[i+1]) for i in range(len(esizes)-1)]
+    junctions = [(start + estarts[i] + esizes[i], start + estarts[i + 1]) for i in range(len(esizes) - 1)]
     strand = line[5]
     return gene, transcript, exons, junctions, strand
-
-
 
 
 def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
@@ -1176,7 +1148,7 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
     region_annot = partition.file_prefix + '.annotation.bed'
     pipettor.run([('bedtools', 'intersect', '-wa', '-a', args.annot, '-b', region_bed)], stdout=region_annot)
 
-    if os.path.getsize(region_annot) > 0: #check if any annotated transcripts in region
+    if os.path.getsize(region_annot) > 0:  # check if any annotated transcripts in region
         if args.annot_basic:
             region_annot_basic = partition.file_prefix + '.annotation.basic.bed'
             pipettor.run([('bedtools', 'intersect', '-wa', '-a', args.annot_basic, '-b', region_bed)], stdout=region_annot_basic)
@@ -1251,7 +1223,6 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
         # p.join()
         # if len(childErrs) > 1:
         #     raise ValueError(childErrs)
-        
 
         allgenetojuncs = []
         for sample, bamfile in allsamples:
@@ -1267,20 +1238,23 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
                     gene_to_juncs[gene][juncs] = []
                 gene_to_juncs[gene][juncs].append(ReadRec(None, strand, (), int(start), int(end), readname))
             allgenetojuncs.append(gene_to_juncs)
-        
-        process_gene_to_events(partition.file_prefix, partition.region.name, [x[0] for x in allsamples], allgenetojuncs, gene_to_strand, args.junc_support, args.output_read_ends, args.event_frac_of_tot, args.junc_frac_of_event, args.event_support, annot_afe_ss, annot_ale_ss, args.check_outliers)
+
+        process_gene_to_events(
+            partition.file_prefix, partition.region.name, [x[0] for x in allsamples],
+            allgenetojuncs, gene_to_strand, args.junc_support, args.output_read_ends,
+            args.event_frac_of_tot, args.junc_frac_of_event, args.event_support,
+            annot_afe_ss, annot_ale_ss, args.check_outliers)
 
         if not args.keep_intermediate:
             for sample, bamfile in allsamples:
                 pipettor.run([('rm', partition.file_prefix + '_' + sample + '_gene_to_juncs.txt')])
 
 
-
 # def preprocess_single_sample(listofargs):
 #     args, region, temp_prefix, sample, bamfile_name = listofargs
-    
+
 #     temp_prefix = temp_prefix + '_' + sample
-    
+
 #     bamfile = pysam.AlignmentFile(bamfile_name, 'rb')
 #     starts, ends = set(), set()
 #     for read in bamfile.fetch(region.name, region.start, region.end):
@@ -1288,7 +1262,7 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
 #             starts.add(read.reference_start)
 #             ends.add(read.reference_end)
 #     bamfile.close()
-  
+
 #     with open(temp_prefix + '_ends.txt', 'w') as out:
 #         if len(starts) > 0:
 #             out.write(f'{min(starts)}\t{max(ends)}')
@@ -1310,7 +1284,7 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
 #     p.join()
 #     if len(childErrs) > 1:
 #         raise ValueError(childErrs)
-    
+
 
 #     starts, ends = set(), set()
 #     for sample, bamfile in allsamples:
@@ -1320,13 +1294,12 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
 #                 starts.add(int(s))
 #                 ends.add(int(e))
 #         pipettor.run([('rm', temp_prefix + '_' + sample + '_ends.txt')])
-    
+
 #     with open(temp_prefix + '_ends.txt', 'w') as out:
 #         if len(starts) > 0:
 #             out.write(f'{min(starts)}\t{max(ends)}')
 #         else:
 #             out.write(f'\t')
-
 
 
 # class NoDaemonProcess(multiprocessing.Process):
@@ -1414,7 +1387,7 @@ def main():
     runner.run(_run_region, args=args, allsamples=allsamples)
 
     ft.combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner],
-                                ['.diffsplice.bed', '.diffsplice.counts.tsv', '.diffsplice.PSIjunc.tsv', '.diffsplice.PSItot.tsv'])
+                                    ['.diffsplice.bed', '.diffsplice.counts.tsv', '.diffsplice.PSIjunc.tsv', '.diffsplice.PSItot.tsv'])
     if args.output_read_ends:
         ft.combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner], ['.diffsplice.readends.bed'])
     if args.check_outliers:
@@ -1437,7 +1410,6 @@ def main():
                 for line in open(args.output + suffix + '.tsv'):
                     out.write(line)
             pipettor.run([('mv', args.output + suffix + '.new.tsv', args.output + suffix + '.tsv')])
-
 
     if not args.keep_intermediate:
         shutil.rmtree(tempDir)

@@ -14,8 +14,6 @@ from flair.pycbio.hgdata.bed import Bed
 # - A scoring method for junctions based on weighting should be considered
 ##
 
-
-
 ##
 # somewhat arbitrary sizes to keep from going off ends
 # or overlapping other introns.

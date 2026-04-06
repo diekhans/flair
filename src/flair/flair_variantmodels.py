@@ -11,7 +11,8 @@ os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 
 compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N',
-                'R':'Y', 'Y':'R','K':'M','M':'K','S':'S','W':'W', 'B':'V','V':'B','D':'H','H':'D'}
+            'R': 'Y', 'Y': 'R', 'K': 'M', 'M': 'K', 'S': 'S', 'W': 'W',
+            'B': 'V', 'V': 'B', 'D': 'H', 'H': 'D'}
 
 def getStarts(gtf):
     starts = list()

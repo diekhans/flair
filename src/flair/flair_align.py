@@ -1,6 +1,5 @@
 #! /usr/bin/env python3
 
-import sys
 import argparse
 import os
 import pipettor
@@ -20,7 +19,7 @@ def parse_args():
 
     reads = parser.add_argument_group('required named arguments')
     reads.add_argument('-r', '--reads', nargs='+', type=str, required=True,
-                          help='FASTA/FASTQ file(s) of raw reads, either space or comma separated')
+                       help='FASTA/FASTQ file(s) of raw reads, either space or comma separated')
     genome = parser.add_argument_group('Either one of the following arguments is required')
     genome.add_argument('-g', '--genome', type=str,
                         help='FASTA of reference genome, can be minimap2 indexed')
@@ -37,7 +36,7 @@ def parse_args():
     parser.add_argument('--quality', type=int, default=0,
                         help='minimum MAPQ of read alignment to the genome (0)')
     parser.add_argument('--filtertype', type=str, choices=FILTERS, default=FILTER_REMOVESUP,
-                        help='method of filtering chimeric alignments (potential fusion reads). Options: removesup (default), separate (required for downstream work with fusions), keepsup (keeps supplementary alignments for isoform detection, does not allow gene fusion detection)')
+                        help='method of filtering chimeric alignments (potential fusion reads). Options: removesup (default), separate (required for downstream work with fusions), keepsup (keeps supplementary alignments for isoform detection, does not allow gene fusion detection)')  # noqa: E501
     parser.add_argument('--minfragmentsize', type=int, default=80,
                         help='minimum size of alignment kept, used in minimap -s. More important when doing downstream fusion detection')
     parser.add_argument('--maxintronlen', default='200k',
@@ -120,6 +119,7 @@ def align():
 
 def main():
     align()
+
 
 if __name__ == "__main__":
     main()

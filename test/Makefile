@@ -38,6 +38,13 @@ endif
 # all targets
 ##
 default:
+	@echo "====="
+	@echo "===== to see all targets: make help"
+	@echo "====="
+	${MAKE} test
+
+
+help:
 	@echo To run all tests, use: >&2
 	@echo "   " make test >&2
 	@echo To run tests without R depedencies, use: >&2
@@ -61,7 +68,6 @@ default:
 	@echo "build test case hub" >&2
 	@echo "   " make test-hub >&2
 	@echo "   " make make hub-check huburl=https://public.gi.ucsc.edu/~you/flair/test/hub/hub.txt >&2
-	@exit 1
 
 test:
 	${MAKE} test-base test-with-R

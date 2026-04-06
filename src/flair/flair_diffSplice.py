@@ -13,7 +13,7 @@ diffSplice_drimSeq = osp.join(pkgdir, "diffSplice_drimSeq.R")
 # FIXME: restructure, odd the say argument parsing is done bases on function
 # arguments
 
-def diffSplice(isoforms='', counts_matrix=''):
+def diffSplice(isoforms='', counts_matrix=''):  # noqa: C901 - FIXME: reduce complexity
     set_unix_path()
     parser = argparse.ArgumentParser()
     required = parser.add_argument_group('required named arguments')

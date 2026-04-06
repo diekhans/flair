@@ -74,7 +74,7 @@ for line in open(referencetranscriptfile):
 out = open(outfile, 'w')
 
 last = None
-for line in open(modtranscriptsfile):
+for line in open(modtranscriptsfile):  # noqa: C901 - FIXME: reduce complexity
     if line[0] == '>':
         last = line[1:].rstrip().split(' ')
     else:

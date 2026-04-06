@@ -1,36 +1,11 @@
 [flake8]
-# E722: do not use bare except; maybe fix later
+# E302: expected 2 blank lines
+# E741: ambiguous variable name
+# F523: .format unused named arguments
+# F524: .format missing named arguments
+# W503: line break before binary operator (PEP 8 preferred style)
+# W504: line break after binary operator
 ignore = E302,E741,F523,F524,W503,W504
 max-complexity = 10
 max-line-length = 256
-
-per-file-ignores =
-    # fixing W504 causes E502
-    src/flair/filter_collapsed_isoforms.py,src/flair/collapse_isoforms_precise.py: W504
-    # openblas setting must be in middle of import section
-    deFLAIR.py,es_as_inc_excl_to_counts.py,flair.py,runDE.py,runDS.py,runDU.py,samJuncs.py: E402
-    src/flair/ssPrep.py: F401
-    # hard to fix in-loop variable definitions (maybe later)
-    src/flair/identify_gene_isoform.py: F821,C901
-    # FIXME: make these less complex
-    src/flair/flair_transcriptome.py: C901
-    src/flair/filter_transcriptome_align.py: C901
-    src/flair/flair_variantquant.py: C901
-    src/flair/flair_spliceevents.py: C901
-    src/flair/flair_diffExp.py: C901
-    src/flair/bed_to_gtf.py: C901
-    src/flair/call_diffsplice_events.py: W504,C901
-    src/flair/flair_fusion.py: C901
-    src/flair/predict_aaseq_withvar.py: C901
-    src/flair/es_as.py: C901
-    src/flair/predictProductivity.py: C901
-    src/flair/plot_isoform_usage.py: C901
-    src/flair/count_sam_transcripts.py: E502,C901
-    src/flair/flair_quantify.py: C901
-    src/flair/make_synthetic_fusion_reference.py: C901
-    src/flair/flair_diffSplice.py: C901
-    src/flair/junctions_from_sam.py: C901
-    src/flair/flair_combine.py: C901
-    src/flair/diff_iso_usage.py: C901
-    src/flair/identify_annotated_gene.py: C901
-    src/flair/identify_prelim_fusions.py: C901
+exclude = .claude.bak,src/flair/pycbio

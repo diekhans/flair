@@ -39,7 +39,7 @@ def generate_alignment_obj_for_read(args, genome, transcript_to_exons, transcrip
             filteredtranscriptaligns[transcript] = IsoAln(transcript, pos, cigar, tlen, alignscore, mdtag)
     return filteredtranscriptaligns
 
-def process_read_chunk(chunkinfo):
+def process_read_chunk(chunkinfo):  # noqa: C901 - FIXME: reduce complexity
     chunkindex, readstoaligns, temp_dir, transcript_to_exons, transcript_to_bp_ss_index, args, headeroutfilename, clippingdata, transcript_to_genomic_ends, transcript_to_unique_bounds = chunkinfo
     genome = None
     if args.remove_internal_priming:
@@ -121,7 +121,7 @@ def bam_to_read_aligns(samfile, chunksize, temp_dir, transcript_to_exons, transc
         logging.info(f'\rstarting chunk {chunkindex}')
         yield (chunkindex, readchunk, temp_dir, transcript_to_exons, transcript_to_bp_ss_index, args, headeroutfilename, clippingdata, transcript_to_genomic_ends, transcript_to_unique_bounds)
 
-def process_alignments(args, transcript_to_exons, transcript_to_bp_ss_index, transcript_to_genomic_ends, transcript_to_unique_bounds):
+def process_alignments(args, transcript_to_exons, transcript_to_bp_ss_index, transcript_to_genomic_ends, transcript_to_unique_bounds):  # noqa: C901 - FIXME: reduce complexity
     logging.info('processing alignments')
     samfile = pysam.AlignmentFile(args.sam, 'r')
     prefix = args.output.split('.txt')[0]

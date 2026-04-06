@@ -365,7 +365,7 @@ def extract_splicing_info(allsamples, allgenetojuncs, gene, strand, thischrom, o
 
     return ss5to3, ss3to5, alljuncs, exonjpairs, allblocks, t_starts_ends, t_first_last_sj, interval_to_reads, afe, ale, outer_junc_to_exons
 
-def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gene, mycolor, min_read_support, interval_to_reads, junc_frac_of_event, event_support, outer_junc_to_exons):
+def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gene, mycolor, min_read_support, interval_to_reads, junc_frac_of_event, event_support, outer_junc_to_exons):  # noqa: C901 - FIXME: reduce complexity
     # outer_junc_to_exons = {}
     # outer_junc_to_all_inc = {}
     exon_to_outer_juncs = {}
@@ -522,7 +522,7 @@ def get_overlapping_reads(ref_junc, interval_to_reads, allsamples):
 def add_counts_to_dict(a, b):
     return {s: a[s] + b[s] for s in a.keys()}
 
-def process_terminal_exons(termExon, eventtype, thischrom, strand, gene, allsamples, mycolor, min_read_support, junc_frac_of_event, event_support, interval_to_reads, alljuncs, annot_terminal_ss):
+def process_terminal_exons(termExon, eventtype, thischrom, strand, gene, allsamples, mycolor, min_read_support, junc_frac_of_event, event_support, interval_to_reads, alljuncs, annot_terminal_ss):  # noqa: C901 - FIXME: reduce complexity
     event_to_info = {}
     junc_combos = set()
     if len(termExon) > 1:
@@ -604,7 +604,7 @@ def process_terminal_exons(termExon, eventtype, thischrom, strand, gene, allsamp
     return event_to_info, junc_combos
 
 
-def process_junction_events(ssAtoB, esjuncs, eventtype, thischrom, strand, gene, allsamples, colordict, min_read_support, interval_to_reads, junc_frac_of_event, event_support, afe_ale_junc_comb):
+def process_junction_events(ssAtoB, esjuncs, eventtype, thischrom, strand, gene, allsamples, colordict, min_read_support, interval_to_reads, junc_frac_of_event, event_support, afe_ale_junc_comb):  # noqa: C901 - FIXME: reduce complexity
     event_to_info = {}
     ssB_groups_to_ssA = {}
     for ssA in ssAtoB:
@@ -820,7 +820,7 @@ def get_junc_string(chrom, juncs):
             return ','.join([f'{chrom}:{x[0]}-{x[1]}' for x in juncs])
 
 
-def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_of_event, outbed, outcounts, outpsijunc, outpsitot, event_support, outoutlier, outolfilt):
+def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_of_event, outbed, outcounts, outpsijunc, outpsitot, event_support, outoutlier, outolfilt):  # noqa: C901 - FIXME: reduce complexity
     sig_events = []
     etype_to_sig = {}
     for ename in event_to_info:
@@ -1046,7 +1046,7 @@ def generate_good_match_to_annot(args, temp_prefix, region, bamfile_name, region
         return None
 
 
-def get_juncs_single_sample(listofargs):
+def get_juncs_single_sample(listofargs):  # noqa: C901 - FIXME: reduce complexity
     args, region, temp_prefix, sample, bamfile_name, region_annot, region_annot_fa, region_juncs, sjc_to_gene, junc_to_gene, exon_to_gene, gene_to_exons, gene_to_juncs, transcript_to_sjc, gene_to_strand = listofargs
 
     # FIXME: convert to using PartitionRunner
@@ -1139,7 +1139,7 @@ def process_bed_line(line):
     return gene, transcript, exons, junctions, strand
 
 
-def _run_region(*, partition, gtf_data, intron_support, args, allsamples):
+def _run_region(*, partition, gtf_data, intron_support, args, allsamples):  # noqa: C901 - FIXME: reduce complexity
     region_bed = partition.output_path('region.bed')
     out = open(region_bed, 'w')
     out.write('\t'.join([partition.region.name, str(partition.region.start), str(partition.region.end)]) + '\n')
@@ -1338,7 +1338,7 @@ def combine_regions(regions, buffersize=0):
     return new_regions
 
 
-def main():
+def main():  # noqa: C901 - FIXME: reduce complexity
     logging.basicConfig(level=logging.INFO)
     args = get_args()
     logging.info('loading genome')

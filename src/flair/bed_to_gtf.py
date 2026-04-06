@@ -41,7 +41,7 @@ def split_iso_gene(iso_gene):
         gene = iso_gene[iso_gene.rfind('_') + 1:]
     return iso, gene
 
-def bed_to_gtf(query, outputfile, force=False, reference_transcript_id=False, useCDS=True):
+def bed_to_gtf(query, outputfile, force=False, reference_transcript_id=False, useCDS=True):  # noqa: C901 - FIXME: reduce complexity
     outfile = open(outputfile, 'w')
     gene_to_transcript_lines = {}
     gene_to_chrom_strand = {}

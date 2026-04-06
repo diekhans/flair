@@ -46,7 +46,7 @@ def split_iso_gene(iso_gene):
     return iso, gene
 
 
-def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):
+def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):  # noqa: C901 - FIXME: reduce complexity
     counts_matrix_fh = open(counts_matrix_tsv)
     header = counts_matrix_fh.readline().rstrip().split('\t')
 

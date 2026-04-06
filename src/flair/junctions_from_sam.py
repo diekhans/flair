@@ -117,7 +117,7 @@ class JcnInfo:
         self.intron_start = intron_start
         self.intron_end = intron_end
 
-    def updateJcnInfo(self, name, chr, chromStart, chromEnd, strand, first_block, second_block, intron_start, intron_end, verbosity=False, multiJcnBlock=None):
+    def updateJcnInfo(self, name, chr, chromStart, chromEnd, strand, first_block, second_block, intron_start, intron_end, verbosity=False, multiJcnBlock=None):  # noqa: C901 - FIXME: reduce complexity
         # Check that name, chromosome, strand are the same
         if not chr.startswith("chr"):
             chr = "chr" + chr
@@ -171,7 +171,7 @@ class JcnInfo:
 ########
 # MAIN #
 ########
-def main():
+def main():  # noqa: C901 - FIXME: reduce complexity
 
     opt_parser = OptionParser()
 

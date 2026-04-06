@@ -100,7 +100,7 @@ def _parse_single_bam_read(s, tempdir, vcfvars, sampleindex, tempfilename):  # a
                 '\t'.join([s.reference_name, str(sampleindex) + '__' + s.query_name, ';'.join(coveredvarstrings)]) + '\n')
 
 
-def read_vars_to_genome_pos_counts(tempfilenames, tempdir, outprefix, mode, sampledata, threshold, output_all):
+def read_vars_to_genome_pos_counts(tempfilenames, tempdir, outprefix, mode, sampledata, threshold, output_all):  # noqa: C901 - FIXME: reduce complexity
     samplenames = [x[0] for x in sampledata]
 
     with open(f'{outprefix}.{mode}.var.counts.tsv', 'w') as out, open(f'{outprefix}.{mode}.vargroup.counts.tsv', 'w') as out2:

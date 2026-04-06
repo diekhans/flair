@@ -97,7 +97,7 @@ def get_exon_intron_blocks(read):
     return intron_blocks, exon_blocks
 
 
-def getCorrectGene(chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, chrom, readblocks, thisdir):
+def getCorrectGene(chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, chrom, readblocks, thisdir):  # noqa: C901 - FIXME: reduce complexity
     intron_blocks, exon_blocks = readblocks
     if chrom not in chrom_to_gene_pos:
         my_gene = chrom + ':' + str(round(exon_blocks[0][0], -4))
@@ -129,7 +129,8 @@ def getCorrectGene(chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, chrom, r
     return my_gene
 
 
-def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs, genetoname, minsup, maxloci=10, reqdisttostart=None, maxpromiscuity=4, intronLocs=None, intronToGenome=None):
+def id_chimeras(mode, bam, genetoinfo, chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, gene_to_paralogs,  # noqa: C901 - FIXME: reduce complexity
+                genetoname, minsup, maxloci=10, reqdisttostart=None, maxpromiscuity=4, intronLocs=None, intronToGenome=None):
     isrevtosign = {True: '-', False: '+'}
     withsup = pysam.AlignmentFile(bam, "rb")
     readToAligns = {}

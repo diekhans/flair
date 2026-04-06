@@ -82,7 +82,7 @@ annoOut = open(prefix + '-syntheticReferenceAnno.gtf', 'w')  # 'syntheticReferen
 bpOut = open(prefix + '-syntheticBreakpointLoc.bed', 'w')  # 'syntheticFusionBreakpointLoc.bed', 'w')
 c = 0
 isocount = 1
-for fusion in allBP:
+for fusion in allBP:  # noqa: C901 - FIXME: reduce complexity
     # print(fusion)
     allisochunks = []
     labels, sequence = [], []

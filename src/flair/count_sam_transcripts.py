@@ -59,7 +59,7 @@ def parse_args():
                         help='specify if your reads are properly trimmed and you want to remove alignments with too much softclipping at the ends (improves accuracy when possible). Provide a file of read to level of clipping when aligned to the genome.')
     parser.add_argument('--end_norm_dist', type=int, default=0,
                         help='specify the number of basepairs to extend transcript ends if you want to normalize them across transcripts in a gene and extend them')
-    parser.add_argument('--output_endpos',
+    parser.add_argument('--output_endpos', default=False, action='store_true',
                         help='whether to output the genomic position of all read ends after transcriptomic alignment')
     args = parser.parse_args()
     return args

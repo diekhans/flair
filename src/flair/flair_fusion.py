@@ -76,7 +76,7 @@ def align_to_synth_genome(genome, reads, output, additional_options):
     pipettor.run([samtools_index_cmd])
 
 
-def detectfusions():
+def detectfusions():  # noqa: C901 - FIXME: reduce complexity
     args = parse_args()
     path = os.path.dirname(os.path.realpath(__file__)) + '/'
 

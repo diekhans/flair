@@ -3,7 +3,7 @@
 import os
 import sys
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
-import numpy as np
+import numpy as np  # noqa: E402 - openblas setting must be before numpy import
 
 data = dict()
 with open(sys.argv[1]) as fin1:

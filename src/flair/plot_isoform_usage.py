@@ -42,7 +42,7 @@ gray = "xkcd:greyish"
 reverse_complement = {'C': 'G', 'G': 'C', 'A': 'T', 'T': 'A'}
 
 
-def parse_bed(bedfh, *, names=False, keepiso=set()):
+def parse_bed(bedfh, *, names=False, keepiso=set()):  # noqa: C901 - FIXME: reduce complexity
     info = []
     usednames = []
     lowbound, upbound = 1e9, 0
@@ -123,7 +123,7 @@ def pack(data, rev=True, color=False, tosort=True):
     return packed
 
 
-def plot_blocks(data, panel, names, iso_to_variant, upper, lower, strand, base_colors, height=.5, l=0.8):
+def plot_blocks(data, panel, names, iso_to_variant, upper, lower, strand, base_colors, height=.5, l=0.8):  # noqa: C901 - FIXME: reduce complexity
     panel.set_xlim(1, upper - lower + 2)
     if strand == '-':  # flip axes so that the isoforms are plotted 5' -> 3'
         panel.set_xlim(upper - lower + 2, 1)
@@ -195,7 +195,7 @@ def plot_blocks(data, panel, names, iso_to_variant, upper, lower, strand, base_c
         di += 1
 
 
-def plot_isoform_usage(args):
+def plot_isoform_usage(args):  # noqa: C901 - FIXME: reduce complexity
     args = parse_args()
     bedfh = open(args.isoforms)
     counts_matrix = open(args.counts_matrix)

@@ -16,7 +16,7 @@ class Gene(object):
         else:
             self.acceptor, self.donor = 1, 0
 
-    def buildGraph(self):
+    def buildGraph(self):  # noqa: C901 - FIXME: reduce complexity
         self.exonGraph = dict()
         self.knownJuncs = dict()
         self.spliceSites = dict()

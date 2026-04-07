@@ -274,7 +274,7 @@ def save_transcript_annot_to_region(transcript_id, gene_id, region, regions_to_a
         annots.all_annot_SE[strand] = sorted(annots.all_annot_SE[strand])  # FIXME: make set? Colette note: needs to be sorted for binary search later
 
 
-def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound):
+def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound):  # noqa: C901 - FIXME: reduce complexity
     # FIXME: convert filter_transcriptome_align.py to a library, however
     # minimap output needs to be piped through filter_transcriptome_align
     # without saving the bam file.
@@ -1210,7 +1210,7 @@ def _iso_passes_support_filter(args, iso, num_exons, iso_to_counts, gene_to_tot)
             return (count >= args.se_support) and (count / gene_to_tot[iso.split('_')[-1]][1]) >= args.frac_support
 
 
-def _run_region(*, partition, gtf_data, intron_support, args):
+def _run_region(*, partition, gtf_data, intron_support, args):  # noqa: C901 - FIXME: reduce complexity
     region = partition.region
     annots = annot_data_from_gtf(gtf_data, region)
 

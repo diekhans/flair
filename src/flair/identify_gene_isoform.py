@@ -111,7 +111,7 @@ def update_gene_dicts(chrom, j, gene, junctions, gene_unique_juncs, junc_to_gene
     return junctions, gene_unique_juncs, junc_to_gene
 
 
-def identify_gene_isoform(gtf, outfilename, query, field_name='gene_id', proportion_annotated_covered=0.8,
+def identify_gene_isoform(gtf, outfilename, query, field_name='gene_id', proportion_annotated_covered=0.8,  # noqa: C901 - FIXME: reduce complexity
                           gene_only=False, annotation_reliant=False):
     junc_to_tn = {}  # matches intron to transcript; chrom: {intron: [transcripts], ... }
     tn_to_juncs = {}  # matches transcript to intron; i.e. chrom: {transcript_name: (junction1, junction2), ... }

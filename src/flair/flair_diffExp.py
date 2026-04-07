@@ -332,7 +332,7 @@ def run_dirmseq(prefix, workdir, threads, groups, batches, matrixFile, outDir, f
         raise FlairError(f'running {prefix} failed, please check {stderr} for details') from exc
 
 
-def calculate_sig(args):
+def calculate_sig(args):  # noqa: C901 - FIXME: reduce complexity
     outDir = args.out_dir
     quant_table_tsv = args.counts_matrix
     sFilter = args.exp_thresh

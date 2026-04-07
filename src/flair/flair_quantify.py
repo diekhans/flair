@@ -11,7 +11,7 @@ import logging
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
-def quantify(isoform_sequences=''):
+def quantify(isoform_sequences=''):  # noqa: C901 - FIXME: reduce complexity
     parser = argparse.ArgumentParser()
     required = parser.add_argument_group('required named arguments')
     required.add_argument('-r', '--reads_manifest', action='store', dest='r', type=str,

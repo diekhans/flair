@@ -188,7 +188,7 @@ def getStartRelPos(genomicStartPos, exon, exons, isoObj):
     return relativeStart
 
 
-def checkPTC(orfEndPos, exonSizes, allExons, nmdexcep, isoname):
+def checkPTC(orfEndPos, exonSizes, allExons, nmdexcep, isoname):  # noqa: C901 - FIXME: reduce complexity
     '''
     takes a transcript sequence position, and list of exon sizes to detemine
     if that position occurs more than 55nucleotides away from a splice junction.
@@ -268,7 +268,7 @@ def get_exons(bedline):
     return [(gstart + estarts[i], gstart + estarts[i] + esizes[i]) for i in range(len(esizes))]
 
 
-def predict(bed, starts, isoDict, nmdexcep):
+def predict(bed, starts, isoDict, nmdexcep):  # noqa: C901 - FIXME: reduce complexity
     fusiondict = {}
     for line in open(bed):
         line = line.rstrip().split('\t')
@@ -398,7 +398,7 @@ def translate(seq):
     return protein
 
 
-def main():
+def main():  # noqa: C901 - FIXME: reduce complexity
     '''
     maine
     '''

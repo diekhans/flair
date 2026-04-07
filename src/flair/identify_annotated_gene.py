@@ -60,7 +60,7 @@ prev_start = None
 prev_end = None
 junctions = None
 
-if genepred:  # reading in annotated splice junctions
+if genepred:  # reading in annotated splice junctions  # noqa: C901 - FIXME: reduce complexity
     for line in ref:
         line = line.rstrip().split('\t')
         gene, chrom, strand, numblocks = line[0], line[1], line[2], int(line[7])
@@ -126,7 +126,7 @@ for chrom in all_se:
 
 with open(outfilename, 'wt') as outfile:
     writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
-    for line in psl:
+    for line in psl:  # noqa: C901 - FIXME: reduce complexity
         line = line.rstrip().split('\t')
 
         if ';' in line[9][-3:]:

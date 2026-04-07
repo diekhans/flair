@@ -159,7 +159,7 @@ with open(outfilenamebase + '.alt5.events.quant.tsv', 'wt') as outfile:
 with open(outfilenamebase + '.ir.events.quant.tsv', 'wt') as outfile:
     writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
     writer.writerow(['feature_id', 'coordinate'] + sample_names + ['isoform_ids'])
-    for chrom in ir_junctions:
+    for chrom in ir_junctions:  # noqa: C901 - FIXME: reduce complexity
         for j in ir_junctions[chrom]:
             for iname in isoforms[chrom]:  # compare with all other isoforms to find IR
                 if iname in ir_junctions[chrom][j]['exclusion']['isos']:  # is an exclusion isoform

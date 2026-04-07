@@ -75,7 +75,7 @@ def check_args(args):
     return args
 
 
-def get_annot_info(args):
+def get_annot_info(args):  # noqa: C901 - FIXME: reduce complexity
     chrtobp = {}
     if args.fusion_breakpoints:
         for line in open(args.fusion_breakpoints):
@@ -220,7 +220,7 @@ def get_matchvals(args, md):
     return matchvals
 
 
-def process_cigar(matchvals, cigarblocks, startpos, exoninfo, exon_bounds):
+def process_cigar(matchvals, cigarblocks, startpos, exoninfo, exon_bounds):  # noqa: C901 - FIXME: reduce complexity
     matchpos = 0
     coveredpos = [0] * (startpos - 1)
     queryclipping = []
@@ -379,7 +379,7 @@ class IsoAln(object):
         self.md = md
 
 
-def parse_sam(args, transcript_to_exons, transcript_to_bp_ss_index, transcript_to_genomic_ends, readstoclipping, transcript_to_unique_bounds):
+def parse_sam(args, transcript_to_exons, transcript_to_bp_ss_index, transcript_to_genomic_ends, readstoclipping, transcript_to_unique_bounds):  # noqa: C901 - FIXME: reduce complexity
     lastread = None
     curr_transcripts = {}
     transcripttoreads = {}

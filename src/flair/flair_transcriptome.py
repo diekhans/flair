@@ -865,7 +865,6 @@ def group_se_by_overlap(isoform, se_support, trust_strand):
                 new_key = (median([x.start for x in read_group]), median([x.end for x in read_group]), ())
                 yield new_key, new_strand, read_group
 
-
 def group_by_overlap(sj_to_ends, se_support, trust_strand):
     sjc_with_overlap_groups = {}
     for juncs, isoform in sj_to_ends.items():
@@ -881,7 +880,6 @@ def group_by_overlap(sj_to_ends, se_support, trust_strand):
 
 def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, region_chrom):
     sjc_with_overlap_groups = group_by_overlap(sj_to_ends, args.se_support, args.trust_strand)
-
     # FIXME everything below here requires confidence in transcript strand
     novel_gene_isos_to_group = get_gene_names_firstpass(sjc_with_overlap_groups, annots)
     # generating non-gene iso groups

@@ -69,7 +69,6 @@ def getGenomicPreciseLoc(tname, bpCoord, genedir, intronLocs, intronToGenome):
 def def_value():
     return set()
 
-
 def get_exon_intron_blocks(read):
     align_start = read.reference_start
     align_end = read.reference_end

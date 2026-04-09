@@ -22,7 +22,6 @@ from flair.count_sam_transcripts import TRUST_ENDS_WINDOW
 
 MIN_POLYA_FRAC_DIFF_FOR_SE_STRANDING = 0.1
 
-# FIXME: temporarily disabled C901 (too complex) in .flake8
 # FIXME: add object for all file names
 # FIXME: use real TSVs
 # FIXME: need to document all the files
@@ -657,7 +656,6 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
     # good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs = [], set(), {}
     read_to_transcript = {}
     if not args.no_align_to_annot and len(annots.transcripts) > 0:
-        # logging.info('generating transcriptome reference')
         # this part generates the fasta file for the annotation
         if args.end_norm_dist is not None:
             transcript_to_strand, transcript_to_new_exons = \
@@ -700,9 +698,9 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
 def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends, genome):
     """Correct a single read's splice junctions and add it to sj_to_ends groups."""
 
-    # FIXME add polyA and internal priming detection to building readRec
     readrec = ReadRec.from_read(read, genome=genome)
     if read.query_name in read_to_annot_transcript:
+        # FIXME more id assumptions
         transcript, startindex, startdist, endindex, enddist = read_to_annot_transcript[read.query_name]
         transcript, gene = transcript.split('_')
         exons = annots.transcript_to_exons[(transcript, gene)]
@@ -712,9 +710,7 @@ def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_cor
             newstart = juncs[startindex][0] - startdist
             newend = juncs[endindex][1] + enddist
             juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex + 1]])
-            # FIXME this is read correction based on annotated transcript, also correct strand based on annotated transcript strand
-            # DONE add polyA tail and internal priming info from readrec to new corrected readrec
-            strand = '-' if read.is_reverse else '+'
+            strand = annots.gene_to_strand[gene]
             corrected_read = ReadRec.from_junctions(read.reference_name, newstart, newend,
                                                     read.query_name, read.mapping_quality,
                                                     strand, juncs, polyA=readrec.polyA, intprim=readrec.intprim)
@@ -1252,8 +1248,7 @@ def _run_region(*, partition, gtf_data, intron_support, args):  # noqa: C901 - F
     # logging.info('identifying good match to annot')
     if not args.no_align_to_annot:
         logging.info('aligning to transcriptome reference')
-    read_to_annot_transcript = \
-        identify_good_match_to_annot(args, partition.file_prefix, region.name, annots, genome)
+    read_to_annot_transcript = identify_good_match_to_annot(args, partition.file_prefix, region.name, annots, genome)
 
     # load splice junctions for chrom
     # logging.info('correcting splice junctions')

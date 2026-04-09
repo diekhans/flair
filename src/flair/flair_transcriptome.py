@@ -178,7 +178,6 @@ def make_temp_dir(out_prefix):
 ####
 # splice junction correction
 ####
-# (binary_search, bed_to_junctions, read_correct_to_readrec imported from flair.isoform_data / flair.read_processing)
 
 def build_intron_support(gtf_file, junction_tab, junction_bed):
     """Build IntronSupport from all available sources."""

@@ -167,8 +167,8 @@ class IntronSupport:
                     cnt += 1
         except Exception as exc:
             raise FlairInputDataError(f"parsing intron BED failed: {bed_file} line {line_num}") from exc
-        # if cnt == 0:
-        #     self._no_introns_loaded_error(bed_file, "BED", chrom_filter)
+        if cnt == 0:
+            self._no_introns_loaded_error(bed_file, "BED", chrom_filter)
         return cnt
 
     def _load_annot_bed(self, bed, chrom_filter):
@@ -197,8 +197,8 @@ class IntronSupport:
         except Exception as exc:
             raise FlairInputDataError(f"parsing intron BED failed: {bed_file} line {line_num}") from exc
 
-        # if cnt == 0:
-        #     self._no_introns_loaded_error(bed_file, "BED", chrom_filter)
+        if cnt == 0:
+            self._no_introns_loaded_error(bed_file, "BED", chrom_filter)
         return cnt
 
     def _load_star(self, rec, chrom_filter):
@@ -222,8 +222,8 @@ class IntronSupport:
                     cnt += 1
         except Exception as exc:
             raise FlairInputDataError(f"parsing STAR SJ failed: {sj_file} line {line_num}") from exc
-        # if cnt == 0:
-        #     self._no_introns_loaded_error(sj_file, "STAR SJ", chrom_filter)
+        if cnt == 0:
+            self._no_introns_loaded_error(sj_file, "STAR SJ", chrom_filter)
         return cnt
 
     def _load_gtf_transcript(self, transcript):
@@ -245,6 +245,6 @@ class IntronSupport:
                 cnt += self._load_gtf_transcript(transcript)
         except Exception as exc:
             raise FlairInputDataError(f"parsing annotation GTF failed: {gtf_data.gtf_file}") from exc
-        # if cnt == 0:
-        #     self._no_introns_loaded_error(gtf_data.gtf_file, "GTF")
+        if cnt == 0:
+            self._no_introns_loaded_error(gtf_data.gtf_file, "GTF")
         return cnt

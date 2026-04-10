@@ -160,7 +160,6 @@ def get_exons(readrec):
 #         self.strand = strand
 #         self.juncs = self._intern_juncs(juncs)
 
-
 def check_intprim(end_seq):
     i = 10
     while i < len(end_seq) and end_seq[:i].count('A') / i >= INTPRIM_MIN_FRAC:
@@ -218,10 +217,6 @@ class ReadRec:
     @property
     def exons(self):
         return get_exons(self)
-
-    # def update_from_juncs(self, new_juncs):
-    #     """Update juncs, keeping chrom, start, end, name, score, strand."""
-    #     self.juncs = tuple(new_juncs)
 
     def reset_from_exons(self, exons):
         """Update ReadRec from a list of Exon objects."""

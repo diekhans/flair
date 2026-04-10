@@ -88,7 +88,7 @@ class GtfRecord:
     @property
     def gene_id(self):
         return self.attrs.get("gene_id")
-    
+
     @gene_id.setter
     def gene_id(self, value):
         self.attrs['gene_id'] = value

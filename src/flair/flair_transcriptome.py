@@ -234,6 +234,7 @@ def annot_data_from_gtf(gtf_data, region):
         return annots
     region_map = {region: annots}
     for trans in gtf_data.transcripts:
+        trans.gene_id = trans.gene_id.replace('_', '-')
         exons = [Exon(exon.start, exon.end) for exon in trans.exons]
         if not exons:
             continue
@@ -700,8 +701,9 @@ def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_cor
     readrec = ReadRec.from_read(read, genome=genome)
     if read.query_name in read_to_annot_transcript:
         # FIXME more id assumptions
-        transcript, startindex, startdist, endindex, enddist = read_to_annot_transcript[read.query_name]
-        transcript, gene = transcript.split('_')
+        tid, startindex, startdist, endindex, enddist = read_to_annot_transcript[read.query_name]
+        transcript = '_'.join(tid.split('_')[:-1])
+        gene = tid.split('_')[-1]
         exons = annots.transcript_to_exons[(transcript, gene)]
         juncs = [(exons[x].end, exons[x + 1].start) for x in range(len(exons) - 1)]
         # ignore unspliced transcripts

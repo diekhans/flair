@@ -61,6 +61,8 @@ def read_correct_to_readrec(junction_corrector, readrec):
 
 def generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region):
     c = 0
+    # use both soft and hard-clipping because some alignments (secondary, maybe supplementary) can be hard-clipped
+    clipping_types = (pysam.CIGAR_OPS.CSOFT_CLIP, pysam.CIGAR_OPS.CHARD_CLIP)
     with open(temp_prefix + '.reads.genomicclipping.txt', 'w') as clipping_fh:
         for read in bam_file.fetch(region.name, region.start, region.end):
             if not read.is_secondary and not read.is_supplementary:
@@ -68,9 +70,9 @@ def generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, regi
                 name = read.query_name
                 cigar = read.cigartuples
                 tot_clipped = 0
-                if cigar[0][0] in {pysam.CIGAR_OPS.CSOFT_CLIP, pysam.CIGAR_OPS.CHARD_CLIP}:
+                if cigar[0][0] in clipping_types:
                     tot_clipped += cigar[0][1]
-                if cigar[-1][0] in {pysam.CIGAR_OPS.CSOFT_CLIP, pysam.CIGAR_OPS.CHARD_CLIP}:
+                if cigar[-1][0] in clipping_types:
                     tot_clipped += cigar[-1][1]
                 clipping_fh.write(name + '\t' + str(tot_clipped) + '\n')
     return c, temp_prefix + '.reads.genomicclipping.txt'

@@ -1097,7 +1097,7 @@ def get_juncs_single_sample(listofargs):  # noqa: C901 - FIXME: reduce complexit
                 else:
                     c += 1
             elif read.mapping_quality >= args.quality:
-                corrected_read = ft.read_correct_to_readrec(junction_corrector, readrec)
+                corrected_read = junction_corrector.correct_readrec(readrec)
                 if corrected_read:
                     d += 1
                 else:

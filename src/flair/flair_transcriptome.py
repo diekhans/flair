@@ -16,7 +16,6 @@ from flair.isoform_data import (Junc, Exon, ReadRec, IsoWithReads, exons_to_junc
                                 get_bed_exons_from_exons, get_sequence_for_exons, binary_search,
                                 convert_to_bed)
 from flair.read_processing import (should_process_read, add_corrected_read_to_groups,
-                                   read_correct_to_readrec,
                                    generate_genomic_alignment_read_to_clipping_file)
 from flair.count_sam_transcripts import TRUST_ENDS_WINDOW
 
@@ -178,6 +177,7 @@ def make_temp_dir(out_prefix):
 ####
 # splice junction correction
 ####
+# (binary_search imported from flair.isoform_data)
 
 def build_intron_support(gtf_file, junction_tab, junction_bed):
     """Build IntronSupport from all available sources."""
@@ -189,10 +189,6 @@ def build_intron_support(gtf_file, junction_tab, junction_bed):
     if gtf_file is not None:
         is_db.load_gtf(gtf_data_parser(gtf_file, attrs=GtfAttrsSet.FLAIR))
     return is_db
-
-def setup_junction_corrector(intron_support, ss_window, junction_support):
-    """Create a JunctionCorrector from a pre-built IntronSupport."""
-    return JunctionCorrector(intron_support, ss_window, junction_support)
 
 class AnnotData(object):
     def __init__(self):
@@ -656,6 +652,7 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
     # good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs = [], set(), {}
     read_to_transcript = {}
     if not args.no_align_to_annot and len(annots.transcripts) > 0:
+        # logging.info('generating transcriptome reference')
         # this part generates the fasta file for the annotation
         if args.end_norm_dist is not None:
             transcript_to_strand, transcript_to_new_exons = \
@@ -717,10 +714,9 @@ def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_cor
                                                     strand, juncs, polyA=readrec.polyA, intprim=readrec.intprim)
         else:
             # no need to add strand correction for single exon here, will deal with it later
-            corrected_read = read_correct_to_readrec(junction_corrector, readrec)
+            corrected_read = junction_corrector.correct_readrec(readrec)
     else:
-        # FIXME add strand correction to junction correction here
-        corrected_read = read_correct_to_readrec(junction_corrector, readrec)
+        corrected_read = junction_corrector.correct_readrec(readrec)
     if corrected_read:
         add_corrected_read_to_groups(corrected_read, sj_to_ends)
 
@@ -1247,13 +1243,13 @@ def _run_region(*, partition, gtf_data, intron_support, args):  # noqa: C901 - F
     # logging.info('identifying good match to annot')
     if not args.no_align_to_annot:
         logging.info('aligning to transcriptome reference')
-    read_to_annot_transcript = identify_good_match_to_annot(args, partition.file_prefix, region.name, annots, genome)
+    read_to_annot_transcript = \
+        identify_good_match_to_annot(args, partition.file_prefix, region.name, annots, genome)
 
     # load splice junctions for chrom
     # logging.info('correcting splice junctions')
     logging.info('correcting and grouping reads, filtering isoforms')
-    junction_corrector = setup_junction_corrector(intron_support, args.ss_window, args.junction_support)
-
+    junction_corrector = JunctionCorrector(intron_support, args.ss_window, args.junction_support)
     # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
     # this also handles read strandedness if necessary
     sj_to_ends = filter_correct_group_reads(args, partition.file_prefix, region, bam_file, read_to_annot_transcript, annots,

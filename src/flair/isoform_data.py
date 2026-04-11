@@ -35,15 +35,6 @@ class Exon(namedtuple("Exon", ("start", "end", "name"))):
 ISO_SRC_ANNOT = 'annot'
 ISO_SRC_NOVEL = 'novel'
 
-
-# class IsoIdSrc(namedtuple("IsoIdSrc",
-#                           ("id", "src"))):
-#     """isoform identifier along with the source of the isoform"""
-#     # FIXME: it is unclear if this is the best way to store the information,
-#     # this was create as a transition from iso (id) or (iso_id) (marker, id)
-#     pass
-
-
 def exons_to_juncs(exons):
     """Convert exon ranges to junctions"""
     return [Junc(exons[i].end, exons[i + 1].start)
@@ -146,19 +137,6 @@ def get_exons(readrec):
     exons.append(Exon(readrec.juncs[-1].end, readrec.end))
     return exons
 
-
-# class JuncChain:
-#     # keep on one copy of junction chain
-#     _juncs_cache = {}
-
-#     @classmethod
-#     def _intern_juncs(cls, juncs):
-#         return cls._juncs_cache.setdefault(juncs, juncs)
-
-#     def __init__(self, chrom, strand, juncs):
-#         self.chrom = chrom
-#         self.strand = strand
-#         self.juncs = self._intern_juncs(juncs)
 
 def check_intprim(end_seq):
     i = 10
@@ -306,6 +284,7 @@ class IsoWithReads:
 
     @property
     def name(self):
+        # FIXME: start none might not be the best trigger.
         if self._name is None:
             if self.start is None:
                 return 'FLISO' + str(abs(hash(tuple(self.juncs))))

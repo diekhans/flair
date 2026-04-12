@@ -34,17 +34,12 @@ def get_paralog_ref(paralogfile):
     return genetoparalogs
 
 def get_gene_name_conv(annotgtf):
+    from flair.gtf_io import gtf_record_parser, GtfAttrsSet
     genetoname = {}
-    for line in open(annotgtf):
-        if line[0] != '#':
-            line = line.split('\t', 3)
-            if line[2] == 'gene':
-                geneid = line[-1].split('gene_id "')[1].split('"')[0]
-                if 'gene_name' in line[-1]:
-                    genename = line[-1].split('gene_name "')[1].split('"')[0]
-                else:
-                    genename = geneid
-                genetoname[geneid.split('.')[0]] = genename
+    for rec in gtf_record_parser(annotgtf, include_features={'gene'}, attrs=GtfAttrsSet.ALL):
+        geneid = rec.gene_id
+        genename = rec.gene_name if rec.gene_name else geneid
+        genetoname[geneid.split('.')[0]] = genename
     return genetoname
 
 def identify_promiscuous_genes(isoformsbed, genetoparalogs):

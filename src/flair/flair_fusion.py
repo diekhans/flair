@@ -11,6 +11,7 @@ from flair.gtf_to_bed import gtf_to_bed
 from flair.convert_synthetic_to_genome_bed import convert_synthetic_isos, get_paralog_ref
 from flair.identify_prelim_fusions import id_chimeras
 from flair import FlairInputDataError
+from flair.gtf_io import gtf_record_parser, GtfAttrsSet
 from flair.read_processing import get_sequence_from_bed
 
 def parse_args():
@@ -122,35 +123,26 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
     genetoinfo, genetoexons, genetoname = {}, {}, {}
     chrom_to_gene_pos = {}
     gene_to_all_exons, juncs_to_gene = {}, {}
-    for line in open(args.gtf):
-        if line.startswith('#'):
-            continue
-        line = line.rstrip().split('\t', 8)
-        chrom, ty, start, end, strand = line[0], line[2], int(line[3]) - 1, int(line[4]), line[6]
-        if ty in {'gene', 'exon', 'transcript'}:
-            gene_id = line[8].split('gene_id "')[1].split('"')[0]
-            gene_id = gene_id.replace('_', '-')
-            gene_id = gene_id.split('.')[0]
-            if ty == 'gene':
-                genetoinfo[gene_id] = [chrom, start, end, strand, []]
-                genename = line[-1].split('gene_name "')[1].split('"')[0]
-                genetoname[gene_id] = genename
-                if chrom not in chrom_to_gene_pos:
-                    chrom_to_gene_pos[chrom] = []
-                    chrom_to_gene_pos[chrom].append((start, end, strand, gene_id))
-                    juncs_to_gene[chrom] = {}
+    for rec in gtf_record_parser(args.gtf, include_features={'gene', 'exon', 'transcript'}, attrs=GtfAttrsSet.ALL):
+        gene_id = rec.gene_id.replace('_', '-').split('.')[0]
+        if rec.feature == 'gene':
+            genetoinfo[gene_id] = [rec.chrom, rec.start, rec.end, rec.strand, []]
+            genetoname[gene_id] = rec.gene_name if rec.gene_name else gene_id
+            if rec.chrom not in chrom_to_gene_pos:
+                chrom_to_gene_pos[rec.chrom] = []
+                chrom_to_gene_pos[rec.chrom].append((rec.start, rec.end, rec.strand, gene_id))
+                juncs_to_gene[rec.chrom] = {}
 
-            elif ty == 'exon':
-                transcript_id = line[8].split('transcript_id "')[1].split('"')[0]
-                if gene_id not in genetoexons:
-                    genetoexons[gene_id] = {}
-                if transcript_id not in genetoexons[gene_id]:
-                    genetoexons[gene_id][transcript_id] = []
-                genetoexons[gene_id][transcript_id].append((start, end))
+        elif rec.feature == 'exon':
+            if gene_id not in genetoexons:
+                genetoexons[gene_id] = {}
+            if rec.transcript_id not in genetoexons[gene_id]:
+                genetoexons[gene_id][rec.transcript_id] = []
+            genetoexons[gene_id][rec.transcript_id].append((rec.start, rec.end))
 
-            elif ty == 'transcript':
-                end5 = start if strand == '+' else end
-                genetoinfo[gene_id][-1].append(end5)
+        elif rec.feature == 'transcript':
+            end5 = rec.start if rec.strand == '+' else rec.end
+            genetoinfo[gene_id][-1].append(end5)
 
     print('continuing to parse annot')
     # FOR JUNCS TO GENE, DO BY CHROM AS WELL

@@ -7,6 +7,7 @@ import pipettor
 import pysam
 import shutil
 from flair import FlairInputDataError
+from flair.gtf_io import gtf_record_parser, GtfAttrsSet
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 
@@ -16,18 +17,9 @@ compbase = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N',
 
 def getStarts(gtf):
     starts = list()
-    with open(gtf) as lines:
-        for l in lines:
-            if l[0] == "#":
-                continue
-            cols = l.rstrip().split("\t")
-            chrom, c1, c2, strand = cols[0], int(cols[3]) - 1, int(cols[4]), cols[6]
-            if cols[2] == "start_codon":
-                gene = cols[8][cols[8].find('gene_id') + len('gene_id') + 2:]
-                gene = gene[:gene.find('"')]
-
-                starts.append((chrom, c1, c2, gene, ".", strand))
-    if (len(starts)) == 0:
+    for rec in gtf_record_parser(gtf, include_features={'start_codon'}, attrs=GtfAttrsSet.ALL):
+        starts.append((rec.chrom, rec.start, rec.end, rec.gene_id, ".", rec.strand))
+    if len(starts) == 0:
         raise FlairInputDataError(f'ERROR, no start codons were found in {gtf}')
     return starts
 

@@ -1,6 +1,7 @@
 import sys
 from collections import Counter
 import pysam
+from flair.gtf_io import gtf_record_parser, GtfAttrsSet
 
 alignedbedfile = sys.argv[1]
 referencegtffile = sys.argv[2]
@@ -25,12 +26,10 @@ def grouper(iterable):
 
 
 fusiontoannotsj = {}
-for line in open(referencegtffile):
-    line = line.rstrip().split('\t', 5)
-    if line[2] == 'exon':
-        if line[0] not in fusiontoannotsj:
-            fusiontoannotsj[line[0]] = set()
-        fusiontoannotsj[line[0]].add((int(line[3]), int(line[4])))
+for rec in gtf_record_parser(referencegtffile, include_features={'exon'}, attrs=GtfAttrsSet.FLAIR):
+    if rec.chrom not in fusiontoannotsj:
+        fusiontoannotsj[rec.chrom] = set()
+    fusiontoannotsj[rec.chrom].add((rec.start + 1, rec.end))  # keep 1-based to match original
 
 fusiontobp = {}
 for line in open(refbpfile):

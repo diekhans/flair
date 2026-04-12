@@ -142,19 +142,19 @@ def get_juncs_to_gene(juncs, isoinfo, sjc_to_gene, junc_to_gene, gene_to_exons, 
 def group_juncs_by_annot_gene(sjtoends, sjc_to_gene, junc_to_gene, gene_to_exons, gene_to_juncs):
     genetojuncs, nogenejuncs, sereads = {}, {}, []
     c, d = 0, 0
-    for juncs in sjtoends:  # assuming unspliced reads already removed
-        if len(juncs) > 0:  # remove unspliced reads
-            thisgene = get_juncs_to_gene(juncs, sjtoends[juncs], sjc_to_gene, junc_to_gene, gene_to_exons, gene_to_juncs)
+    for (chrom, juncs) in sjtoends:
+        if len(juncs) > 0:  # skip single-exon reads
+            thisgene = get_juncs_to_gene(juncs, sjtoends[(chrom, juncs)], sjc_to_gene, junc_to_gene, gene_to_exons, gene_to_juncs)
             if thisgene:
                 if thisgene not in genetojuncs:
                     genetojuncs[thisgene] = {}
-                genetojuncs[thisgene][juncs] = sjtoends[juncs]
+                genetojuncs[thisgene][juncs] = sjtoends[(chrom, juncs)]
             else:
-                c += sjtoends[juncs].num_reads
-                nogenejuncs[juncs] = sjtoends[juncs]
+                c += sjtoends[(chrom, juncs)].num_reads
+                nogenejuncs[juncs] = sjtoends[(chrom, juncs)]
         else:
-            d += sjtoends[juncs].num_reads
-            sereads.extend(sjtoends[juncs].reads)
+            d += sjtoends[(chrom, juncs)].num_reads
+            sereads.extend(sjtoends[(chrom, juncs)].reads)
     # print(c, 'reads not assigned to a gene')
     # print(d, 'single exon reads discarded')
     return genetojuncs, nogenejuncs, sereads
@@ -1082,6 +1082,7 @@ def get_juncs_single_sample(listofargs):  # noqa: C901 - FIXME: reduce complexit
     for read in bamfile.fetch(region.name, region.start, region.end):
         if not read.is_secondary and (not read.is_supplementary or args.keep_sup):
             readrec = ReadRec.from_read(read)
+            corrected = False
             if read.query_name in read_to_transcript:
                 transcript, startindex, startdist, endindex, enddist = read_to_transcript[read.query_name]
                 juncs = transcript_to_sjc[transcript]
@@ -1090,22 +1091,21 @@ def get_juncs_single_sample(listofargs):  # noqa: C901 - FIXME: reduce complexit
                     newend = juncs[endindex][1] + enddist
                     juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex + 1]])
                     strand = gene_to_strand[transcript.split('_')[-1]]
-                    corrected_read = ReadRec.from_junctions(read.reference_name, newstart, newend,
-                                                            read.query_name, read.mapping_quality,
-                                                            strand, juncs)
+                    readrec.correct_from_annotation(newstart, newend, strand, juncs)
+                    corrected = True
                     c += 1
                 else:
                     c += 1
             elif read.mapping_quality >= args.quality:
-                corrected_read = junction_corrector.correct_readrec(readrec)
-                if corrected_read:
+                corrected = junction_corrector.correct_readrec(readrec)
+                if corrected:
                     d += 1
                 else:
                     e += 1
             else:
                 b += 1
-        if corrected_read:
-            add_corrected_read_to_groups(corrected_read, sj_to_ends)
+            if corrected:
+                add_corrected_read_to_groups(readrec, sj_to_ends)
     bamfile.close()
     # print(sample, b, 'failed quality filters')
     # print(sample, c, 'annotated match')

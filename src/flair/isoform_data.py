@@ -18,8 +18,23 @@ INTPRIM_SEARCH_WINDOW = 50
 # basic types
 ####
 class Junc(PosRange):
-    """Stores start, end, just adds a type name to SeqRange for clearer code and error messages"""
+    """Splice junction interval (start, end), a type alias for PosRange."""
     pass
+
+
+class JuncChain(namedtuple("JuncChain", ("chrom", "strand", "juncs"))):
+    """A chain of splice junctions on a single chromosome and strand."""
+
+    def __new__(cls, chrom, strand, juncs):
+        return super().__new__(cls, chrom, strand, tuple(juncs))
+
+    @classmethod
+    def from_exons(cls, chrom, strand, exons):
+        """Create a JuncChain from a list of exons."""
+        juncs = tuple(Junc(exons[i].end, exons[i + 1].start)
+                      for i in range(len(exons) - 1))
+        return cls(chrom, strand, juncs)
+
 
 class Exon(namedtuple("Exon", ("start", "end", "name"))):
     def __new__(cls, start, end, name=None):
@@ -42,7 +57,6 @@ def exons_to_juncs(exons):
 
 
 def bed_to_junctions(bed):
-    # FIXME: a junctions object might be good
     return [Junc(bed.blocks[i - 1].end, bed.blocks[i].start)
             for i in range(1, bed.blockCount)]
 
@@ -202,6 +216,13 @@ class ReadRec:
         self.end = exons[-1].end
         self.juncs = tuple(exons_to_juncs(sorted(exons)))
 
+    def correct_from_annotation(self, start, end, strand, juncs):
+        """Update ReadRec with corrected coordinates from annotation match."""
+        self.start = start
+        self.end = end
+        self.strand = strand
+        self.juncs = tuple(juncs)
+
     def _get_both_intprim(read, genome):
         left_intprim, right_intprim = 0, 0
         if read.reference_start > INTPRIM_SEARCH_WINDOW:
@@ -253,11 +274,6 @@ class ReadRec:
             left_intprim, right_intprim = cls._get_both_intprim(read, genome)
 
         return cls(read.reference_name, junc_direction, juncs, align_start, ref_pos, read.query_name, polyA=(left_polyA, right_polyA), intprim=(left_intprim, right_intprim))
-
-    @classmethod
-    def from_junctions(cls, chrom, start, end, name, score, strand, juncs, *, polyA=None, intprim=None):
-        """Create a ReadRec from junction coordinates."""
-        return cls(chrom, strand, tuple(juncs), start, end, name, score=score, polyA=polyA, intprim=intprim)
 
 
 class IsoWithReads:
@@ -334,7 +350,7 @@ class IsoWithReads:
         return self.end - self.start
 
     def reset_from_exons(self, exons):
-        """Update ReadRec from a list of Exon objects."""
+        """Update IsoWithReads from a list of Exon objects."""
         self.start = exons[0].start
         self.end = exons[-1].end
         self.juncs = tuple(exons_to_juncs(sorted(exons)))
@@ -349,7 +365,8 @@ class IsoWithReads:
         return cls(readrec.chrom, readrec.strand, readrec.juncs)
 
     @classmethod
-    def from_other(cls, iso, newstart=None, newend=None, newreads=[], newstrand=None):
+    def regroup(cls, iso, newstart=None, newend=None, newreads=[], newstrand=None):
+        """Create a new IsoWithReads by regrouping reads from an existing one."""
         if newstrand is None:
             newstrand = iso.strand
         return cls(iso.chrom, newstrand, iso.juncs, newstart, newend, newreads, iso.gene_id, iso.transcript_id)

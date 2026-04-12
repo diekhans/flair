@@ -45,13 +45,13 @@ class JunctionCorrector:
 
     def correct_readrec(self, readrec):
         """Correct a ReadRec's junctions and strand in place from intron support.
-        Returns None if there is no support for an intron, otherwise returns readrec."""
+        Returns True if corrected, False if there is no support."""
         new_junctions, strand = _correct_junctions(self, readrec)
         if new_junctions is None:
-            return None
+            return False
         readrec.juncs = tuple(Junc(j.start, j.end) for j in new_junctions)
         readrec.strand = strand
-        return readrec
+        return True
 
 
 ###
@@ -150,4 +150,3 @@ def _correct_junctions(corrector, readrec):
     if strand is None:
         return None, None
     return new_junctions, strand
-

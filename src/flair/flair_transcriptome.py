@@ -6,7 +6,8 @@ import shutil
 import pysam
 import logging
 from statistics import median
-from collections import Counter, namedtuple
+from collections import Counter
+from flair import FlairError
 from flair.gtf_io import gtf_data_parser, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
 from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
@@ -335,8 +336,6 @@ def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, o
 # Transcript end assignment
 ##
 
-JunctionChain = namedtuple('JunctionChain', ('chrom', 'strand', 'juncs'))
-
 def get_best_ends(curr_group, end_window):
     best_ends = []
     if len(curr_group) > int(end_window):
@@ -391,7 +390,7 @@ def collapse_end_groups(end_window, isoform):
         all_end_groups.extend(group_reads_by_ends(start_group, 1, end_window))
     for end_group in all_end_groups:
         weighted_score, start, end = get_best_ends(end_group, end_window)
-        read_end_info = IsoWithReads.from_other(isoform, start, end, end_group)
+        read_end_info = IsoWithReads.regroup(isoform, start, end, end_group)
         iso_end_groups.append(read_end_info)
     return iso_end_groups
 
@@ -551,11 +550,15 @@ class MaxTerminalExonsEnds:
             gene_entry = GeneMaxTerminalExonsEnds(gene_id)
             self._by_gene_id[gene_key] = gene_entry
 
-        # FIXME: tmp generate strand warning
+        # FIXME: tmp generate strand warning or error. it should be impossible to get here
+        # with gene broken like this.
         existing_strand = self._gene_id_to_strand.get(gene_id)
         if existing_strand is None:
             self._gene_id_to_strand[gene_id] = strand
+        elif strand != existing_strand:
+            raise FlairError(f"BUG: gene id '{gene_id}' has transcripts on both strands")
         elif (strand != existing_strand) and (gene_id not in self._genes_warned):
+            # FIXME: this is disabled for not to get hard failure
             self._genes_warned.add(gene_id)
             logging.warning("BUG: gene id '%s' has transcripts on both strands", gene_id)
 
@@ -693,32 +696,38 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
 
 
 def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends, genome):
-    """Correct a single read's splice junctions and add it to sj_to_ends groups."""
+    """Correct a single read's splice junctions and add it to sj_to_ends groups.
 
+    Spliced and single-exon reads are fundamentally different:
+    - Spliced: junctions corrected from annotation or intron support, strand from correction
+    - Single-exon: no correction, strand resolved later in group_se_by_overlap
+    """
     readrec = ReadRec.from_read(read, genome=genome)
+
+    # annotated spliced: correct junctions and strand from annotation
     if read.query_name in read_to_annot_transcript:
         # FIXME more id assumptions
         tid, startindex, startdist, endindex, enddist = read_to_annot_transcript[read.query_name]
         transcript = '_'.join(tid.split('_')[:-1])
         gene = tid.split('_')[-1]
         exons = annots.transcript_to_exons[(transcript, gene)]
-        juncs = [(exons[x].end, exons[x + 1].start) for x in range(len(exons) - 1)]
-        # ignore unspliced transcripts
-        if len(juncs) > 0:
-            newstart = juncs[startindex][0] - startdist
-            newend = juncs[endindex][1] + enddist
-            juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex + 1]])
-            strand = annots.gene_to_strand[gene]
-            corrected_read = ReadRec.from_junctions(read.reference_name, newstart, newend,
-                                                    read.query_name, read.mapping_quality,
-                                                    strand, juncs, polyA=readrec.polyA, intprim=readrec.intprim)
-        else:
-            # no need to add strand correction for single exon here, will deal with it later
-            corrected_read = junction_corrector.correct_readrec(readrec)
-    else:
-        corrected_read = junction_corrector.correct_readrec(readrec)
-    if corrected_read:
-        add_corrected_read_to_groups(corrected_read, sj_to_ends)
+        annot_juncs = [(exons[x].end, exons[x + 1].start) for x in range(len(exons) - 1)]
+        if len(annot_juncs) > 0:
+            newstart = annot_juncs[startindex][0] - startdist
+            newend = annot_juncs[endindex][1] + enddist
+            juncs = tuple([Junc(x[0], x[1]) for x in annot_juncs[startindex:endindex + 1]])
+            readrec.correct_from_annotation(newstart, newend, annots.gene_to_strand[gene], juncs)
+            add_corrected_read_to_groups(readrec, sj_to_ends)
+            return
+
+    # unannotated spliced: correct junctions and strand from intron support
+    if readrec.juncs:
+        if junction_corrector.correct_readrec(readrec):
+            add_corrected_read_to_groups(readrec, sj_to_ends)
+        return
+
+    # single-exon: no correction, strand resolved later in group_se_by_overlap
+    add_corrected_read_to_groups(readrec, sj_to_ends)
 
 def filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_annot_transcript, annots,
                                junction_corrector, genome, *, sj_to_ends=None,
@@ -814,6 +823,8 @@ def _process_junc(args, isoform, firstpass_unfiltered, firstpass_junc_to_name, f
 
 def correct_se_strand_polyA(read_group, se_support):
     # strand correction for single exon genes based on location of polyA tail sequence
+
+    # FIXME: shouldnt this check for poly(T)
     left_polyA = [read.polyA[0] for read in read_group]
     right_polyA = [read.polyA[1] for read in read_group]
     num_reads = len(read_group)
@@ -832,47 +843,74 @@ def correct_se_strand_polyA(read_group, se_support):
                 return '-'
     return None
 
-def group_reads_by_overlap(reads):
-    reads.sort(key=lambda x: [x.start, x.end])
-    last_end, read_group = -1, []
+def _group_se_reads_by_overlap(reads):
+    """Group single-exon reads into clusters by coordinate overlap."""
     read_groups = []
-    for r in reads:
+    last_end = -1
+    read_group = None
+    for r in sorted(reads, key=lambda x: (x.start, x.end)):
         if r.start >= last_end:
-            read_groups.append(read_group)
+            if read_group is not None:
+                read_groups.append(read_group)
             last_end = r.end
             read_group = []
         if r.end > last_end:
             last_end = r.end
         read_group.append(r)
-    read_groups.append(read_group)
+    if read_group is not None:
+        read_groups.append(read_group)
     return read_groups
 
-def group_se_by_overlap(isoform, se_support, trust_strand):
-    for read_group in group_reads_by_overlap(isoform.reads):
-        if read_group != []:
-            if trust_strand:
-                # get most common read strand for group
-                read_strands = [x.strand for x in read_group]
-                new_strand = max(set(read_strands), key=read_strands.count)
-            else:
-                # correct based on polyA
-                new_strand = correct_se_strand_polyA(read_group, se_support)
-            # filter out single exon groups that fail stranding
-            if new_strand is not None:
-                new_key = (median([x.start for x in read_group]), median([x.end for x in read_group]), ())
-                yield new_key, new_strand, read_group
+def group_se_by_overlap(chrom, isoform, se_support, trust_strand):
+    for read_group in _group_se_reads_by_overlap(isoform.reads):
+        if trust_strand:
+            # get most common read strand for group
+            read_strands = [x.strand for x in read_group]
+            new_strand = max(set(read_strands), key=read_strands.count)
+        else:
+            # correct based on polyA
+            new_strand = correct_se_strand_polyA(read_group, se_support)
+        # filter out single exon groups that fail stranding
+        if new_strand is not None:
+            new_key = (chrom, median([x.start for x in read_group]), median([x.end for x in read_group]), ())
+            yield new_key, new_strand, read_group
+
+class IsoformOverlapGroups:
+    """Isoforms grouped by junction chain with overlap-clustered ends.
+
+    Key: (chrom, median_start, median_end, juncs) where juncs is () for single-exon.
+    Value: IsoWithReads.
+    """
+    def __init__(self):
+        self._groups = {}
+
+    def add_spliced(self, chrom, juncs, isoform):
+        """Add a spliced isoform, keyed by chrom, median ends, and junction chain."""
+        self._groups[(chrom, median(isoform.starts), median(isoform.ends), juncs)] = isoform
+
+    def add_se_overlap_groups(self, chrom, isoform, se_support, trust_strand):
+        """Split single-exon reads into overlap groups and resolve strand."""
+        for new_key, new_strand, read_group in group_se_by_overlap(chrom, isoform, se_support, trust_strand):
+            self._groups[new_key] = IsoWithReads.regroup(isoform, newreads=read_group, newstrand=new_strand)
+
+    def __iter__(self):
+        return iter(self._groups)
+
+    def __getitem__(self, key):
+        return self._groups[key]
+
+    def items(self):
+        return self._groups.items()
+
 
 def group_by_overlap(sj_to_ends, se_support, trust_strand):
-    sjc_with_overlap_groups = {}
-    for juncs, isoform in sj_to_ends.items():
+    groups = IsoformOverlapGroups()
+    for (chrom, juncs), isoform in sj_to_ends.items():
         if len(juncs) > 0:
-            # NOTE: if strand correction has already been done from junctions, shouldn't need any additional strand correction here
-            sjc_with_overlap_groups[(median(isoform.starts), median(isoform.ends), juncs)] = isoform
+            groups.add_spliced(chrom, juncs, isoform)
         else:
-            for new_key, new_strand, read_group in group_se_by_overlap(isoform, se_support, trust_strand):
-                sjc_with_overlap_groups[new_key] = IsoWithReads.from_other(isoform, newreads=read_group, newstrand=new_strand)
-
-    return sjc_with_overlap_groups
+            groups.add_se_overlap_groups(chrom, isoform, se_support, trust_strand)
+    return groups
 
 
 def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, region_chrom):

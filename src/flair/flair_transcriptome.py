@@ -880,6 +880,14 @@ class IsoformOverlapGroups:
 
     Key: (chrom, median_start, median_end, juncs) where juncs is () for single-exon.
     Value: IsoWithReads.
+
+    Strand is not part of the key. For spliced isoforms, strand is determined
+    during junction correction and stored on the IsoWithReads. For single-exon
+    reads, strand cannot be determined from junctions, so overlapping reads are
+    grouped by coordinate overlap first, then strand is resolved per group by
+    majority vote (trust_strand) or polyA consensus.  This means opposite-strand
+    single-exon reads at the same locus merge into one group; the minority
+    strand is discarded.
     """
     def __init__(self):
         self._groups = {}

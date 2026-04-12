@@ -162,19 +162,25 @@ def check_intprim(end_seq):
     else:
         return j
 
-def check_polyA(end_seq):
+def _check_poly_base(end_seq, base):
+    """Check for a poly-base run using a rolling window."""
     if len(end_seq) < POLYA_SEARCH_WINDOW:
         return 0
-    else:
-        i = POLYA_SEARCH_WINDOW
-        while i < len(end_seq) and end_seq[i - POLYA_SEARCH_WINDOW:i].count('A') / POLYA_SEARCH_WINDOW >= POLYA_MIN_FRAC:  # check rolling average of 5bp
-            i += 1
-        # return i
-        j = end_seq[:i].rfind('A') + 1
-        if j < POLYA_MIN_LEN:
-            return 0
-        else:
-            return j
+    i = POLYA_SEARCH_WINDOW
+    while i < len(end_seq) and end_seq[i - POLYA_SEARCH_WINDOW:i].count(base) / POLYA_SEARCH_WINDOW >= POLYA_MIN_FRAC:
+        i += 1
+    j = end_seq[:i].rfind(base) + 1
+    if j < POLYA_MIN_LEN:
+        return 0
+    return j
+
+
+def check_polyA(end_seq):
+    return _check_poly_base(end_seq, 'A')
+
+
+def check_polyT(end_seq):
+    return _check_poly_base(end_seq, 'T')
 
 
 class ReadRec:
@@ -233,15 +239,28 @@ class ReadRec:
             right_intprim = check_intprim(end_seq)
         return left_intprim, right_intprim
 
-    def _get_both_polyA(read):
+    def _detect_poly_tails(read):
+        """Detect polyA/polyT tails in soft-clipped ends.
+
+        Returns (left_polyA, right_polyA) where:
+        - left_polyA > 0: poly-tail at left end (- strand indicator)
+        - right_polyA > 0: poly-tail at right end (+ strand indicator)
+
+        Both polyA and polyT are checked on each end to handle cDNA reads
+        where the antisense strand has polyT instead of polyA.  Both indicate
+        the location of the mRNA 3' end.
+
+        The check functions expect the tail at the start of the sequence.
+        Right clips already have this orientation; left clips are reversed.
+        """
         left_polyA, right_polyA = 0, 0
         read_seq = read.query_sequence
-        if read.cigartuples[0][0] == pysam.CIGAR_OPS.CSOFT_CLIP:  # check left polyA
-            end_seq = get_reverse_complement(read_seq[:read.cigartuples[0][1]])
-            left_polyA = check_polyA(end_seq)
-        if read.cigartuples[-1][0] == pysam.CIGAR_OPS.CSOFT_CLIP:  # check right polyA
-            end_seq = read_seq[-1 * read.cigartuples[-1][1]:]
-            right_polyA = check_polyA(end_seq)
+        if read.cigartuples[0][0] == pysam.CIGAR_OPS.CSOFT_CLIP:
+            left_rev = read_seq[:read.cigartuples[0][1]][::-1]
+            left_polyA = max(check_polyA(left_rev), check_polyT(left_rev))
+        if read.cigartuples[-1][0] == pysam.CIGAR_OPS.CSOFT_CLIP:
+            right_seq = read_seq[-1 * read.cigartuples[-1][1]:]
+            right_polyA = max(check_polyA(right_seq), check_polyT(right_seq))
         return left_polyA, right_polyA
 
     @classmethod
@@ -268,7 +287,7 @@ class ReadRec:
         if junc_direction not in {'+', '-'}:
             junc_direction = "-" if read.is_reverse else "+"
         juncs = tuple(Junc(blk[0], blk[1]) for blk in intron_blocks)
-        left_polyA, right_polyA = cls._get_both_polyA(read)
+        left_polyA, right_polyA = cls._detect_poly_tails(read)
         left_intprim, right_intprim = 0, 0
         if genome is not None:
             left_intprim, right_intprim = cls._get_both_intprim(read, genome)

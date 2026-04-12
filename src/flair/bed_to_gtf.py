@@ -2,6 +2,7 @@
 import argparse
 from flair import FlairInputDataError
 from flair.gtf_io import gtf_write_row
+from flair.pycbio.hgdata.bed import BedReader
 
 
 def main():
@@ -58,15 +59,8 @@ def bed_to_gtf(query, outputfile, force=False, reference_transcript_id=False, us
     outfile = open(outputfile, 'w')
     gene_to_records = {}
     gene_to_chrom_strand = {}
-    for line in open(query):
-        line = line.rstrip().split('\t')
-        chrom, strand, name = line[0], line[5], line[3]
-        start = int(line[1])
-        end = int(line[2])
-        thick_start, thick_end = int(line[6]), int(line[7])
-        tstarts = [int(n) + start for n in line[11].rstrip(',').split(',')]
-        bsizes = [int(n) for n in line[10].rstrip(',').split(',')]
-
+    for bed in BedReader(query):
+        name = bed.name
         if '_' not in name and not force:
             raise FlairInputDataError('Entry name should contain underscore-delimited transcriptid and geneid like so: \n'
                                       'ENST00000318842.11_ENSG00000156313.12 or a4bab8a3-1d28_chr8:232000\n'
@@ -88,25 +82,25 @@ def bed_to_gtf(query, outputfile, force=False, reference_transcript_id=False, us
 
         if gene_id not in gene_to_records:
             gene_to_records[gene_id] = []
-            gene_to_chrom_strand[gene_id] = (chrom, strand)
+            gene_to_chrom_strand[gene_id] = (bed.chrom, bed.strand)
 
         attrs = _make_attrs(gene_id, transcript_id, ref_tid)
-        gene_to_records[gene_id].append(('transcript', chrom, start, tstarts[-1] + bsizes[-1], strand, attrs))
+        gene_to_records[gene_id].append(('transcript', bed.chrom, bed.chromStart, bed.chromEnd, bed.strand, attrs))
 
-        if thick_start != thick_end and (thick_start != start or thick_end != end) and useCDS:
-            gene_to_records[gene_id].append(('CDS', chrom, thick_start, thick_end, strand, attrs))
-            if strand == '+':
-                gene_to_records[gene_id].append(('start_codon', chrom, thick_start, thick_start + 3, strand, attrs))
-                gene_to_records[gene_id].append(('5UTR', chrom, start, thick_start, strand, attrs))
-                gene_to_records[gene_id].append(('3UTR', chrom, thick_end, tstarts[-1] + bsizes[-1], strand, attrs))
-            elif strand == '-':
-                gene_to_records[gene_id].append(('start_codon', chrom, thick_end - 3, thick_end, strand, attrs))
-                gene_to_records[gene_id].append(('3UTR', chrom, start, thick_start, strand, attrs))
-                gene_to_records[gene_id].append(('5UTR', chrom, thick_end, tstarts[-1] + bsizes[-1], strand, attrs))
+        if bed.thickStart != bed.thickEnd and (bed.thickStart != bed.chromStart or bed.thickEnd != bed.chromEnd) and useCDS:
+            gene_to_records[gene_id].append(('CDS', bed.chrom, bed.thickStart, bed.thickEnd, bed.strand, attrs))
+            if bed.strand == '+':
+                gene_to_records[gene_id].append(('start_codon', bed.chrom, bed.thickStart, bed.thickStart + 3, bed.strand, attrs))
+                gene_to_records[gene_id].append(('5UTR', bed.chrom, bed.chromStart, bed.thickStart, bed.strand, attrs))
+                gene_to_records[gene_id].append(('3UTR', bed.chrom, bed.thickEnd, bed.chromEnd, bed.strand, attrs))
+            elif bed.strand == '-':
+                gene_to_records[gene_id].append(('start_codon', bed.chrom, bed.thickEnd - 3, bed.thickEnd, bed.strand, attrs))
+                gene_to_records[gene_id].append(('3UTR', bed.chrom, bed.chromStart, bed.thickStart, bed.strand, attrs))
+                gene_to_records[gene_id].append(('5UTR', bed.chrom, bed.thickEnd, bed.chromEnd, bed.strand, attrs))
 
-        for b in range(len(tstarts)):
+        for b, blk in enumerate(bed.blocks):
             exon_attrs = _make_attrs(gene_id, transcript_id, ref_tid, exon_number=b)
-            gene_to_records[gene_id].append(('exon', chrom, tstarts[b], tstarts[b] + bsizes[b], strand, exon_attrs))
+            gene_to_records[gene_id].append(('exon', bed.chrom, blk.start, blk.end, bed.strand, exon_attrs))
 
     for gene_id, records in gene_to_records.items():
         chrom, strand = gene_to_chrom_strand[gene_id]

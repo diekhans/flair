@@ -2,6 +2,7 @@ import argparse
 import pysam
 from flair.isoform_data import get_reverse_complement
 from flair.gtf_io import gtf_record_parser, gtf_write_row, GtfAttrsSet
+from flair.pycbio.hgdata.bed import BedReader
 
 parser = argparse.ArgumentParser(description='make synthetic fusion reference')
 parser.add_argument('-c', '--chimbp', action='store', help='bed file of fusion breakpoints')
@@ -25,9 +26,9 @@ allBP = {}
 fgenes = {}
 transcripts = {}
 # ['fusionName', 'geneName', 'orderInFusion', 'geneChr', 'breakpointCoord', 'outerEdgeCoord', 'readSupport']
-for line in open(args.chimbp):  # '31-01-2023DRR059313-transcriptomeChimericBreakpoints-correctDir.tsv'):
-    chrom, start, end, name, score, strand = line.rstrip().split('\t')[:6]
-    start, end = max(0, int(start)), max(0, int(end))
+for bed in BedReader(args.chimbp, numStdCols=6, fixScores=True):
+    chrom, name, score, strand = bed.chrom, bed.name, bed.score, bed.strand
+    start, end = max(0, bed.chromStart), max(0, bed.chromEnd)
     gene, fusion = name.split('__')
     fusion = tuple(fusion.split('--'))
     if fusion not in allBP:

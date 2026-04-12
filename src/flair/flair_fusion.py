@@ -13,6 +13,7 @@ from flair.identify_prelim_fusions import id_chimeras
 from flair import FlairInputDataError
 from flair.gtf_io import gtf_record_parser, GtfAttrsSet
 from flair.read_processing import get_sequence_from_bed
+from flair.pycbio.hgdata.bed import BedReader
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -315,35 +316,31 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
     pipettor.run([ipcmd])
 
     fusiontobp = {}
-    for line in open(f'{args.output}-syntheticBreakpointLoc.bed'):
-        line = line.rstrip().split('\t')
-        fusiontobp[line[0]] = int(line[1])
+    for bed in BedReader(f'{args.output}-syntheticBreakpointLoc.bed', numStdCols=3):
+        fusiontobp[bed.chrom] = bed.chromStart
 
     fusion_to_bp_sj = {f: False for f in fusiontobp}
     good_sj = []
 
-    for line in open(f'{args.output}.syntheticAligned.IPSJ.bed'):
-        line = line.rstrip().split('\t')
-        fusion = line[0]
-        start, end = int(line[1]), int(line[2])
-        readsup = int(line[4])
-        sjmotif = line[3].split('_')[-1]
-        strand = line[5]
+    for bed in BedReader(f'{args.output}.syntheticAligned.IPSJ.bed', numStdCols=6):
+        fusion = bed.chrom
+        start, end = bed.chromStart, bed.chromEnd
+        readsup = bed.score
+        sjmotif = bed.name.split('_')[-1]
+        strand = bed.strand
         if readsup >= 2:
             if sjmotif in {"GT/AG", "GC/AG", "AT/AC"} and strand == '+':  # for synthetic alignment, all junctions should be '+'
-                good_sj.append(line)
+                good_sj.append(bed.toRow())
                 if start < fusiontobp[fusion] < end:
                     fusion_to_bp_sj[fusion] = True
 
-    for line in open(f'{args.output}.syntheticAligned.IPSJ.bed'):
-        line = line.rstrip().split('\t')
-        fusion = line[0]
-        start, end = int(line[1]), int(line[2])
-        readsup = int(line[4])
-        sjmotif = line[3].split('_')[-1]
-        strand = line[5]
+    for bed in BedReader(f'{args.output}.syntheticAligned.IPSJ.bed', numStdCols=6):
+        fusion = bed.chrom
+        start, end = bed.chromStart, bed.chromEnd
+        readsup = bed.score
+        strand = bed.strand
         if readsup >= 2 and fusion_to_bp_sj[fusion] is False and start < fusiontobp[fusion] < end:  # no good breakpoint junctions yet
-            good_sj.append(line)
+            good_sj.append(bed.toRow())
 
     out = open(f'{args.output}.syntheticAligned.SJ.bed', 'w')
     for line in good_sj:
@@ -378,13 +375,12 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
     oldnametonewname = {}
     out = open(args.output + '.syntheticAligned.isoforms.bed', 'w')
     c = 0
-    for line in open(args.output + '.syntheticAligned.flair.isoforms.bed'):
+    for bed in BedReader(args.output + '.syntheticAligned.flair.isoforms.bed', fixScores=True):
         c += 1
-        line = line.rstrip().split('\t')
-        newname = 'fusioniso' + str(c) + '_' + line[0]
-        oldnametonewname[line[3]] = newname
-        line[3] = newname
-        out.write('\t'.join(line) + '\n')
+        newname = 'fusioniso' + str(c) + '_' + bed.chrom
+        oldnametonewname[bed.name] = newname
+        bed.name = newname
+        bed.write(out)
     out.close()
     out = open(args.output + '.syntheticAligned.isoform.read.map.txt', 'w')
     for line in open(args.output + '.syntheticAligned.flair.isoform.read.map.txt'):
@@ -406,9 +402,8 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
                            args.output + '.syntheticAligned.isoform.read.map.txt', freadsname,
                            args.output + '-syntheticBreakpointLoc.bed', args.output + '.fusions.isoforms.bed', args.min_dist_between_bp)
     goodisos = set()
-    for line in open(args.output + '.fusions.isoforms.bed'):
-        line = line.rstrip().split('\t')
-        goodisos.add('_'.join(line[3].split('_')[1:]))
+    for bed in BedReader(args.output + '.fusions.isoforms.bed', fixScores=True):
+        goodisos.add('_'.join(bed.name.split('_')[1:]))
 
     out = open(args.output + '.fusions.isoforms.fa', 'w')
     good = False

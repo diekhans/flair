@@ -6,6 +6,7 @@ import os
 from flair.remove_internal_priming import removeinternalpriming
 import pysam
 from flair import FlairInputDataError
+from flair.pycbio.hgdata.bed import BedReader
 
 
 def parse_args():
@@ -78,29 +79,26 @@ def check_args(args):
 def get_annot_info(args):  # noqa: C901 - FIXME: reduce complexity
     chrtobp = {}
     if args.fusion_breakpoints:
-        for line in open(args.fusion_breakpoints):
-            line = line.split('\t')
-            chr, pos = line[0], int(line[1])
-            chrtobp[chr] = pos
+        for bed in BedReader(args.fusion_breakpoints, numStdCols=3):
+            chrtobp[bed.chrom] = bed.chromStart
 
     transcript_to_bp_ss_index = {}
     transcript_to_exons = {}
     transcript_to_genomic_ends = {}
     transcript_to_unique_bounds = {}
     if args.stringent or args.check_splice or args.fusion_dist or args.fusion_breakpoints or args.output_endpos:
-        for line in open(args.isoforms):
-            line = line.rstrip().split('\t')
-            name, left, right, chrom, strand = line[3], int(line[1]), int(line[2]), line[0], line[5]
+        for bed in BedReader(args.isoforms, fixScores=True):
+            name, left, right, chrom, strand = bed.name, bed.chromStart, bed.chromEnd, bed.chrom, bed.strand
             if name[:10] == 'fusiongene':
                 name = '_'.join(name.split('_')[1:])
-            blocksizes = [int(n) for n in line[10].rstrip(',').split(',')]
+            blocksizes = [len(blk) for blk in bed.blocks]
             if strand == '+':
                 transcript_to_exons[name] = blocksizes
             else:
                 transcript_to_exons[name] = blocksizes[::-1]
             transcript_to_genomic_ends[name] = (left, right, strand)
             if args.fusion_breakpoints:
-                blockstarts = [int(n) for n in line[11].rstrip(',').split(',')]
+                blockstarts = [blk.start - left for blk in bed.blocks]
                 bpindex = -1
                 for i in range(len(blocksizes) - 1):
                     if left + blockstarts[i] + blocksizes[i] <= chrtobp[chrom] <= left + blockstarts[i + 1]:

@@ -8,6 +8,7 @@ import pysam
 import shutil
 from flair import FlairInputDataError
 from flair.gtf_io import gtf_record_parser, GtfAttrsSet
+from flair.pycbio.hgdata.bed import Bed
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
 
@@ -112,10 +113,10 @@ def extract_sample_data(manifestfile):
     return sampledata
 
 def process_bedline(line):
-    line = line.rstrip().split('\t')
-    thischr, iso, dir, start, esizes, estarts, end = line[0], line[3], line[5], int(line[1]), \
-        [int(x) for x in line[10].split(',')[:-1]], \
-        [int(x) for x in line[11].split(',')[:-1]], int(line[2])
+    bed = Bed.parse(line.rstrip().split('\t'))
+    thischr, iso, dir, start, end = bed.chrom, bed.name, bed.strand, bed.chromStart, bed.chromEnd
+    esizes = [len(blk) for blk in bed.blocks]
+    estarts = [blk.start - start for blk in bed.blocks]
     exonblocks = []  # block is gstart, tstart, len
     if dir == '-':
         esizes = esizes[::-1]

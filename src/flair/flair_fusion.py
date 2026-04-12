@@ -111,11 +111,10 @@ def detectfusions():  # noqa: C901 - FIXME: reduce complexity
         mm2_cmd = ('minimap2', '-a', '-s', str(args.minfragmentsize), '-t', str(args.threads), '--secondary=no',
                    args.annotated_fa, '-')
 
-        # FIXME: replace with: samtools view -F 0x104 -e '[SA] != ""'
-        filter_cmd = ('python3', path + 'filter_transcriptome_chim.py', '-', transcriptchimbam)
+        filter_cmd = ('samtools', 'view', '-hF', '0x104', '-e', '[SA] != ""')
         _sort_cmd = ('samtools', 'sort', '-o', args.output + '.transcriptomealigned.chim.sorted.bam', transcriptchimbam)  # noqa: F841
         _samtools_index_cmd = ('samtools', 'index', args.output + '_unfilteredtranscriptome.bam')  # noqa: F841
-        pipettor.run([fa_cmd, mm2_cmd, filter_cmd])
+        pipettor.run([fa_cmd, mm2_cmd, filter_cmd], stdout=args.output + '.transcriptomealigned.chim.bam')
         pipettor.run([('samtools', 'sort', '-o', args.output + '.transcriptomealigned.chim.sorted.bam', transcriptchimbam)])
         pipettor.run([('mv', args.output + '.transcriptomealigned.chim.sorted.bam', transcriptchimbam)])
         pysam.index(transcriptchimbam)

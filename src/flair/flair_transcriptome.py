@@ -720,6 +720,8 @@ def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_cor
     if readrec.juncs:
         if junction_corrector.correct_readrec(readrec):
             add_corrected_read_to_groups(readrec, sj_to_ends)
+        else:
+            logging.debug(f"read dropped: junction correction failed: {readrec.name}")
         return
 
     # single-exon: no correction, strand resolved later in group_se_by_overlap
@@ -777,6 +779,7 @@ def filter_ends_by_redundant_and_support(isoforms, sjc_support, se_support, no_r
 
     junc_support = sum([x.num_reads for x in isoforms])
     if junc_support < support:
+        logging.debug(f"isoform group dropped: insufficient support ({junc_support} < {support}): {isoforms[0].chrom}:{isoforms[0].start}-{isoforms[0].end}")
         return []
 
     if no_redundant == 'none':
@@ -880,7 +883,9 @@ def group_se_by_overlap(chrom, isoform, se_support, trust_strand):
             # correct based on polyA
             new_strand = correct_se_strand_polyA(read_group, se_support)
         # filter out single exon groups that fail stranding
-        if new_strand is not None:
+        if new_strand is None:
+            logging.debug(f"single-exon group dropped: strand could not be determined ({len(read_group)} reads): {chrom}:{read_group[0].start}-{read_group[-1].end}")
+        else:
             new_key = (chrom, median([x.start for x in read_group]), median([x.end for x in read_group]), ())
             yield new_key, new_strand, read_group
 
@@ -974,6 +979,8 @@ def filter_single_exon_group(args, curr_group, all_isoforms, firstpass):
         if exon.name != '':  # is single exon with name
             if filter_single_exon_iso(args, exon, curr_group, all_isoforms):
                 firstpass[exon.name] = all_isoforms[exon.name]
+            else:
+                logging.debug(f"single-exon isoform dropped: contained or low expression: {exon.name} ({all_isoforms[exon.name].num_reads} reads)")
     return firstpass
 
 
@@ -1016,7 +1023,9 @@ def filter_firstpass_isos(args, candidates, annots, sup_annot_transcript_to_junc
                                                                    iso_name, isoform.num_reads, annots,
                                                                    candidates.junc_to_names, candidates.isoforms,
                                                                    sup_annot_transcript_to_juncs, isoform.strand, isoform.transcript_id)
-                    if is_not_subset:
+                    if not is_not_subset:
+                        logging.debug(f"isoform dropped: subset of another isoform: {iso_name} ({isoform.num_reads} reads)")
+                    else:
                         firstpass[iso_name] = isoform
                         if len(unique_seq) > 0:
                             iso_to_unique_bound[iso_name] = ','.join(unique_seq)

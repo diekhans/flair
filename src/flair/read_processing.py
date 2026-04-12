@@ -1,5 +1,6 @@
 """Shared read-processing logic for FLAIR modules."""
 
+import logging
 import pysam
 import pipettor
 from flair.isoform_data import Isoform
@@ -8,14 +9,19 @@ from flair.isoform_data import Isoform
 def should_process_read(read, region, min_quality, keep_sup, allow_secondary, allow_outside_range=False):
     """Check if read passes filtering criteria for processing"""
     if read.mapping_quality < min_quality:
+        logging.debug(f"read dropped: low quality ({read.mapping_quality} < {min_quality}): {read.query_name}")
         return False
     if read.is_secondary and not allow_secondary:
+        logging.debug(f"read dropped: secondary alignment: {read.query_name}")
         return False
     if read.is_supplementary and not keep_sup:
+        logging.debug(f"read dropped: supplementary alignment: {read.query_name}")
         return False
     if read.reference_name != region.name:
+        logging.debug(f"read dropped: wrong reference ({read.reference_name} != {region.name}): {read.query_name}")
         return False
     if not (region.start <= read.reference_start and read.reference_end <= region.end) and not allow_outside_range:
+        logging.debug(f"read dropped: outside region range ({read.reference_start}-{read.reference_end} not in {region.start}-{region.end}): {read.query_name}")
         return False
     return True
 

@@ -141,7 +141,7 @@ def get_juncs_to_gene(juncs, isoinfo, sjc_to_gene, junc_to_gene, gene_to_exons, 
 
 def group_juncs_by_annot_gene(sjtoends, sjc_to_gene, junc_to_gene, gene_to_exons, gene_to_juncs):
     genetojuncs, nogenejuncs, sereads = {}, {}, []
-    c, d = 0, 0
+    no_gene_reads, se_reads_cnt = 0, 0
     for (chrom, juncs) in sjtoends:
         if len(juncs) > 0:  # skip single-exon reads
             thisgene = get_juncs_to_gene(juncs, sjtoends[(chrom, juncs)], sjc_to_gene, junc_to_gene, gene_to_exons, gene_to_juncs)
@@ -150,13 +150,12 @@ def group_juncs_by_annot_gene(sjtoends, sjc_to_gene, junc_to_gene, gene_to_exons
                     genetojuncs[thisgene] = {}
                 genetojuncs[thisgene][juncs] = sjtoends[(chrom, juncs)]
             else:
-                c += sjtoends[(chrom, juncs)].num_reads
+                no_gene_reads += sjtoends[(chrom, juncs)].num_reads
                 nogenejuncs[juncs] = sjtoends[(chrom, juncs)]
         else:
-            d += sjtoends[(chrom, juncs)].num_reads
+            se_reads_cnt += sjtoends[(chrom, juncs)].num_reads
             sereads.extend(sjtoends[(chrom, juncs)].reads)
-    # print(c, 'reads not assigned to a gene')
-    # print(d, 'single exon reads discarded')
+    logging.debug(f"gene assignment: {no_gene_reads} spliced reads not assigned to a gene, {se_reads_cnt} single-exon reads discarded")
     return genetojuncs, nogenejuncs, sereads
 
 
@@ -1078,7 +1077,8 @@ def get_juncs_single_sample(listofargs):  # noqa: C901 - FIXME: reduce complexit
 
     sj_to_ends = {}
     bamfile = pysam.AlignmentFile(bamfile_name, 'rb')
-    b, c, d, e = 0, 0, 0, 0
+    dropped_secondary_sup, dropped_quality, dropped_correction = 0, 0, 0
+    annot_match, corrected_cnt = 0, 0
     for read in bamfile.fetch(region.name, region.start, region.end):
         if not read.is_secondary and (not read.is_supplementary or args.keep_sup):
             readrec = ReadRec.from_read(read)
@@ -1093,24 +1093,29 @@ def get_juncs_single_sample(listofargs):  # noqa: C901 - FIXME: reduce complexit
                     strand = gene_to_strand[transcript.split('_')[-1]]
                     readrec.correct_from_annotation(newstart, newend, strand, juncs)
                     corrected = True
-                    c += 1
+                    annot_match += 1
                 else:
-                    c += 1
+                    annot_match += 1
             elif read.mapping_quality >= args.quality:
                 corrected = junction_corrector.correct_readrec(readrec)
                 if corrected:
-                    d += 1
+                    corrected_cnt += 1
                 else:
-                    e += 1
+                    dropped_correction += 1
+                    logging.debug(f"read dropped: junction correction failed: {read.query_name}")
             else:
-                b += 1
+                dropped_quality += 1
+                logging.debug(f"read dropped: low quality ({read.mapping_quality} < {args.quality}): {read.query_name}")
             if corrected:
                 add_corrected_read_to_groups(readrec, sj_to_ends)
+        else:
+            dropped_secondary_sup += 1
+            logging.debug(f"read dropped: secondary or supplementary: {read.query_name}")
     bamfile.close()
-    # print(sample, b, 'failed quality filters')
-    # print(sample, c, 'annotated match')
-    # print(sample, d, 'corrected reads')
-    # print(sample, e, 'failed correction')
+    logging.debug(f"spliceevents region {region.name}:{region.start}-{region.end}: "
+                  f"annot_match={annot_match}, corrected={corrected_cnt}, "
+                  f"dropped_quality={dropped_quality}, dropped_correction={dropped_correction}, "
+                  f"dropped_secondary_sup={dropped_secondary_sup}")
 
     genetojuncs, nogenejuncs, sereads = group_juncs_by_annot_gene(sj_to_ends, sjc_to_gene, junc_to_gene, gene_to_exons, gene_to_juncs)
 

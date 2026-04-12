@@ -13,7 +13,7 @@ from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
 from flair.partition_runner import parallel_mode_parse, partition_runner_factory
 from flair.bed_to_gtf import bed_to_gtf
-from flair.isoform_data import (Junc, Exon, ReadRec, IsoWithReads, exons_to_juncs,
+from flair.isoform_data import (Junc, Exon, ReadRec, Gene, Isoform, exons_to_juncs,
                                 get_bed_exons_from_exons, get_sequence_for_exons, binary_search,
                                 convert_to_bed)
 from flair.read_processing import (should_process_read, add_corrected_read_to_groups,
@@ -378,7 +378,7 @@ def group_reads_by_ends(read_info_list, sort_index, end_window):
 # read_ends is a list containing elements with: (read.start, read.end, read.strand, read.name)
 # If the reads are spliced, the group will contain only the info for reads with a shared splice junction
 # if the reads are unspliced, the group will contain info for all unspliced reads in a given chromosome/region,
-# The output is a list of IsoWithReads objects containing:
+# The output is a list of Isoform objects containing:
 #    - weighted_score (represents how many reads have ends similar to this exact position)
 #    - start, end, strand, read_id (representative read id)
 #    - supporting_reads (list of all read names in group)
@@ -390,19 +390,17 @@ def collapse_end_groups(end_window, isoform):
         all_end_groups.extend(group_reads_by_ends(start_group, 1, end_window))
     for end_group in all_end_groups:
         weighted_score, start, end = get_best_ends(end_group, end_window)
-        read_end_info = IsoWithReads.regroup(isoform, start, end, end_group)
+        read_end_info = Isoform.regroup(isoform, start, end, end_group)
         iso_end_groups.append(read_end_info)
     return iso_end_groups
 
 
-def get_isos_with_similar_juncs(juncs, firstpass_junc_to_name, junc_to_gene):
-    """Find isoforms sharing junctions with the given junction set.
-    Returns separate sets for novel (string UUIDs) and annotated ((transcript_id, gene_id) tuples)."""
+def get_isos_with_similar_juncs(juncs, junc_to_names, junc_to_gene):
+    """Find isoforms sharing junctions with the given junction set."""
     novel_isos = set()
-    # annot_isos = set()
     for j in juncs:
-        if firstpass_junc_to_name and j in firstpass_junc_to_name:
-            novel_isos.update(firstpass_junc_to_name[j])
+        if junc_to_names and j in junc_to_names:
+            novel_isos.update(junc_to_names[j])
         # if j in junc_to_gene:
         #     annot_isos.update(junc_to_gene[j])
     return novel_isos
@@ -459,31 +457,29 @@ def _check_junction_subset(juncs, first_exon, last_exon, otheriso_score, otheris
                                          terminal_exon_is_subset, superset_support, unique_seq_bound)
 
 
-def identify_spliced_iso_subset_novel(novel_iso_id, firstpass_unfiltered,
-                                      juncs, first_exon, last_exon, terminal_exon_is_subset,
-                                      superset_support, unique_seq_bound):
-    """Check if query isoform is subset of a novel (firstpass) isoform.
-    novel_iso_id is a string UUID."""
-    otheriso = firstpass_unfiltered[novel_iso_id]
+def _check_novel_iso_subset(novel_iso_id, all_isoforms,
+                            juncs, first_exon, last_exon, terminal_exon_is_subset,
+                            superset_support, unique_seq_bound):
+    """Check if query isoform is subset of a novel (candidate) isoform."""
+    otheriso = all_isoforms[novel_iso_id]
     _check_junction_subset(juncs, first_exon, last_exon, otheriso.score, otheriso.juncs, otheriso.exons,
                            terminal_exon_is_subset, superset_support, unique_seq_bound)
 
 def filter_spliced_iso(filter_type, support, juncs, exons, name, score, annots,
-                       firstpass_junc_to_name, firstpass_unfiltered,
+                       junc_to_names, all_isoforms,
                        sup_annot_transcript_to_juncs, strand, annot_id):
     assert isinstance(exons[0], Exon)  # FIXME: debugging
 
-    # novel_isos, annot_isos = get_isos_with_similar_juncs(juncs, firstpass_junc_to_name, annots.junc_to_gene)
-    novel_isos = get_isos_with_similar_juncs(juncs, firstpass_junc_to_name, annots.junc_to_gene)
+    novel_isos = get_isos_with_similar_juncs(juncs, junc_to_names, annots.junc_to_gene)
     terminal_exon_is_subset = [0, 0]  # first exon is a subset, last exon is a subset
     first_exon, last_exon = exons[0], exons[-1]
     superset_support = []
     unique_seq_bound = []
     for novel_iso_id in novel_isos:
         if novel_iso_id != name:
-            identify_spliced_iso_subset_novel(novel_iso_id, firstpass_unfiltered,
-                                              juncs, first_exon, last_exon, terminal_exon_is_subset,
-                                              superset_support, unique_seq_bound)
+            _check_novel_iso_subset(novel_iso_id, all_isoforms,
+                                    juncs, first_exon, last_exon, terminal_exon_is_subset,
+                                    superset_support, unique_seq_bound)
     unique_seq_bound = list(set(unique_seq_bound))
     if strand == '-':
         # just invert the indexes
@@ -743,7 +739,7 @@ def filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_anno
 
 def filter_ends_allow_multiple(isoforms, sjc_support, max_ends):
     """Allow multiple ends per junction chain.
-    Returns list of IsoWithReads objects that meet support threshold."""
+    Returns list of Isoform objects that meet support threshold."""
     if isoforms[0].num_reads < sjc_support:
         # If top candidate doesn't meet threshold, merge all reads into it
         best = isoforms[0]
@@ -758,7 +754,7 @@ def filter_ends_allow_multiple(isoforms, sjc_support, max_ends):
 
 def filter_ends_single_best(isoforms, no_redundant_mode):
     """Pick single best end from junction chain.
-    Returns list with single IsoWithReads object."""
+    Returns list with single Isoform object."""
     # best_only uses the default sorting, doesn't require additional action
     if no_redundant_mode == 'longest':
         isoforms.sort(reverse=True, key=lambda x: x.length)
@@ -795,30 +791,43 @@ def _write_unfiltered_ends(isoforms, fh):
     for iso_readrec in isoforms:
         convert_to_bed(iso_readrec).write(fh)
 
-def _add_end_to_firstpass(isoform, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh):
-    convert_to_bed(isoform).write(iso_fh)
-    if isoform.juncs == ():
-        firstpass_exons.add(Exon(isoform.start, isoform.end, isoform.name))
-    else:
-        for j in isoform.juncs:
-            if j not in firstpass_junc_to_name:
-                firstpass_junc_to_name[j] = set()
-            firstpass_junc_to_name[j].add(isoform.name)
-        firstpass_exons.update(set(isoform.exons))
+class CandidateIsoforms:
+    """Candidate isoforms before filtering, with junction and exon indices.
 
-def _process_junc_ends(args, isoforms, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh):
+    isoforms: dict of isoform_name -> Isoform
+    junc_to_names: dict of Junc -> set of isoform_names sharing that junction
+    exons: set of Exon (named exons for SE, all exons for spliced)
+    """
+    def __init__(self):
+        self.isoforms = {}
+        self.junc_to_names = {}
+        self.exons = set()
+
+    def add(self, isoform):
+        self.isoforms[isoform.name] = isoform
+        if isoform.juncs == ():
+            self.exons.add(Exon(isoform.start, isoform.end, isoform.name))
+        else:
+            for j in isoform.juncs:
+                if j not in self.junc_to_names:
+                    self.junc_to_names[j] = set()
+                self.junc_to_names[j].add(isoform.name)
+            self.exons.update(set(isoform.exons))
+
+
+def _process_junc_ends(args, isoforms, candidates, iso_fh):
     # this assumes single exons are pre-grouped by overlap
     # previously treated single exons separately due to them being in larger groups
     filtered_isoforms = filter_ends_by_redundant_and_support(isoforms, args.sjc_support, args.se_support, args.no_redundant, args.max_ends)
     for isoform in filtered_isoforms:
-        firstpass_unfiltered[isoform.name] = isoform
-        _add_end_to_firstpass(isoform, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh)
+        candidates.add(isoform)
+        convert_to_bed(isoform).write(iso_fh)
 
-def _process_junc(args, isoform, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh, iso_unfilt_fh):
+def _process_junc(args, isoform, candidates, iso_fh, iso_unfilt_fh):
     # NOTE: Harrison's TED code will be slotted in here to replace collapse_end_groups
     these_firstpass = collapse_end_groups(args.end_window, isoform)
     _write_unfiltered_ends(these_firstpass, iso_unfilt_fh)
-    _process_junc_ends(args, these_firstpass, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh)
+    _process_junc_ends(args, these_firstpass, candidates, iso_fh)
 
 
 def correct_se_strand_polyA(read_group, se_support):
@@ -879,10 +888,10 @@ class IsoformOverlapGroups:
     """Isoforms grouped by junction chain with overlap-clustered ends.
 
     Key: (chrom, median_start, median_end, juncs) where juncs is () for single-exon.
-    Value: IsoWithReads.
+    Value: Isoform.
 
     Strand is not part of the key. For spliced isoforms, strand is determined
-    during junction correction and stored on the IsoWithReads. For single-exon
+    during junction correction and stored on the Isoform. For single-exon
     reads, strand cannot be determined from junctions, so overlapping reads are
     grouped by coordinate overlap first, then strand is resolved per group by
     majority vote (trust_strand) or polyA consensus.  This means opposite-strand
@@ -899,7 +908,7 @@ class IsoformOverlapGroups:
     def add_se_overlap_groups(self, chrom, isoform, se_support, trust_strand):
         """Split single-exon reads into overlap groups and resolve strand."""
         for new_key, new_strand, read_group in group_se_by_overlap(chrom, isoform, se_support, trust_strand):
-            self._groups[new_key] = IsoWithReads.regroup(isoform, newreads=read_group, newstrand=new_strand)
+            self._groups[new_key] = Isoform.regroup(isoform, newreads=read_group, newstrand=new_strand)
 
     def __iter__(self):
         return iter(self._groups)
@@ -924,28 +933,23 @@ def group_by_overlap(sj_to_ends, se_support, trust_strand):
 def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, region_chrom):
     sjc_with_overlap_groups = group_by_overlap(sj_to_ends, args.se_support, args.trust_strand)
     # FIXME everything below here requires confidence in transcript strand
-    novel_gene_isos_to_group = get_gene_names_firstpass(sjc_with_overlap_groups, annots)
-    # generating non-gene iso groups
+    genes, novel_gene_isos_to_group = build_genes(sjc_with_overlap_groups, annots)
     for strand in novel_gene_isos_to_group:
-        generate_non_gene_iso_groups_strand(novel_gene_isos_to_group, strand, region_chrom, sjc_with_overlap_groups)
+        generate_non_gene_iso_groups_strand(genes, novel_gene_isos_to_group, strand, region_chrom, sjc_with_overlap_groups)
 
-    firstpass_exons = set()
-    firstpass_unfiltered, firstpass_junc_to_name = {}, {}
+    candidates = CandidateIsoforms()
     with open(temp_prefix + '.firstpass.unfiltered.bed', 'w') as iso_fh, \
             open(temp_prefix + '.firstpass.reallyunfiltered.bed', 'w') as iso_unfilt_fh:
         for juncs, isoform in sjc_with_overlap_groups.items():
-            _process_junc(args, isoform, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, iso_fh, iso_unfilt_fh)
-    firstpass_exons = sorted(list(firstpass_exons))
-    return firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons
+            _process_junc(args, isoform, candidates, iso_fh, iso_unfilt_fh)
+    return candidates
 
 ####
 # single-exon transcript processing
 ####
-def filter_single_exon_iso(args, single_exon, curr_group, firstpass_unfiltered):
-    # FIXME: make object: grouped_iso (32186479, 32188247, '99bfe5c4-0f3a-4f4d-b5c9-bac459c45e5c')
-    # FIXME: curr_group is a list of these
-    iso_readrec = firstpass_unfiltered[single_exon.name]
-    # FIXME: what does 'comp_' mean?
+def filter_single_exon_iso(args, single_exon, curr_group, all_isoforms):
+    """Check if a single-exon isoform passes filtering against its overlap group."""
+    isoform = all_isoforms[single_exon.name]
     expression_comp_with_superset = []
     is_contained = False
     for exon in curr_group:
@@ -956,56 +960,53 @@ def filter_single_exon_iso(args, single_exon, curr_group, firstpass_unfiltered):
                     is_contained = True
                     break  # filter out
                 else:  # is other single exon - check relative expression
-                    other_score = firstpass_unfiltered[exon.name].score
-                    score = iso_readrec.score
-                    if score >= args.sjc_support and other_score * SINGLE_EXON_EXPRESSION_RATIO < score:
+                    other_score = all_isoforms[exon.name].score
+                    if isoform.score >= args.sjc_support and other_score * SINGLE_EXON_EXPRESSION_RATIO < isoform.score:
                         expression_comp_with_superset.append(True)
                     else:
                         expression_comp_with_superset.append(False)
     return not is_contained and all(expression_comp_with_superset)
 
 
-def filter_single_exon_group(args, curr_group, firstpass_unfiltered, firstpass):
-    # grouping single exon isoforms with exons from spliced isoform, using spliced isoform exons to filter single exon isoform
+def filter_single_exon_group(args, curr_group, all_isoforms, firstpass):
+    """Filter single-exon isoforms in an overlap group against spliced exons."""
     for exon in curr_group:
         if exon.name != '':  # is single exon with name
-            if filter_single_exon_iso(args, exon, curr_group, firstpass_unfiltered):
-                firstpass[exon.name] = firstpass_unfiltered[exon.name]
+            if filter_single_exon_iso(args, exon, curr_group, all_isoforms):
+                firstpass[exon.name] = all_isoforms[exon.name]
     return firstpass
 
 
-def filter_all_single_exon(args, firstpass_exons, firstpass_unfiltered, firstpass):
-    # group_start = 0
+def filter_all_single_exon(args, sorted_exons, all_isoforms, firstpass):
+    """Group exons by overlap and filter single-exon isoforms."""
     last_end = 0
     curr_group = []
 
-    for exon in firstpass_exons:
+    for exon in sorted_exons:
         if exon.start < last_end:
             curr_group.append(exon)
         else:
             if len(curr_group) > 0:
-                firstpass = filter_single_exon_group(args, curr_group, firstpass_unfiltered, firstpass)
+                firstpass = filter_single_exon_group(args, curr_group, all_isoforms, firstpass)
             curr_group = [exon]
-            # group_start = start
         if exon.end > last_end:
             last_end = exon.end
     if len(curr_group) > 0:
-        firstpass = filter_single_exon_group(args, curr_group, firstpass_unfiltered, firstpass)
+        firstpass = filter_single_exon_group(args, curr_group, all_isoforms, firstpass)
 
     return firstpass
 
 
-def filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons, annots,
-                          sup_annot_transcript_to_juncs):
-    # FIXME: firstpass_unfiltered is a dict of uuid to ReadRec
+def filter_firstpass_isos(args, candidates, annots, sup_annot_transcript_to_juncs):
+    """Filter candidate isoforms by subset/support criteria.
+    Returns (firstpass dict, iso_to_unique_bound dict)."""
     iso_to_unique_bound = {}
 
     if args.filter == 'ginormous':
-        firstpass = firstpass_unfiltered
+        firstpass = dict(candidates.isoforms)
     else:
         firstpass = {}
-        for iso_name in firstpass_unfiltered:
-            isoform = firstpass_unfiltered[iso_name]
+        for iso_name, isoform in candidates.isoforms.items():
             if isoform.juncs != ():
                 if args.filter == 'comprehensive':
                     firstpass[iso_name] = isoform
@@ -1013,14 +1014,14 @@ def filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, fi
                     assert isinstance(isoform.exons[0], Exon)  # FIXME tmp debugging
                     is_not_subset, unique_seq = filter_spliced_iso(args.filter, args.sjc_support, isoform.juncs, isoform.exons,
                                                                    iso_name, isoform.num_reads, annots,
-                                                                   firstpass_junc_to_name, firstpass_unfiltered,
+                                                                   candidates.junc_to_names, candidates.isoforms,
                                                                    sup_annot_transcript_to_juncs, isoform.strand, isoform.transcript_id)
                     if is_not_subset:
                         firstpass[iso_name] = isoform
                         if len(unique_seq) > 0:
                             iso_to_unique_bound[iso_name] = ','.join(unique_seq)
         # HANDLE SINGLE EXONS SEPARATELY - group first - one traversal of list
-        firstpass = filter_all_single_exon(args, firstpass_exons, firstpass_unfiltered, firstpass)
+        firstpass = filter_all_single_exon(args, sorted(candidates.exons), candidates.isoforms, firstpass)
 
     return firstpass, iso_to_unique_bound
 
@@ -1125,24 +1126,42 @@ def get_gene_name_firstpass(isoform, annots, annot_name_to_used_counts):
     return gene_id, transcript_id
 
 
-def get_gene_names_firstpass(firstpass, annots):
+def build_genes(firstpass, annots):
+    """Assign gene names to firstpass isoforms, building Gene objects.
+
+    Returns (genes, novel_gene_isos_to_group) where:
+    - genes: dict of gene_id -> Gene for isoforms matched to known genes
+    - novel_gene_isos_to_group: isoforms needing novel gene assignment
+    """
     annot_name_to_used_counts = {}
+    genes = {}
     novel_gene_isos_to_group = {'+': [], '-': []}
     for iso_key in firstpass:
         isoform = firstpass[iso_key]
         gene_id, isoform_id = get_gene_name_firstpass(isoform, annots, annot_name_to_used_counts)
-        firstpass[iso_key].transcript_id = isoform_id
+        isoform.transcript_id = isoform_id
         if gene_id is not None:
             # removing this strand correction breaks the unusual junction (due to underlying variant?) test
-            firstpass[iso_key].strand = annots.gene_to_strand[gene_id]
-            firstpass[iso_key].gene_id = gene_id
+            isoform.strand = annots.gene_to_strand[gene_id]
+            if gene_id not in genes:
+                genes[gene_id] = Gene(gene_id, isoform.chrom, annots.gene_to_strand[gene_id])
+            genes[gene_id].add_isoform(isoform)
         else:
             novel_gene_isos_to_group[isoform.strand].append((isoform.start, isoform.end, iso_key))
 
-    return novel_gene_isos_to_group
+    return genes, novel_gene_isos_to_group
 
 
-def generate_non_gene_iso_groups_strand(novel_gene_isos_to_group, strand, chrom, firstpass):
+def _assign_novel_gene_group(genes, chrom, strand, group_start, last_end, curr_group, firstpass):
+    """Create a Gene for a group of novel overlapping isoforms."""
+    gene_id = f'{chrom}:{group_start}-{last_end}:{strand}'
+    gene = Gene(gene_id, chrom, strand)
+    genes[gene_id] = gene
+    for s, e, n in curr_group:
+        gene.add_isoform(firstpass[n])
+
+def generate_non_gene_iso_groups_strand(genes, novel_gene_isos_to_group, strand, chrom, firstpass):
+    """Group novel isoforms by coordinate overlap and create Gene objects."""
     transcripts_to_group = sorted(novel_gene_isos_to_group[strand])
     last_end = 0
     group_start = 0
@@ -1152,17 +1171,13 @@ def generate_non_gene_iso_groups_strand(novel_gene_isos_to_group, strand, chrom,
             curr_group.append((start, end, iso_name))
         else:
             if len(curr_group) > 0:
-                group_name = f'{chrom}:{group_start}-{last_end}:{strand}'
-                for s, e, n in curr_group:
-                    firstpass[n].gene_id = group_name
+                _assign_novel_gene_group(genes, chrom, strand, group_start, last_end, curr_group, firstpass)
             curr_group = [(start, end, iso_name)]
             group_start = start
         if end > last_end:
             last_end = end
     if len(curr_group) > 0:
-        group_name = f'{chrom}:{group_start}-{last_end}:{strand}'
-        for s, e, n in curr_group:
-            firstpass[n].gene_id = group_name
+        _assign_novel_gene_group(genes, chrom, strand, group_start, last_end, curr_group, firstpass)
 
 def write_first_pass_isoforms(iso_name, normalize_ends, isoform, max_terminal_exons_ends, add_length_at_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome):
     # FIXME: do normalization outside of write function
@@ -1307,15 +1322,10 @@ def _run_region(*, partition, gtf_data, intron_support, args):  # noqa: C901 - F
     # redundant ends also separates single exon isoforms from spliced isoforms
     # (because they're handled differently in future step for identifying
     # annotated gene/isoform names)
-    firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons = process_juncs_to_firstpass_isos(args, partition.file_prefix, sj_to_ends, annots, region.name)
+    candidates = process_juncs_to_firstpass_isos(args, partition.file_prefix, sj_to_ends, annots, region.name)
 
-    # - filter isoforms - remove any that represent a subset of another
-    # - identified isoform - based on what args.filter is set to also generate
-    # - iso_to_unique_bound - a mapping of each isoform to the unique sequence
-    #   at its ends (this is to better handle isoforms that represent junction
-    #   subsets with additional sequence at the ends)
-    firstpass, iso_to_unique_bound = filter_firstpass_isos(args, firstpass_unfiltered, firstpass_junc_to_name, firstpass_exons,
-                                                           annots, {})
+    # filter isoforms: remove subsets, generate unique boundary sequences
+    firstpass, iso_to_unique_bound = filter_firstpass_isos(args, candidates, annots, {})
 
     if len(firstpass.keys()) > 0:
         # logging.info('getting gene names and writing firstpass')

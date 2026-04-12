@@ -295,7 +295,23 @@ class ReadRec:
         return cls(read.reference_name, junc_direction, juncs, align_start, ref_pos, read.query_name, polyA=(left_polyA, right_polyA), intprim=(left_intprim, right_intprim))
 
 
-class IsoWithReads:
+class Gene:
+    """A gene containing discovered isoforms."""
+
+    def __init__(self, gene_id, chrom, strand):
+        self.gene_id = gene_id
+        self.chrom = chrom
+        self.strand = strand
+        self.isoforms = []
+
+    def add_isoform(self, isoform):
+        """Add an isoform to this gene and set the back-reference."""
+        self.isoforms.append(isoform)
+        isoform.gene = self
+        isoform.gene_id = self.gene_id
+
+
+class Isoform:
     # keep on one copy of junction chain
     _juncs_cache = {}
 
@@ -312,6 +328,7 @@ class IsoWithReads:
         self._name = None
         self._score = None
         self.reads = reads if reads is not None else []
+        self.gene = None
         self.gene_id = gene_id
         self.transcript_id = transcript_id
         self.end5confidence = None
@@ -369,7 +386,7 @@ class IsoWithReads:
         return self.end - self.start
 
     def reset_from_exons(self, exons):
-        """Update IsoWithReads from a list of Exon objects."""
+        """Update Isoform from a list of Exon objects."""
         self.start = exons[0].start
         self.end = exons[-1].end
         self.juncs = tuple(exons_to_juncs(sorted(exons)))
@@ -385,7 +402,7 @@ class IsoWithReads:
 
     @classmethod
     def regroup(cls, iso, newstart=None, newend=None, newreads=[], newstrand=None):
-        """Create a new IsoWithReads by regrouping reads from an existing one."""
+        """Create a new Isoform by regrouping reads from an existing one."""
         if newstrand is None:
             newstrand = iso.strand
         return cls(iso.chrom, newstrand, iso.juncs, newstart, newend, newreads, iso.gene_id, iso.transcript_id)

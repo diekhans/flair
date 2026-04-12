@@ -2,7 +2,7 @@
 
 import pysam
 import pipettor
-from flair.isoform_data import IsoWithReads
+from flair.isoform_data import Isoform
 
 
 def should_process_read(read, region, min_quality, keep_sup, allow_secondary, allow_outside_range=False):
@@ -41,7 +41,7 @@ def add_corrected_read_to_groups(corrected_read, sj_to_ends):
     Single-exon strand is resolved later in group_se_by_overlap."""
     junc_key = (corrected_read.chrom, tuple(sorted(corrected_read.juncs)))
     if junc_key not in sj_to_ends:
-        sj_to_ends[junc_key] = IsoWithReads.from_readrec(corrected_read)
+        sj_to_ends[junc_key] = Isoform.from_readrec(corrected_read)
     sj_to_ends[junc_key].reads.append(corrected_read)
 
 

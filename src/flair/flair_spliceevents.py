@@ -29,9 +29,11 @@ def get_args():
                         help='output file name base for FLAIR isoforms (default: flair)')
     parser.add_argument('-t', '--threads', type=int, default=4,
                         help='minimap2 number of threads (4)')
+    # FIXME: this is different than all other modules that use --gtf.
     parser.add_argument('-f', '--annot', required=True, default='',
                         help='GTF annotation file, used for renaming FLAIR isoforms '
                              'to annotated isoforms and adjusting TSS/TESs')
+    # FIXME: what is the difference than the above, same description
     parser.add_argument('--annot_basic', default='',
                         help='GTF annotation file, used for renaming FLAIR isoforms '
                              'to annotated isoforms and adjusting TSS/TESs')

@@ -14,6 +14,8 @@ from flair.intron_support import IntronSupport
 from flair.junction_correct import JunctionCorrector
 from flair.isoform_data import (Junc, ReadRec)
 from flair.read_processing import (add_corrected_read_to_groups, get_sequence_from_bed)
+from flair.gtf_io import gtf_data_parser, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
+from flair.annotation_data import annot_data_from_gtf
 
 # FIXME: this is temp, need to move into a
 import flair.flair_transcriptome as ft
@@ -417,10 +419,10 @@ def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gen
                     innerjuncs.add((outerjunc[0], exon[0]))
                     innerjuncs.add((exon[1], outerjunc[1]))
 
-            # oj_string = [f'{thischrom}:{j[0]}-{j[1]}' for j in sorted(list(goodouterjuncs))]
-            ename = f'es-of-{thischrom}:{exon[0]}-{exon[1]}'  # -relTo-{",".join(oj_string)}({strand})-{gene}'
+            ename = f'es-of-{thischrom}:{exon[0]}-{exon[1]}'
 
             for outerjunc in goodouterjuncs:
+                # FIXME: use BED class
                 bedlines.append([thischrom, outerjunc[0] - 10, outerjunc[1] + 10, f'inc_{ename}', 0, strand,
                                  outerjunc[0] - 10, outerjunc[1] + 10, mycolor, 3,
                                  f'10,{exon[1] - exon[0]},10',
@@ -483,6 +485,7 @@ def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gen
                     ename = f'ces-relTo-{thischrom}:{outerjunc[0]}-{outerjunc[1]}({strand})-{gene}'
                     event_to_info[ename] = SplicingEvent(ename, 'ces', gene, thischrom, strand, tot_counts, allsamples)
 
+                    # FIXME: use BED class
                     bedline = [thischrom, outerjunc[0] - 10, outerjunc[1] + 10, f'exc_{ename}', 0, strand, outerjunc[0] - 10, outerjunc[1] + 10,
                                mycolor, 2, '10,10', f'0,{10 + outerjunc[1] - outerjunc[0]}']
                     event_to_info[ename].events['exc'] = SplicingEventJunction('exc', [bedline], alljuncs[outerjunc], set(), my_juncs, {outerjunc, }, all_exons)
@@ -493,6 +496,7 @@ def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gen
                         jname = f'inc-of-{exonstring}'
                         esizes = ','.join([str(x[1] - x[0]) for x in my_exons])
                         estarts = ','.join([str(10 + x[0] - outerjunc[0]) for x in my_exons])
+                        # FIXME: use BED class
                         bedline = [thischrom, outerjunc[0] - 10, outerjunc[1] + 10, f'{jname}_{ename}', 0, strand, outerjunc[0] - 10, outerjunc[1] + 10,
                                    mycolor, 3, f'10,{esizes},10', f'0,{estarts},{10 + outerjunc[1] - outerjunc[0]}']
                         event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], innerjuncs_to_counts[innerjuncs],
@@ -589,6 +593,7 @@ def process_terminal_exons(termExon, eventtype, thischrom, strand, gene, allsamp
                         bs, be = ssB - 100, ssB
                     else:
                         bs, be = ssB, ssB + 100
+                    # FIXME: use BED class
                     bedline = [thischrom, bs, be, f'{jname}_{ename}', 0, strand, bs, be, mycolor, 1, be - bs, 0]
                     inc_juncs = {x for x in my_juncs if ssB in x}
                     event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], ss_to_counts[ssB], inc_juncs, my_juncs - inc_juncs)
@@ -661,6 +666,7 @@ def process_junction_events(ssAtoB, esjuncs, eventtype, thischrom, strand, gene,
                         junc = (min((ssA, ssB)), max((ssA, ssB)))
                         jname = f'{thischrom}:{junc[0]}-{junc[1]}'
                         bs, be = min((ssA, ssB)), max((ssA, ssB))
+                        # FIXME: use BED class
                         bedline = [thischrom, bs, be, f'{jname}_{ename}', 0, strand, bs, be, colordict[eventtype], 1, be - bs, 0]
                         event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], ssAtoB[ssA][ssB], {junc, }, my_juncs - {junc, })
 
@@ -701,6 +707,7 @@ def process_junction_events(ssAtoB, esjuncs, eventtype, thischrom, strand, gene,
                         for ssB in ssBgroup:
                             inc_juncs.add((min((ssA, ssB)), max((ssA, ssB))))
 
+                        # FIXME: use BED class
                         bedline = [thischrom, bs, be, f'{jname}_{ename}', 0, strand, bs, be, colordict[eventtype], 1, be - bs, 0]
                         event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], ssB_groups_to_ssA[ssBgroup][ssA], inc_juncs, my_juncs - inc_juncs)
                     if any([othercounts[s] >= min_read_support for s in allsamples]):
@@ -726,6 +733,7 @@ class SplicingEvent:
 class SplicingEventJunction:
     """represents metadata about a specific junction in a splicing event"""
     def __init__(self, name, bedlines, samplecounts, inc_junc, exc_junc, outer_junc=None, inc_exon=None):
+        # FIXME: use BED class
         self.name = name
         self.bedlines = bedlines
         self.inc_juncs = inc_junc
@@ -761,9 +769,11 @@ def write_intron_retention(alljuncs, allsamples, allblocks, thischrom, strand, g
             ename = f'ir-of-{thischrom}:{j[0]}-{j[1]}({strand})-{gene}'
             event_to_info[ename] = SplicingEvent(ename, 'ir', gene, thischrom, strand, tot_counts, allsamples)
 
+            # FIXME: use BED class
             bedline = [thischrom, j[0] - 10, j[1] + 10, f'spliced_{ename}', 0, strand, j[0] - 10, j[1] + 10, mycolor, 2, '10,10', f'0,{10 + j[1] - j[0]}']
             event_to_info[ename].events['spliced'] = SplicingEventJunction('spliced', [bedline], splicedcounts, {j, }, {})
 
+            # FIXME: use BED class
             bedline = [thischrom, j[0], j[1], f'retained_{ename}', 0, strand, j[0], j[1], mycolor, 1, j[1] - j[0], 0]
             event_to_info[ename].events['retained'] = SplicingEventJunction('retained', [bedline], retainedcounts, {}, {j, })
 
@@ -793,6 +803,7 @@ def write_ends(grouped_ends, allsamples, thischrom, strand, gene, eventtype, myc
 
             for e in good_ends:
                 jname = f'{thischrom}:{e}'
+                # FIXME: use BED class
                 bedline = [thischrom, e - 1, e, f'{jname}_{ename}', 0, strand, e - 1, e, mycolor, 1, 1, 0]
                 event_to_info[ename].events[jname] = SplicingEventJunction(jname, [bedline], grouped_ends[e], {e, }, good_ends - {e, })
             if any([othercounts[s] >= support for s in allsamples]):
@@ -852,6 +863,7 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                     if outoutlier is not None:
                         vals_for_outlier = [x for x in juncpsi if x != 'NA']
                         med = median(vals_for_outlier)
+                        # FIXME: use BED class
                         for line in jinfo.bedlines:
                             line[4] = round(med * 100)
                             outbed.write('\t'.join([str(x) for x in line]) + '\n')
@@ -1048,7 +1060,7 @@ def generate_good_match_to_annot(args, temp_prefix, region, bamfile_name, region
 
 
 def get_juncs_single_sample(listofargs):  # noqa: C901 - FIXME: reduce complexity
-    args, region, temp_prefix, sample, bamfile_name, region_annot, region_annot_fa, region_juncs, sjc_to_gene, junc_to_gene, exon_to_gene, gene_to_exons, gene_to_juncs, transcript_to_sjc, gene_to_strand = listofargs
+    args, region, temp_prefix, sample, bamfile_name, region_annot, region_annot_fa, region_juncs, annots = listofargs
 
     # FIXME: convert to using PartitionRunner
     intron_support = IntronSupport()
@@ -1087,12 +1099,12 @@ def get_juncs_single_sample(listofargs):  # noqa: C901 - FIXME: reduce complexit
             corrected = False
             if read.query_name in read_to_transcript:
                 transcript, startindex, startdist, endindex, enddist = read_to_transcript[read.query_name]
-                juncs = transcript_to_sjc[transcript]
+                juncs = annots.transcript_to_sjc[transcript]
                 if len(juncs) > 0:
                     newstart = juncs[startindex][0] - startdist
                     newend = juncs[endindex][1] + enddist
                     juncs = tuple([Junc(x[0], x[1]) for x in juncs[startindex:endindex + 1]])
-                    strand = gene_to_strand[transcript.split('_')[-1]]
+                    strand = annots.gene_to_strand[transcript.split('_')[-1]]
                     readrec.correct_from_annotation(newstart, newend, strand, juncs)
                     corrected = True
                     annot_match += 1
@@ -1119,7 +1131,7 @@ def get_juncs_single_sample(listofargs):  # noqa: C901 - FIXME: reduce complexit
                   f"dropped_quality={dropped_quality}, dropped_correction={dropped_correction}, "
                   f"dropped_secondary_sup={dropped_secondary_sup}")
 
-    genetojuncs, nogenejuncs, sereads = group_juncs_by_annot_gene(sj_to_ends, sjc_to_gene, junc_to_gene, gene_to_exons, gene_to_juncs)
+    genetojuncs, nogenejuncs, sereads = group_juncs_by_annot_gene(sj_to_ends, annots.sjc_to_gene, annots.junc_to_gene_id, annots.gene_to_exons, annots.gene_to_annot_juncs)
 
     c = 0
     with open(temp_prefix + '_gene_to_juncs.txt', 'w') as out:
@@ -1135,6 +1147,7 @@ def get_juncs_single_sample(listofargs):  # noqa: C901 - FIXME: reduce complexit
     genome.close()
 
 def process_bed_line(line):
+    # FIXME: use BED class
     line = line.rstrip().split('\t')
     transcript = line[3]
     gene = line[3].split('_')[-1]
@@ -1170,30 +1183,7 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):  # no
             region_juncs = partition.file_prefix + '.juncbed.bed'
             pipettor.run([('bedtools', 'intersect', '-wa', '-a', args.junction_bed, '-b', region_bed)], stdout=region_juncs)
 
-        sjc_to_gene = {}
-        junc_to_gene = {}
-        exon_to_gene = {}
-        gene_to_exons = {}
-        gene_to_juncs = {}
-        gene_to_strand = {}
-        transcript_to_sjc = {}
-        for line in open(region_annot):
-            gene, transcript, exons, junctions, strand = process_bed_line(line)
-            if gene not in gene_to_juncs:
-                gene_to_juncs[gene] = set(junctions)
-                gene_to_exons[gene] = set(exons)
-                gene_to_strand[gene] = strand
-            else:
-                gene_to_juncs[gene].update(set(junctions))
-                gene_to_exons[gene].update(set(exons))
-            sjc_to_gene[tuple(junctions)] = gene
-            transcript_to_sjc[transcript] = tuple(junctions)
-            for j in junctions:
-                junc_to_gene[j] = gene
-            for e in exons:
-                exon_to_gene[e] = gene
-        for gene in gene_to_exons:
-            gene_to_exons[gene] = tuple(sorted(list(gene_to_exons[gene])))
+        annots = annot_data_from_gtf(gtf_data, partition.region)
 
         annot_afe_ss, annot_ale_ss = {}, {}
         if args.annot_basic:
@@ -1216,8 +1206,7 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):  # no
 
         for sample, bamfile in allsamples:
             if not os.path.exists(partition.file_prefix + '_' + sample + '_gene_to_juncs.txt'):
-                get_juncs_single_sample([args, partition.region, partition.file_prefix, sample, bamfile, region_annot, region_annot_fa, region_juncs, sjc_to_gene, junc_to_gene, exon_to_gene, gene_to_exons, gene_to_juncs, transcript_to_sjc, gene_to_strand])
-                # chunkcmds.append([args, region, partition.file_prefix, sample, bamfile, region_annot, region_annot_fa, region_juncs, sjc_to_gene, junc_to_gene, exon_to_gene, gene_to_exons, gene_to_juncs, transcript_to_sjc, gene_to_strand])
+                get_juncs_single_sample([args, partition.region, partition.file_prefix, sample, bamfile, region_annot, region_annot_fa, region_juncs, annots])
 
         # p = multiprocessing.Pool(4)
         # childErrs = set()
@@ -1248,7 +1237,7 @@ def _run_region(*, partition, gtf_data, intron_support, args, allsamples):  # no
 
         process_gene_to_events(
             partition.file_prefix, partition.region.name, [x[0] for x in allsamples],
-            allgenetojuncs, gene_to_strand, args.junc_support, args.output_read_ends,
+            allgenetojuncs, annots.gene_to_strand, args.junc_support, args.output_read_ends,
             args.event_frac_of_tot, args.junc_frac_of_event, args.event_support,
             annot_afe_ss, annot_ale_ss, args.check_outliers)
 
@@ -1358,6 +1347,7 @@ def main():  # noqa: C901 - FIXME: reduce complexity
     if args.region_bed:
         all_regions = []
         for line in open(args.region_bed):
+            # FIXME: use BED class
             line = line.rstrip().split('\t')
             all_regions.append(SeqRange(line[0], int(line[1]), int(line[2])))
         all_regions = combine_regions(all_regions)
@@ -1378,6 +1368,9 @@ def main():  # noqa: C901 - FIXME: reduce complexity
     out.close()
 
     logging.info('pre-processing annotation')
+    logging.info('loading annotation GTF')
+    annot_gtf_data = gtf_data_parser(args.annot, attrs=GtfAttrsSet.FLAIR, include_features=TRANSCRIPT_EXON_FEATURES)
+
     annot_bed = tempDir + '/annotation.bed'
     if not os.path.exists(annot_bed):
         pipettor.run([('gtf_to_bed', args.annot, annot_bed, '--include_gene')])
@@ -1390,7 +1383,7 @@ def main():  # noqa: C901 - FIXME: reduce complexity
 
     logging.info(f'running regions with {args.threads} threads')
 
-    runner = PartitionRunner(all_regions, tempDir, threads=args.threads)
+    runner = PartitionRunner(all_regions, tempDir, gtf_data=annot_gtf_data, threads=args.threads)
     runner.run(_run_region, args=args, allsamples=allsamples)
 
     ft.combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner],

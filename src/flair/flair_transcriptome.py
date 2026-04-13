@@ -19,6 +19,7 @@ from flair.isoform_data import (Junc, Exon, ReadRec, Gene, Isoform, exons_to_jun
 from flair.read_processing import (should_process_read, add_corrected_read_to_groups,
                                    generate_genomic_alignment_read_to_clipping_file)
 from flair.count_sam_transcripts import TRUST_ENDS_WINDOW
+from flair.annotation_data import annot_data_from_gtf
 
 MIN_POLYA_FRAC_DIFF_FOR_SE_STRANDING = 0.1
 
@@ -190,85 +191,6 @@ def build_intron_support(gtf_file, junction_tab, junction_bed):
     if gtf_file is not None:
         is_db.load_gtf(gtf_data_parser(gtf_file, attrs=GtfAttrsSet.FLAIR))
     return is_db
-
-class AnnotData(object):
-    def __init__(self):
-        # FIXME: what the keys of these dicts()?
-        # FIXME: update names
-
-        # map of (transcript_id, gene_id) -> (start, end)
-        self.transcript_to_exons = {}
-
-        # list of (transcript_id, gene_id, strand)
-        self.transcripts = []
-
-        # map of ((start0, end0), ...) -> (transcript_id, gene_id)
-        self.juncchain_to_transcript = {}
-
-        # map of (start, ent) -> set of (transcript_id, gene_id)
-        self.junc_to_gene = {}
-
-        # list of (start, end, strand, gene_id):
-        # FIXME: rename once it is figured out how this works in get_single_exon_gene_overlaps
-        # FIXME: make set
-        self.all_annot_SE = {'+': [], '-': []}
-
-        # map of strand to map of gene_id  to set of (start, end)
-        # FIXME: why is strand needed here
-        self.spliced_exons = {'+': {}, '-': {}}
-
-        # map of gene_id to set of (start, end)
-        self.gene_to_annot_juncs = {}
-
-        # map of gene_id to strand
-        self.gene_to_strand = {}
-
-
-def annot_data_from_gtf(gtf_data, region):
-    """Build AnnotData for a region from a pre-partitioned GtfData."""
-    annots = AnnotData()
-    if gtf_data is None:
-        return annots
-    region_map = {region: annots}
-    for trans in gtf_data.transcripts:
-        trans.gene_id = trans.gene_id.replace('_', '-')
-        exons = [Exon(exon.start, exon.end) for exon in trans.exons]
-        if not exons:
-            continue
-        sorted_exons = sorted(exons)
-        t_start = sorted_exons[0].start
-        t_end = sorted_exons[-1].end
-        save_transcript_annot_to_region(trans.transcript_id, trans.gene_id, region,
-                                        region_map, t_start, t_end, trans.strand, sorted_exons)
-    return annots
-
-def save_transcript_annot_to_region(transcript_id, gene_id, region, regions_to_annot_data, t_start, t_end, strand, t_exons):
-    # regions is tuple of ('chr20', 0, 64444167)
-    # FIXME: t_exons are list of (32186476, 32190360)
-    assert isinstance(t_exons[0], Exon)  # FIXME tmp debugging
-    annots = regions_to_annot_data[region]
-    annots.transcript_to_exons[(transcript_id, gene_id)] = tuple(t_exons)
-    juncs = exons_to_juncs(t_exons)
-    annots.transcripts.append((transcript_id, gene_id, strand))
-    if gene_id not in annots.gene_to_strand:
-        annots.gene_to_strand[gene_id] = strand
-    if len(juncs) == 0:
-        annots.all_annot_SE[strand].append(Exon(t_start, t_end, gene_id))
-    else:
-        if gene_id not in annots.spliced_exons[strand]:
-            annots.spliced_exons[strand][gene_id] = set()
-        annots.spliced_exons[strand][gene_id].update(set(t_exons))
-        annots.juncchain_to_transcript[tuple(juncs)] = (transcript_id, gene_id)
-        if gene_id not in annots.gene_to_annot_juncs:
-            annots.gene_to_annot_juncs[gene_id] = set()
-        for j in juncs:
-            if j not in annots.junc_to_gene:
-                annots.junc_to_gene[j] = set()
-            annots.junc_to_gene[j].add((transcript_id, gene_id))
-            annots.gene_to_annot_juncs[gene_id].add(j)
-    for strand in ['+', '-']:
-        annots.all_annot_SE[strand] = sorted(annots.all_annot_SE[strand])  # FIXME: make set? Colette note: needs to be sorted for binary search later
-
 
 def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound):  # noqa: C901 - FIXME: reduce complexity
     # FIXME: convert filter_transcriptome_align.py to a library, however

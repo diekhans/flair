@@ -15,6 +15,7 @@ from flair.isoform_data import Junc, ReadRec
 from flair.read_processing import (add_corrected_read_to_groups, get_sequence_from_bed)
 from flair.gtf_io import gtf_data_parser, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
 from flair.annotation_data import annot_data_from_gtf
+from flair.pycbio.hgdata.bed import Bed
 
 # FIXME: this is temp, need to move into a
 import flair.flair_transcriptome as ft
@@ -200,8 +201,8 @@ def extract_end_coverage_info(juncs, readinfo, allsamples, sample, thischrom, ge
         allblocks[firstexon][sample] += 1
         allblocks[lastexon][sample] += 1
         if outends:
-            outends.write('\t'.join([thischrom, str(r.start), str(r.end),
-                                     gene + '|' + r.name, '.', strand]) + '\n')
+            Bed(thischrom, r.start, r.end, name=gene + '|' + r.name,
+                score=0, strand=strand).write(outends)
     return allblocks
 
 def determine_juncs_are_subset(juncs, alljuncs):

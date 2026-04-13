@@ -19,6 +19,7 @@ from flair.read_processing import (should_process_read, add_corrected_read_to_gr
                                    generate_genomic_alignment_read_to_clipping_file)
 from flair.count_sam_transcripts import TRUST_ENDS_WINDOW
 from flair.annotation_data import annot_data_from_gtf
+from flair.pycbio.hgdata.bed import Bed
 
 MIN_POLYA_FRAC_DIFF_FOR_SE_STRANDING = 0.1
 
@@ -1153,7 +1154,8 @@ def write_transcript_ends_bed(args, temp_prefix, suffix, read_to_final_transcrip
             for r, start, end in transcript_to_reads[t]:
                 if r in read_to_final_transcript:
                     t_name, chrom, strand = read_to_final_transcript[r]
-                    ends_fh.write('\t'.join([chrom, start, end, t_name + '|' + r, '.', strand]) + '\n')
+                    Bed(chrom, int(start), int(end), name=t_name + '|' + r,
+                        score=0, strand=strand).write(ends_fh)
 
 def write_transcript_ends_beds(args, temp_prefix, read_to_final_transcript, ends_fh):
     # FIXME: these are not real TSVs

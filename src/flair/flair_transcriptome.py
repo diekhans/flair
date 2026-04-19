@@ -180,14 +180,8 @@ def make_temp_dir(out_prefix):
 # transcriptome alignment
 ####
 def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound):  # noqa: C901 - FIXME: reduce complexity
-    # FIXME: convert filter_transcriptome_align.py to a library, however
-    # minimap output needs to be piped through filter_transcriptome_align
-    # without saving the bam file.
-
-    # count sam transcripts ; the dash at the end means STDIN
+    # FIXME: count sam transcripts ; the dash at the end means STDIN
     # use 1 thread in because this is already multithreaded here
-    # count_cmd = ['filter_transcriptome_align.py', '--sam', '-',
-    # FIXME why use filter_transcriptome_align if not multithreading? Remove?
     count_cmd = ['count_sam_transcripts.py', '--sam', '-',
                  '-o', output_name,]
     if clipping_file:
@@ -1202,7 +1196,6 @@ def _run_region(*, partition, gtf_data, junction_corrector, args):  # noqa: C901
     # For comparing with amount of clipping after alignment to transcriptome
     # in order to check whether transcriptome alignment is comparable to or better than genomic alignment,
     # which can be considered to support isoform.
-    # used in filter_transcriptome_align
 
     # logging.info('generating genomic clipping reference')
     num_reads, clipping_file = generate_genomic_alignment_read_to_clipping_file(partition.file_prefix, bam_file, region)

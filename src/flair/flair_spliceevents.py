@@ -1028,7 +1028,6 @@ def generate_good_match_to_annot(args, temp_prefix, region, bamfile_name, region
         mm2_cmd = ('minimap2', '-a', '-N', '4', '--MD',
                    region_annot_fa, temp_prefix + '.reads.fasta')
         flairpath = '/'.join(os.path.realpath(__file__).split('/')[:-1])
-        # count_cmd = ('python3', flairpath + '/filter_transcriptome_align.py',
         count_cmd = ('python3', flairpath + '/count_sam_transcripts.py',
                      '--sam', '-',
                      '-o', temp_prefix + '.matchannot.counts.tsv',

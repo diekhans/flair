@@ -272,7 +272,7 @@ def process_cigar(matchvals, cigarblocks, startpos, exoninfo, exon_bounds):  # n
         lb, rb = None, None
     indel_detected = False
     for btype, blen in cigarblocks:
-        if btype in {pysam.CSOFT_CLIP, pysam.CHARD_CLIP}:
+        if btype in (pysam.CSOFT_CLIP, pysam.CHARD_CLIP):
             query_clipping.append(blen)
         elif btype == pysam.CMATCH:
             coveredpos.extend(matchvals[matchpos:matchpos + blen])
@@ -280,7 +280,7 @@ def process_cigar(matchvals, cigarblocks, startpos, exoninfo, exon_bounds):  # n
             blocksizes.append(blen)
             matchpos += blen
             tendpos += blen
-        elif btype in {pysam.CDEL, pysam.CREF_SKIP}:
+        elif btype in (pysam.CDEL, pysam.CREF_SKIP):
             coveredpos.extend([0] * blen)
             if blen > LARGE_INDEL_TOLDERANCE:
                 if exoninfo:

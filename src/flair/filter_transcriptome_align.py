@@ -20,11 +20,11 @@ def generate_alignment_obj_for_read(args, genome, transcript_to_exons, transcrip
         if args.remove_internal_priming:
             intprim_annot = transcript_to_exons if args.permissive_last_exons else None
             not_internal_priming = removeinternalpriming(alignment.reference_name,
-                                                       alignment.reference_start,
-                                                       alignment.reference_end, False,
-                                                       genome, None, intprim_annot,
-                                                       args.intprimingthreshold,
-                                                       args.intprimingfracAs)
+                                                         alignment.reference_start,
+                                                         alignment.reference_end, False,
+                                                         genome, None, intprim_annot,
+                                                         args.intprimingthreshold,
+                                                         args.intprimingfracAs)
         else:
             not_internal_priming = True
         if not not_internal_priming:
@@ -159,20 +159,17 @@ def process_alignments(args, info):  # noqa: C901 - FIXME: reduce complexity
     chunksize = 1000
 
     chunkresults = []
-    mp.set_start_method('fork')
-    p = mp.Pool(args.threads)
+    mp.set_start_method('fork', force=True)
 
     args.sam = ''   # required to pass args to multiprocessing
 
     # write method to yield chunks
     # for chunk in chunkyielder
 
-    for r in p.imap_unordered(process_read_chunk, bam_to_read_aligns(samfile, chunksize, temp_dir, info,
-                                                                     args, headeroutfilename, readstoclipping)):
-        chunkresults.append(r)
-
-    p.close()
-    p.join()
+    with mp.Pool(args.threads) as p:
+        for r in p.imap_unordered(process_read_chunk, bam_to_read_aligns(samfile, chunksize, temp_dir, info,
+                                                                         args, headeroutfilename, readstoclipping)):
+            chunkresults.append(r)
     logging.info('starting to combine temp files')
 
     if args.output_endpos:

@@ -77,6 +77,7 @@ def check_args(args):
         args.trust_ends = True
     return args
 
+
 MIN_INSERTION_LEN = 3
 HALF_SS_WINDOW_SIZE = 6
 NUM_MISTAKES_IN_SS_WINDOW = 2
@@ -321,16 +322,16 @@ def check_transcript_in_annot(exondict, tname):
 
 
 def check_stringent_and_splice(exoninfo, tname, coveredpos, tlen, blockstarts, blocksizes, tstart, tend,
-                             transcript_to_bp_ss_index, transcript_to_unique_bounds,
-                             *, stringent, check_splice, fusion_breakpoints, trust_ends, end_norm_dist):
+                               transcript_to_bp_ss_index, transcript_to_unique_bounds,
+                               *, stringent, check_splice, fusion_breakpoints, trust_ends, end_norm_dist):
     """Combined filter: an alignment must pass the stringent coverage, splice-site,
     and fusion-breakpoint checks that are enabled."""
     passes_stringent, passes_splice, passes_fusion = True, True, True
     if stringent or check_splice or fusion_breakpoints:
         # single exon genes always get checked
         passes_stringent = check_stringent(coveredpos, exoninfo, tlen, blockstarts, blocksizes,
-                                          trust_ends, tname, end_norm_dist,
-                                          transcript_to_unique_bounds) if stringent or len(exoninfo) == 1 else True
+                                           trust_ends, tname, end_norm_dist,
+                                           transcript_to_unique_bounds) if stringent or len(exoninfo) == 1 else True
         # only run if spliced transcript
         passes_splice = check_splicesites(coveredpos, exoninfo, tstart, tend, tname) if check_splice and len(exoninfo) > 1 else True
         passes_fusion = check_fusionbp(coveredpos, exoninfo, tstart, tend, tname, transcript_to_bp_ss_index) if fusion_breakpoints else True
@@ -405,10 +406,10 @@ def get_best_transcript(tinfo, info, genomicclipping,
             logging.debug(f"transcript alignment dropped: excess soft clipping ({sum(query_clipping)} > {genomicclipping} + {soft_clipping_buffer}): {tname}")
         else:
             if check_stringent_and_splice(exoninfo, thist.name, coveredpos, thist.tlen, blockstarts, blocksizes,
-                                        thist.startpos, tendpos, info.transcript_to_bp_ss_index, info.transcript_to_unique_bounds,
-                                        stringent=stringent, check_splice=check_splice,
-                                        fusion_breakpoints=fusion_breakpoints,
-                                        trust_ends=trust_ends, end_norm_dist=end_norm_dist):
+                                          thist.startpos, tendpos, info.transcript_to_bp_ss_index, info.transcript_to_unique_bounds,
+                                          stringent=stringent, check_splice=check_splice,
+                                          fusion_breakpoints=fusion_breakpoints,
+                                          trust_ends=trust_ends, end_norm_dist=end_norm_dist):
                 left_intron_index, left_dist, right_intron_index, right_dist = identify_corrected_ends(exoninfo, thist.startpos, tendpos, info.transcript_to_genomic_ends, tname, output_endpos, thist.tlen)
                 passing_transcripts.append([-1 * thist.alignscore, -1 * sum(matchvals), sum(query_clipping), thist.tlen, tname, (left_intron_index, left_dist), (right_intron_index, right_dist)])
             else:
@@ -471,11 +472,11 @@ def parse_sam(sam, info, readstoclipping,  # noqa: C901 - FIXME: reduce complexi
                 if remove_internal_priming:
                     intprim_annot = info.transcript_to_exons if permissive_last_exons else None
                     not_internal_priming = removeinternalpriming(read.reference_name,
-                                                               read.reference_start,
-                                                               read.reference_end, False,
-                                                               genome, None, intprim_annot,
-                                                               intprimingthreshold,
-                                                               intprimingfracAs)
+                                                                 read.reference_start,
+                                                                 read.reference_end, False,
+                                                                 genome, None, intprim_annot,
+                                                                 intprimingthreshold,
+                                                                 intprimingfracAs)
                 else:
                     not_internal_priming = True
                 if not not_internal_priming:
@@ -565,16 +566,16 @@ if __name__ == '__main__':
             rname, clipping = line.rstrip().split('\t')
             readstoclipping[rname] = int(clipping)
     transcript_to_reads = parse_sam(args.sam, info, readstoclipping,
-                                  quality=args.quality, remove_internal_priming=args.remove_internal_priming,
-                                  transcriptomefasta=args.transcriptomefasta,
-                                  permissive_last_exons=args.permissive_last_exons,
-                                  intprimingthreshold=args.intprimingthreshold,
-                                  intprimingfracAs=args.intprimingfracAs,
-                                  stringent=args.stringent, check_splice=args.check_splice,
-                                  fusion_breakpoints=args.fusion_breakpoints,
-                                  allow_UTR_indels=args.allow_UTR_indels,
-                                  trimmedreads=args.trimmedreads,
-                                  soft_clipping_buffer=args.soft_clipping_buffer,
-                                  output_endpos=args.output_endpos,
-                                  trust_ends=args.trust_ends, end_norm_dist=args.end_norm_dist)
+                                    quality=args.quality, remove_internal_priming=args.remove_internal_priming,
+                                    transcriptomefasta=args.transcriptomefasta,
+                                    permissive_last_exons=args.permissive_last_exons,
+                                    intprimingthreshold=args.intprimingthreshold,
+                                    intprimingfracAs=args.intprimingfracAs,
+                                    stringent=args.stringent, check_splice=args.check_splice,
+                                    fusion_breakpoints=args.fusion_breakpoints,
+                                    allow_UTR_indels=args.allow_UTR_indels,
+                                    trimmedreads=args.trimmedreads,
+                                    soft_clipping_buffer=args.soft_clipping_buffer,
+                                    output_endpos=args.output_endpos,
+                                    trust_ends=args.trust_ends, end_norm_dist=args.end_norm_dist)
     write_output(args, transcript_to_reads)

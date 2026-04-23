@@ -17,6 +17,7 @@ from flair.isoform_data import (Junc, Exon, ReadRec, Gene, Isoform, exons_to_jun
                                 convert_to_bed)
 from flair.read_processing import (should_process_read, add_corrected_read_to_groups,
                                    generate_genomic_alignment_read_to_clipping_file)
+from flair.read_correction import filter_correct_group_reads
 from flair.count_sam_transcripts import TRUST_ENDS_WINDOW
 from flair.annotation_data import annot_data_from_gtf
 from flair.pycbio.hgdata.bed import Bed
@@ -592,54 +593,6 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
     # good_align_to_annot = set(good_align_to_annot)
     # return good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs
     return read_to_transcript
-
-
-def _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends, genome):
-    """Correct a single read's splice junctions and add it to sj_to_ends groups.
-
-    Spliced and single-exon reads are fundamentally different:
-    - Spliced: junctions corrected from annotation or intron support, strand from correction
-    - Single-exon: no correction, strand resolved later in group_se_by_overlap
-    """
-    readrec = ReadRec.from_read(read, genome=genome)
-
-    # annotated spliced: correct junctions and strand from annotation
-    if read.query_name in read_to_annot_transcript:
-        # FIXME more id assumptions
-        tid, startindex, startdist, endindex, enddist = read_to_annot_transcript[read.query_name]
-        transcript = '_'.join(tid.split('_')[:-1])
-        gene = tid.split('_')[-1]
-        exons = annots.transcript_to_exons[(transcript, gene)]
-        annot_juncs = [(exons[x].end, exons[x + 1].start) for x in range(len(exons) - 1)]
-        if len(annot_juncs) > 0:
-            newstart = annot_juncs[startindex][0] - startdist
-            newend = annot_juncs[endindex][1] + enddist
-            juncs = tuple([Junc(x[0], x[1]) for x in annot_juncs[startindex:endindex + 1]])
-            readrec.correct_from_annotation(newstart, newend, annots.gene_to_strand[gene], juncs)
-            add_corrected_read_to_groups(readrec, sj_to_ends)
-            return
-
-    # unannotated spliced: correct junctions and strand from intron support
-    if readrec.juncs:
-        if junction_corrector.correct_readrec(readrec):
-            add_corrected_read_to_groups(readrec, sj_to_ends)
-        else:
-            logging.debug(f"read dropped: junction correction failed: {readrec.name}")
-        return
-
-    # single-exon: no correction, strand resolved later in group_se_by_overlap
-    add_corrected_read_to_groups(readrec, sj_to_ends)
-
-def filter_correct_group_reads(args, temp_prefix, region, bam_file, read_to_annot_transcript, annots,
-                               junction_corrector, genome, *, sj_to_ends=None,
-                               allow_secondary=False):
-    """Filter reads, correct splice junctions, and group by junction chain."""
-    if sj_to_ends is None:
-        sj_to_ends = {}
-    for read in bam_file.fetch(region.name, region.start, region.end):
-        if should_process_read(read, region, args.quality, args.keep_sup, allow_secondary):
-            _correct_and_group_read(read, read_to_annot_transcript, annots, junction_corrector, sj_to_ends, genome)
-    return sj_to_ends
 
 
 def filter_ends_allow_multiple(isoforms, sjc_support, max_ends):
@@ -1225,8 +1178,13 @@ def _run_region(*, partition, gtf_data, junction_corrector, args):  # noqa: C901
 
     # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
     # this also handles read strandedness if necessary
-    sj_to_ends = filter_correct_group_reads(args, partition.file_prefix, region, bam_file, read_to_annot_transcript, annots,
-                                            junction_corrector, genome)
+    sj_to_ends = {}
+    filter_correct_group_reads(bam_file=bam_file, region=region,
+                               read_to_annot_transcript=read_to_annot_transcript,
+                               annots=annots, junction_corrector=junction_corrector,
+                               genome=genome,
+                               quality=args.quality, keep_sup=args.keep_sup,
+                               sj_to_ends=sj_to_ends)
     bam_file.close()
 
     # for each junction chain, clusters ends - generates junction chain x ends

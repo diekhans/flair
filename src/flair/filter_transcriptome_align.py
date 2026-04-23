@@ -10,7 +10,7 @@ from flair.count_sam_transcripts import parse_args, check_args, read_isoforms_be
 from flair.remove_internal_priming import removeinternalpriming
 import multiprocessing as mp
 from flair import FlairInputDataError
-from flair.flair_transcriptome import make_temp_dir
+from flair.io_utils import make_temp_dir
 
 
 def generate_alignment_obj_for_read(args, genome, transcript_to_exons, transcriptaligns, header):

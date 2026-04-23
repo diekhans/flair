@@ -7,19 +7,17 @@ import shutil
 import pysam
 import logging
 import scipy.stats as sps
-from flair.partition_runner import PartitionRunner
+from flair.partition_runner import PartitionRunner, combine_temp_files_by_suffix
 from flair import SeqRange
 from statistics import median
 from flair.junction_correct import junction_corrector_factory
 from flair.isoform_data import ReadRec
-from flair.read_processing import get_sequence_from_bed
+from flair.io_utils import make_temp_dir
+from flair.read_processing import get_sequence_from_bed, generate_genomic_alignment_read_to_clipping_file
 from flair.read_correction import filter_correct_group_reads
 from flair.gtf_io import gtf_data_parser, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
 from flair.annotation_data import annot_data_from_gtf
 from flair.pycbio.hgdata.bed import Bed
-
-# FIXME: this is temp, need to move into a
-import flair.flair_transcriptome as ft
 
 def get_args():
     parser = argparse.ArgumentParser(description='identifies counts of different splicing events directly from a '
@@ -1053,7 +1051,7 @@ def get_juncs_single_sample(args, region, temp_prefix, sample, bamfile_name, reg
     temp_prefix = temp_prefix + '_' + sample
 
     bam_file = pysam.AlignmentFile(bamfile_name, 'rb')
-    num_reads, clipping_file = ft.generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
+    num_reads, clipping_file = generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region)
     bam_file.close()
 
     # FIXME: what format is this? reading into memory, why write file?
@@ -1189,12 +1187,12 @@ def combine_regions(regions, buffersize=0):
         c, s, e = range.name, range.start, range.end
         if c != lastchrom or s > lastend + buffersize:
             if lastchrom != -1:
-                new_regions.append(ft.SeqRange(lastchrom, laststart, lastend))
+                new_regions.append(SeqRange(lastchrom, laststart, lastend))
             lastchrom, laststart, lastend = c, s, e
         else:
             lastend = max((lastend, e))
     if lastchrom != -1:
-        new_regions.append(ft.SeqRange(lastchrom, laststart, lastend))
+        new_regions.append(SeqRange(lastchrom, laststart, lastend))
     return new_regions
 
 
@@ -1205,7 +1203,7 @@ def main():  # noqa: C901 - FIXME: reduce complexity
     genome = pysam.FastaFile(args.genome)
 
     # FIXME: make this a common function somewhere
-    tempDir = ft.make_temp_dir(args.output)
+    tempDir = make_temp_dir(args.output)
     logging.info('temp directory: %s', tempDir)
 
     if args.region_bed:
@@ -1257,12 +1255,12 @@ def main():  # noqa: C901 - FIXME: reduce complexity
                              threads=args.threads)
     runner.run(_run_region, args=args, allsamples=allsamples)
 
-    ft.combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner],
-                                    ['.diffsplice.bed', '.diffsplice.counts.tsv', '.diffsplice.PSIjunc.tsv', '.diffsplice.PSItot.tsv'])
+    combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner],
+                                 ['.diffsplice.bed', '.diffsplice.counts.tsv', '.diffsplice.PSIjunc.tsv', '.diffsplice.PSItot.tsv'])
     if args.output_read_ends:
-        ft.combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner], ['.diffsplice.readends.bed'])
+        combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner], ['.diffsplice.readends.bed'])
     if args.check_outliers:
-        ft.combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner], ['.diffsplice.outliers.tsv', '.diffsplice.outliers.filtered.tsv'])
+        combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner], ['.diffsplice.outliers.tsv', '.diffsplice.outliers.filtered.tsv'])
 
     counts_header = ['eventname', 'eventtype', 'gene', 'junctions_included', 'junctions_excluded', 'outer_junctions', 'exons']
     for suffix in ['.diffsplice.counts', '.diffsplice.PSIjunc', '.diffsplice.PSItot']:

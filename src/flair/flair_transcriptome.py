@@ -10,13 +10,12 @@ from collections import Counter
 from flair import FlairError
 from flair.gtf_io import gtf_data_parser, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
 from flair.junction_correct import junction_corrector_factory
-from flair.partition_runner import parallel_mode_parse, partition_runner_factory
+from flair.partition_runner import parallel_mode_parse, partition_runner_factory, combine_temp_files_by_suffix
+from flair.io_utils import make_temp_dir
 from flair.bed_to_gtf import bed_to_gtf
-from flair.isoform_data import (Junc, Exon, ReadRec, Gene, Isoform, exons_to_juncs,
-                                get_bed_exons_from_exons, get_sequence_for_exons, binary_search,
-                                convert_to_bed)
-from flair.read_processing import (should_process_read, add_corrected_read_to_groups,
-                                   generate_genomic_alignment_read_to_clipping_file)
+from flair.isoform_data import (Exon, Gene, Isoform, exons_to_juncs, get_bed_exons_from_exons,
+                                get_sequence_for_exons, binary_search, convert_to_bed)
+from flair.read_processing import generate_genomic_alignment_read_to_clipping_file
 from flair.read_correction import filter_correct_group_reads
 from flair.count_sam_transcripts import TRUST_ENDS_WINDOW
 from flair.annotation_data import annot_data_from_gtf
@@ -162,19 +161,6 @@ MIN_ANNOT_OVERLAP_FRAC = 0
 
 # search window for binary search of single-exon annotations
 ANNOT_SE_SEARCH_WINDOW = 2
-
-
-####
-# misc
-###
-def make_temp_dir(out_prefix):
-    # FIXME: use TMPDIR unless directory explicitly specified
-    temp_dir = out_prefix + ".intermediate"
-    try:
-        os.makedirs(temp_dir, exist_ok=True)
-    except OSError as exc:
-        raise OSError(f"Creation of the directory `{temp_dir}' failed") from exc
-    return temp_dir + '/'
 
 
 ####
@@ -889,14 +875,6 @@ def filter_firstpass_isos(args, candidates, annots, sup_annot_transcript_to_junc
         firstpass = filter_all_single_exon(args, sorted(candidates.exons), candidates.isoforms, firstpass)
 
     return firstpass, iso_to_unique_bound
-
-
-def combine_temp_files_by_suffix(output, temp_prefixes, suffixes):
-    for filesuffix in suffixes:
-        with open(output + filesuffix, 'wb') as combined_fh:
-            for temp_prefix in temp_prefixes:
-                with open(temp_prefix + filesuffix, 'rb') as in_fh:
-                    shutil.copyfileobj(in_fh, combined_fh, 1024 * 1024 * 10)
 
 
 def get_genes_with_shared_juncs(juncs, annots):

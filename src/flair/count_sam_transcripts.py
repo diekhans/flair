@@ -6,9 +6,13 @@ import re
 import os
 from dataclasses import dataclass, field
 from flair.remove_internal_priming import removeinternalpriming
+import pipettor
 import pysam
 from flair import FlairInputDataError
 from flair.pycbio.hgdata.bed import BedReader
+
+
+_COUNT_SAM_TRANSCRIPTS_SCRIPT = os.path.realpath(__file__)
 
 
 def parse_args():
@@ -398,8 +402,6 @@ def get_best_transcript(tinfo, info, genomicclipping,
         terminal_exon_info = exoninfo if allow_UTR_indels else None
         terminal_exon_bounds = info.transcript_to_unique_bounds[thist.name] if thist.name in info.transcript_to_unique_bounds else None
         indel_detected, coveredpos, query_clipping, blockstarts, blocksizes, tendpos = process_cigar(matchvals, thist.cigar, thist.startpos, terminal_exon_info, terminal_exon_bounds)
-        if tname == testtname:
-            print('indel', indel_detected)
         if indel_detected:
             logging.debug(f"transcript alignment dropped: indel detected: {tname}")
         elif trimmedreads and genomicclipping is not None and sum(query_clipping) > genomicclipping + soft_clipping_buffer:
@@ -551,6 +553,91 @@ def write_output(args, transcripttoreads):
                 endout.write('\t'.join([str(x) for x in [r, t, s[0], s[1], e[0], e[1]]]) + '\n')
     if args.output_endpos:
         endout.close()
+
+
+def build_count_sam_transcripts_cmd(*, output, sam='-', threads=4, quality=0,   # noqa: C901 - linear function okay
+                                    isoforms=None, stringent=False, check_splice=False,
+                                    trust_ends=False, generate_map=None, output_bam=None,
+                                    fusion_dist=None, remove_internal_priming=False,
+                                    permissive_last_exons=False, intprimingthreshold=12,
+                                    intprimingfracAs=0.6, soft_clipping_buffer=50,
+                                    transcriptomefasta=None, unique_bound=None,
+                                    fusion_breakpoints=None, allow_paralogs=False,
+                                    allow_UTR_indels=False, trimmedreads=None,
+                                    end_norm_dist=0, output_endpos=None):
+    """Build count_sam_transcripts.py argv."""
+    # FIXNE: default values should be centralized
+    cmd = ['python3', _COUNT_SAM_TRANSCRIPTS_SCRIPT,
+           '--sam', str(sam), '-o', str(output),
+           '--quality', str(quality)]
+    if threads != 4:
+        cmd += ['-t', str(threads)]
+    if isoforms:
+        cmd += ['-i', str(isoforms)]
+    if stringent:
+        cmd.append('--stringent')
+    if check_splice:
+        cmd.append('--check_splice')
+    if trust_ends:
+        cmd.append('--trust_ends')
+    if generate_map:
+        cmd += ['--generate_map', str(generate_map)]
+    if output_bam:
+        cmd += ['--output_bam', str(output_bam)]
+    if fusion_dist:
+        cmd += ['--fusion_dist', str(fusion_dist)]
+    if remove_internal_priming:
+        cmd += ['--remove_internal_priming',
+                '--intprimingthreshold', str(intprimingthreshold),
+                '--intprimingfracAs', str(intprimingfracAs)]
+        if transcriptomefasta:
+            cmd += ['--transcriptomefasta', str(transcriptomefasta)]
+    if permissive_last_exons:
+        cmd.append('--permissive_last_exons')
+    if soft_clipping_buffer != 50:
+        cmd += ['--soft_clipping_buffer', str(soft_clipping_buffer)]
+    if unique_bound:
+        cmd += ['--unique_bound', str(unique_bound)]
+    if fusion_breakpoints:
+        cmd += ['--fusion_breakpoints', str(fusion_breakpoints)]
+    if allow_paralogs:
+        cmd.append('--allow_paralogs')
+    if allow_UTR_indels:
+        cmd.append('--allow_UTR_indels')
+    if trimmedreads:
+        cmd += ['--trimmedreads', str(trimmedreads)]
+    if end_norm_dist:
+        cmd += ['--end_norm_dist', str(end_norm_dist)]
+    if output_endpos:
+        cmd += ['--output_endpos', str(output_endpos)]
+    return cmd
+
+
+def run_count_sam_transcripts(*, output, mm2_cmd=None, sam='-', threads=4, quality=0,
+                              isoforms=None, stringent=False, check_splice=False,
+                              trust_ends=False, generate_map=None, output_bam=None,
+                              fusion_dist=None, remove_internal_priming=False,
+                              permissive_last_exons=False, intprimingthreshold=12,
+                              intprimingfracAs=0.6, soft_clipping_buffer=50,
+                              transcriptomefasta=None, unique_bound=None,
+                              fusion_breakpoints=None, allow_paralogs=False,
+                              allow_UTR_indels=False, trimmedreads=None,
+                              end_norm_dist=0, output_endpos=None):
+    """Run count_sam_transcripts.py; if mm2_cmd given, pipe its stdout in as SAM."""
+    cmd = build_count_sam_transcripts_cmd(
+        output=output, sam=sam, threads=threads, quality=quality,
+        isoforms=isoforms, stringent=stringent, check_splice=check_splice,
+        trust_ends=trust_ends, generate_map=generate_map, output_bam=output_bam,
+        fusion_dist=fusion_dist, remove_internal_priming=remove_internal_priming,
+        permissive_last_exons=permissive_last_exons,
+        intprimingthreshold=intprimingthreshold, intprimingfracAs=intprimingfracAs,
+        soft_clipping_buffer=soft_clipping_buffer,
+        transcriptomefasta=transcriptomefasta, unique_bound=unique_bound,
+        fusion_breakpoints=fusion_breakpoints, allow_paralogs=allow_paralogs,
+        allow_UTR_indels=allow_UTR_indels, trimmedreads=trimmedreads,
+        end_norm_dist=end_norm_dist, output_endpos=output_endpos)
+    pipeline = [mm2_cmd, cmd] if mm2_cmd else [cmd]
+    pipettor.run(pipeline)
 
 
 if __name__ == '__main__':

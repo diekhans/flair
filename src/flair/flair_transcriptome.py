@@ -17,7 +17,7 @@ from flair.isoform_data import (Exon, Gene, Isoform, exons_to_juncs, get_bed_exo
                                 get_sequence_for_exons, binary_search, convert_to_bed)
 from flair.read_processing import generate_genomic_alignment_read_to_clipping_file
 from flair.read_correction import filter_correct_group_reads
-from flair.count_sam_transcripts import TRUST_ENDS_WINDOW
+from flair.count_sam_transcripts import TRUST_ENDS_WINDOW, run_count_sam_transcripts
 from flair.annotation_data import annot_data_from_gtf
 from flair.pycbio.hgdata.bed import Bed
 
@@ -166,49 +166,7 @@ ANNOT_SE_SEARCH_WINDOW = 2
 ####
 # transcriptome alignment
 ####
-def get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound):  # noqa: C901 - FIXME: reduce complexity
-    # FIXME: count sam transcripts ; the dash at the end means STDIN
-    # use 1 thread in because this is already multithreaded here
-    count_cmd = ['count_sam_transcripts.py', '--sam', '-',
-                 '-o', output_name,]
-    if clipping_file:
-        count_cmd.extend(['--trimmedreads', clipping_file])
-    if map_file:
-        count_cmd.extend(['--generate_map', map_file])
-    if args.output_endpos or is_annot:
-        count_cmd.extend(['--output_endpos', output_name.split('.counts.txt')[0] + '.ends.tsv'])
-    if args.end_norm_dist:
-        count_cmd.extend(['--end_norm_dist', args.end_norm_dist])
-    if not is_annot and not args.no_stringent:
-        count_cmd.extend(['--stringent'])
-    if is_annot:
-        count_cmd.extend(['--allow_UTR_indels'])
-    if args.output_bam:
-        count_cmd.extend(['--output_bam', output_name.split('.counts.txt')[0] + '.bam'])
-    if not args.no_check_splice:
-        count_cmd.append('--check_splice')
-    if not args.no_check_splice or not args.no_stringent or is_annot or args.fusion_breakpoints:
-        count_cmd.extend(['-i', ref_bed])  # annotated isoform bed file
-    if args.trust_ends:
-        count_cmd.append('--trust_ends')
-    if unique_bound and (not args.no_stringent or is_annot):
-        count_cmd.extend(['--unique_bound', unique_bound])
-    if args.remove_internal_priming:
-        count_cmd.extend(['--remove_internal_priming',
-                          '--intprimingthreshold', str(args.intprimingthreshold),
-                          '--intprimingfracAs', str(args.intprimingfracAs),
-                          '--transcriptomefasta', args.transcriptfasta])
-    if args.remove_internal_priming and is_annot:
-        count_cmd.append('--permissive_last_exons')
-    if args.fusion_breakpoints:
-        count_cmd += ['--fusion_breakpoints', args.fusion_breakpoints]
-    if args.allow_paralogs:
-        count_cmd += ['--allow_paralogs']
-    # print(' '.join([str(x) for x in count_cmd]))
-    return count_cmd
-
-
-def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound):
+def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound):  # noqa: C901 - FIXME: reduce complexity
     # minimap (results are piped into count_sam_transcripts.py)
     # '--split-prefix', 'minimap2transcriptomeindex', doesn't work with MD tag
     if isinstance(input_reads, str):
@@ -217,9 +175,47 @@ def transcriptome_align_and_count(args, input_reads, align_ref_fasta, ref_bed, o
 
     # FIXME add in step to filter out chimeric reads here
     # FIXME really need to go in and check on how count_sam_transcripts is working
-    count_cmd = get_filter_tome_align_cmd(args, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound)
+    trimmedreads = clipping_file or None
+    generate_map = map_file or None
+    output_endpos = (output_name.split('.counts.txt')[0] + '.ends.tsv'
+                     if (args.output_endpos or is_annot) else None)
+    output_bam = (output_name.split('.counts.txt')[0] + '.bam'
+                  if args.output_bam else None)
+    stringent = (not is_annot) and (not args.no_stringent)
+    check_splice = not args.no_check_splice
+    # annotated isoform bed file
+    isoforms = ref_bed if (check_splice or stringent or is_annot or args.fusion_breakpoints) else None
+    unique_bound_path = unique_bound if unique_bound and (not args.no_stringent or is_annot) else None
+    intprimingthreshold = None
+    intprimingfracAs = None
+    transcriptomefasta = None
+    if args.remove_internal_priming:
+        intprimingthreshold = args.intprimingthreshold
+        intprimingfracAs = args.intprimingfracAs
+        transcriptomefasta = args.transcriptfasta
+    permissive_last_exons = args.remove_internal_priming and is_annot
 
-    pipettor.run([mm2_cmd, count_cmd])
+    run_count_sam_transcripts(
+        mm2_cmd=mm2_cmd,
+        output=output_name,
+        trimmedreads=trimmedreads,
+        generate_map=generate_map,
+        output_endpos=output_endpos,
+        end_norm_dist=args.end_norm_dist or 0,
+        stringent=stringent,
+        allow_UTR_indels=is_annot,
+        output_bam=output_bam,
+        check_splice=check_splice,
+        isoforms=isoforms,
+        trust_ends=args.trust_ends,
+        unique_bound=unique_bound_path,
+        remove_internal_priming=args.remove_internal_priming,
+        intprimingthreshold=intprimingthreshold,
+        intprimingfracAs=intprimingfracAs,
+        transcriptomefasta=transcriptomefasta,
+        permissive_last_exons=permissive_last_exons,
+        fusion_breakpoints=args.fusion_breakpoints,
+        allow_paralogs=args.allow_paralogs)
 
 
 ##

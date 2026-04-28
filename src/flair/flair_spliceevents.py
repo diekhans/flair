@@ -18,6 +18,7 @@ from flair.read_correction import filter_correct_group_reads
 from flair.gtf_io import gtf_data_parser, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
 from flair.annotation_data import annot_data_from_gtf
 from flair.pycbio.hgdata.bed import Bed
+from flair.count_sam_transcripts import run_count_sam_transcripts
 
 def get_args():
     parser = argparse.ArgumentParser(description='identifies counts of different splicing events directly from a '
@@ -1024,24 +1025,20 @@ def generate_good_match_to_annot(args, temp_prefix, region, bamfile_name, region
         pipettor.run([('samtools', 'view', '-h', bamfile_name, f'{region.name}:{region.start}-{region.end}'),
                       ('samtools', 'fasta', '-')],
                      stdout=temp_prefix + '.reads.fasta')
-        mm2_cmd = ('minimap2', '-a', '-N', '4', '--MD',
-                   region_annot_fa, temp_prefix + '.reads.fasta')
-        flairpath = '/'.join(os.path.realpath(__file__).split('/')[:-1])
-        count_cmd = ('python3', flairpath + '/count_sam_transcripts.py',
-                     '--sam', '-',
-                     '-o', temp_prefix + '.matchannot.counts.tsv',
-                     '-t', 1,  # feeding 1 thread in because this is already multithreaded here
-                     '--quality', 0,
-                     #  '--generate_map', temp_prefix + '.matchannot.read.map.txt',
-                     '--check_splice',
-                     '-i', region_annot,
-                     '--trimmedreads', clipping_file,
-                     '--allow_UTR_indels',
-                     '--soft_clipping_buffer', 10,
-                     '--output_endpos', temp_prefix + '.readtoends.txt',
-                     )
-
-        pipettor.run([mm2_cmd, count_cmd])
+        mm2_cmd = ['minimap2', '-a', '-N', '4', '--MD',
+                   region_annot_fa, temp_prefix + '.reads.fasta']
+        # 1 thread because already multithreaded here
+        run_count_sam_transcripts(
+            mm2_cmd=mm2_cmd,
+            output=temp_prefix + '.matchannot.counts.tsv',
+            threads=1,
+            quality=0,
+            check_splice=True,
+            isoforms=region_annot,
+            trimmedreads=clipping_file,
+            allow_UTR_indels=True,
+            soft_clipping_buffer=10,
+            output_endpos=temp_prefix + '.readtoends.txt')
         return temp_prefix + '.readtoends.txt'  # temp_prefix + '.matchannot.read.map.txt'
     else:
         return None

@@ -6,6 +6,7 @@
 
    usage: flair transcriptome [-h] -b GENOME_ALIGNED_BAM -g GENOME --sample_name
                               SAMPLE_NAME [-o OUTPUT] [-f ANNOT_GTF]
+                              [--junction_star JUNCTION_STAR]
                               [--junction_tab JUNCTION_TAB]
                               [--junction_bed JUNCTION_BED]
                               [--junction_support JUNCTION_SUPPORT]
@@ -33,17 +34,21 @@
 
    GTF annotation file, used for identifying annotated isoforms
 
-.. option:: --junction_tab JUNCTION_TAB
+.. option:: --junction_star JUNCTION_STAR
 
    splice junctions in STAR SJ.out.tab format, as STAR writes when it aligns reads
 
+.. option:: --junction_tab JUNCTION_TAB
+
+   deprecated name for --junction_star
+
 .. option:: --junction_bed JUNCTION_BED
 
-   splice junctions as BED6 to BED9 with the number of supporting reads in the score column, as intron-prospector writes from a BAM of either short or long reads. An alternative format to --junction_tab, not a different kind of evidence
+   splice junctions as BED6 to BED9 with the number of supporting reads in the score column, as intron-prospector writes from a BAM of either short or long reads. An alternative format to --junction_star, not a different kind of evidence
 
 .. option:: --junction_support JUNCTION_SUPPORT
 
-   minimum number of supporting reads to keep a junction, from either --junction_tab or --junction_bed; for bed the score column holds the count (default: 2)
+   minimum number of supporting reads to keep a junction, from either --junction_star or --junction_bed; for bed the score column holds the count (default: 2)
 
 .. option:: --ss_window SS_WINDOW
 

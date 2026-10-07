@@ -8,7 +8,7 @@ import logging
 from dataclasses import dataclass
 from statistics import median
 from collections import Counter
-from flair import FlairError, FlairInputDataError, FlairNotImplementedError
+from flair import FlairError, FlairInputDataError, FlairNotImplementedError, resolve_deprecated_option
 from flair.gtf_io import gtf_data_parser, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
 from flair.junction_correct import junction_corrector_factory
 from flair.partition_runner import parallel_mode_parse, partition_runner_factory, combine_temp_files_by_suffix
@@ -50,7 +50,7 @@ class TranscriptomeOpts:
     sample_name: str
     output: str
     annot_gtf: str
-    junction_tab: str
+    junction_star: str
     junction_bed: str
     junction_support: int
     ss_window: int
@@ -91,14 +91,15 @@ def add_subparser(subparsers):
 
     parser.add_argument('-f', '--gtf', dest="annot_gtf", default=None,
                         help='GTF annotation file, used for identifying annotated isoforms')
-    parser.add_argument('--junction_tab', help='splice junctions in STAR SJ.out.tab format, as STAR writes '
-                                               'when it aligns reads')
+    parser.add_argument('--junction_star', help='splice junctions in STAR SJ.out.tab format, as STAR writes '
+                                                'when it aligns reads')
+    parser.add_argument('--junction_tab', help='deprecated name for --junction_star')
     parser.add_argument('--junction_bed', help='splice junctions as BED6 to BED9 with the number of supporting '
                                                'reads in the score column, as intron-prospector writes from a BAM '
                                                'of either short or long reads.  An alternative format to '
-                                               '--junction_tab, not a different kind of evidence')
+                                               '--junction_star, not a different kind of evidence')
     parser.add_argument('--junction_support', type=int, default=2,
-                        help='minimum number of supporting reads to keep a junction, from either --junction_tab '
+                        help='minimum number of supporting reads to keep a junction, from either --junction_star '
                              'or --junction_bed; for bed the score column holds the count (default: %(default)s)')
 
     parser.add_argument('--ss_window', type=int, default=15,
@@ -177,6 +178,7 @@ def add_subparser(subparsers):
     parser.set_defaults(entry=transcriptome_cmd)
 
 def transcriptome_cmd(args):
+    resolve_deprecated_option(args, deprecated="junction_tab", current="junction_star")
     if args.allow_paralogs:
         raise FlairNotImplementedError("--allow_paralogs is not implemented: a read with an equally "
                                        "good alignment to several paralogs is assigned to one of "
@@ -187,7 +189,7 @@ def transcriptome_cmd(args):
     flair_transcriptome(genome_aligned_bam=args.genome_aligned_bam, genome=args.genome,
                         sample_name=args.sample_name,
                         output=args.output if args.output is not None else args.sample_name,
-                        annot_gtf=args.annot_gtf, junction_tab=args.junction_tab,
+                        annot_gtf=args.annot_gtf, junction_star=args.junction_star,
                         junction_bed=args.junction_bed, junction_support=args.junction_support,
                         ss_window=args.ss_window, end_window=args.end_window,
                         sjc_support=args.sjc_support,
@@ -1389,14 +1391,14 @@ def fix_iso_labels(output, generate_map):
 ####
 
 def flair_transcriptome(*, genome_aligned_bam, genome, sample_name, output, annot_gtf,
-                        junction_tab, junction_bed, junction_support, ss_window, end_window,
+                        junction_star, junction_bed, junction_support, ss_window, end_window,
                         sjc_support, single_exon_support, frac_support, trust_strand,
                         trust_ends, no_stringent, no_check_splice, no_align_to_annot,
                         max_ends, filter, keep_supplementary, quality, threads, parallel_mode,
                         fusion_breakpoints, keep_intermediate, normalize_ends, generate_map):
     args = TranscriptomeOpts(genome_aligned_bam=genome_aligned_bam, genome=genome,
                              sample_name=sample_name, output=output, annot_gtf=annot_gtf,
-                             junction_tab=junction_tab, junction_bed=junction_bed,
+                             junction_star=junction_star, junction_bed=junction_bed,
                              junction_support=junction_support, ss_window=ss_window,
                              end_window=end_window, sjc_support=sjc_support,
                              single_exon_support=single_exon_support, frac_support=frac_support,
@@ -1424,7 +1426,7 @@ def flair_transcriptome(*, genome_aligned_bam, genome, sample_name, output, anno
     junction_corrector = junction_corrector_factory(args.ss_window, args.junction_support,
                                                     annot_gtf_data=annot_gtf_data,
                                                     intron_beds=args.junction_bed,
-                                                    star_sj_tabs=args.junction_tab)
+                                                    star_sj_tabs=args.junction_star)
 
     logging.info('partitioning genome')
     runner = partition_runner_factory(args.parallel_mode, genome_fa, args.genome_aligned_bam,

@@ -35,15 +35,15 @@
 
 .. option:: --junction_tab JUNCTION_TAB
 
-   short-read junctions in SJ.out.tab format. Use this option if you aligned your short-reads with STAR, STAR will automatically output this file
+   splice junctions in STAR SJ.out.tab format, as STAR writes when it aligns reads
 
 .. option:: --junction_bed JUNCTION_BED
 
-   short-read junctions in bed format (can be generated from long-read alignment with intron-prospector)
+   splice junctions as BED6 to BED9 with the number of supporting reads in the score column, as intron-prospector writes from a BAM of either short or long reads. An alternative format to --junction_tab, not a different kind of evidence
 
 .. option:: --junction_support JUNCTION_SUPPORT
 
-   if providing short-read junctions, minimum junction support required to keep junction. If your junctions file is in bed format, the score field will be used for read support (default: 2)
+   minimum number of supporting reads to keep a junction, from either --junction_tab or --junction_bed; for bed the score column holds the count (default: 2)
 
 .. option:: --ss_window SS_WINDOW
 

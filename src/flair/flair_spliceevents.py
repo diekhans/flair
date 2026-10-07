@@ -44,16 +44,17 @@ def get_args():
     parser.add_argument('--annot_basic', default='',
                         help='GTF annotation file, used for renaming FLAIR isoforms '
                              'to annotated isoforms and adjusting TSS/TESs')
-    parser.add_argument('--junction_tab', help='short-read junctions in SJ.out.tab format. '
-                                               'Use this option if you aligned your short-reads with STAR, '
-                                               'STAR will automatically output this file')
-    parser.add_argument('--junction_bed', help='short-read junctions in bed format '
-                                               '(can be generated from long-read alignment with intron-prospector)')
+    parser.add_argument('--junction_tab', help='splice junctions in STAR SJ.out.tab format, as STAR writes '
+                                               'when it aligns reads')
+    parser.add_argument('--junction_bed', help='splice junctions as BED6 to BED9 with the number of supporting '
+                                               'reads in the score column, as intron-prospector writes from a BAM '
+                                               'of either short or long reads.  An alternative format to '
+                                               '--junction_tab, not a different kind of evidence')
     parser.add_argument('--region_bed',
                         help='bed file with regions to parallelize by; if not specified, all chromosomes are used')
     parser.add_argument('--junction_support', type=int, default=1,
-                        help='if providing short-read junctions, minimum junction support required to keep junction. '
-                             'If your junctions file is in bed format, the score field will be used for read support.')
+                        help='minimum number of supporting reads to keep a junction, from either --junction_tab '
+                             'or --junction_bed; for bed the score column holds the count (default: %(default)s)')
     parser.add_argument('--ss_window', type=int, default=15,
                         help='window size for correcting splice sites (15)')
     parser.add_argument('--junc_support', type=int, default=2,

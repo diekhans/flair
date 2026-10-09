@@ -1,7 +1,7 @@
 """Reads assigned to each transcript by count_sam_transcripts, one row per
 transcript.
 
-Columns, in order, with no header line:
+Columns, in order:
 
   transcript   the transcript
   count        how many reads were assigned to it
@@ -16,9 +16,9 @@ TYPE_MAP = {'transcript': str, 'count': int}
 
 class TranscriptCountsReader(TsvReader):
     def __init__(self, transcript_counts_tsv):
-        super().__init__(transcript_counts_tsv, columns=COLUMNS, typeMap=TYPE_MAP)
+        super().__init__(transcript_counts_tsv, typeMap=TYPE_MAP)
 
 class TranscriptCountsWriter(TsvWriter):
     def __init__(self, transcript_counts_tsv, *, outFh=None):
         super().__init__(transcript_counts_tsv, columns=COLUMNS, typeMap=TYPE_MAP,
-                         outFh=outFh, writeHeader=False)
+                         outFh=outFh)

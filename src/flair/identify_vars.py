@@ -10,7 +10,7 @@ from flair import FlairInputDataError
 from flair.pycbio.sys import cli
 from flair.io_utils import make_temp_dir
 from flair.pycbio.hgdata.bed import BedReader
-from flair.indel_vars_tsv import IndelVarsWriter
+from flair.indel_vars_tsv import IndelVarsReader, IndelVarsWriter
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -351,10 +351,11 @@ def write_output_vcf(genome_file, output, regions, temp_dir):
         with vcfpy.Writer.from_path(output + '.vcf', vcf_header) as writer:
             format_strings = ['GT', 'DP', 'AD']
             for region in regions:
-                for line in open(temp_dir + '-'.join([str(x) for x in region]) + '.txt'):
-                    chrom, start_pos, indel_type, ref_seq, alt_seq, indel_reads, tot_cov, filters = line.rstrip('\n').split('\t')
-                    indel_reads, tot_cov = int(indel_reads), int(tot_cov)
-                    filters = [x for x in filters.split(',') if x != '']
+                for row in IndelVarsReader(temp_dir + '-'.join([str(x) for x in region]) + '.txt'):
+                    chrom, start_pos, indel_type = row.chrom, row.pos, row.indel_type
+                    ref_seq, alt_seq = row.ref_seq, row.var_seq
+                    indel_reads, tot_cov = row.indel_reads, row.tot_cov
+                    filters = list(row.filters)
                     if len(filters) == 0:
                         filters.append('PASS')
                     alt_desc = vcfpy.Substitution(indel_type, alt_seq)

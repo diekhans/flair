@@ -1,11 +1,11 @@
 """VCF variants grouped by the region they fall in, written by
 annotate_group_vcf_vars.
 
-Columns, in order, with no header line:
+Columns, in order:
 
   chrom        the chromosome
   region       the region the variant falls in
-  pos          the position
+  pos          the position, one based as the VCF writes it
   ref          the reference allele
   alts         the alternate alleles, comma separated in the file and a list
                on the row
@@ -18,11 +18,11 @@ COLUMNS = ('chrom', 'region', 'pos', 'ref', 'alts', 'name')
 
 class RegionVarsReader(TsvReader):
     def __init__(self, region_vars_tsv):
-        super().__init__(region_vars_tsv, columns=COLUMNS, defaultColType=str,
+        super().__init__(region_vars_tsv, defaultColType=str,
                          typeMap={'alts': commaListType})
 
 class RegionVarsWriter(TsvWriter):
     def __init__(self, region_vars_tsv, *, outFh=None):
         super().__init__(region_vars_tsv, columns=COLUMNS, defaultColType=str,
                          typeMap={'alts': commaListType},
-                         outFh=outFh, writeHeader=False)
+                         outFh=outFh)

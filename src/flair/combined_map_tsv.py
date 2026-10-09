@@ -1,6 +1,6 @@
 """What each combined id was made from, written by flair combine.
 
-Columns, in order, with no header line:
+Columns, in order:
 
   new_id       the FLT or FLG id the combined transcriptome uses
   source_ids   the ids it was built from, each written <samples>:<id> with the
@@ -19,12 +19,12 @@ TYPE_MAP = {'new_id': str, 'source_ids': semicolonSpaceListType}
 
 class CombinedMapReader(TsvReader):
     def __init__(self, combined_map_txt):
-        super().__init__(combined_map_txt, columns=COLUMNS, typeMap=TYPE_MAP)
+        super().__init__(combined_map_txt, typeMap=TYPE_MAP)
 
 class CombinedMapWriter(TsvWriter):
     def __init__(self, combined_map_txt, *, outFh=None):
         super().__init__(combined_map_txt, columns=COLUMNS, typeMap=TYPE_MAP,
-                         outFh=outFh, writeHeader=False)
+                         outFh=outFh)
 
     def writeSources(self, new_id, source_ids):
         self.writeRow((new_id, source_ids))

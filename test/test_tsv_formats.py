@@ -14,7 +14,7 @@ from flair.drimseq_counts_tsv import DrimSeqCountsReader, drimseq_counts_writer
 from flair.es_events_tsv import EsEventsReader, EsEventsWriter
 from flair.event_quant_tsv import EventQuantReader, columns as event_quant_columns, event_quant_writer
 from flair.formula_matrix_tsv import FormulaMatrixReader, FormulaRow, write_formula_matrix
-from flair.gene_juncs_tsv import GeneJuncsReader, GeneJuncsWriter, parse_junc_coord
+from flair.gene_juncs_tsv import GeneJuncsReader, GeneJuncsWriter
 from flair.indel_vars_tsv import IndelVarsReader, IndelVarsWriter
 from flair.iso_allele_counts_tsv import IsoAlleleCountsReader, iso_allele_counts_writer
 from flair.iso_usage_change_tsv import IsoUsageChangeReader, iso_usage_change_writer
@@ -32,6 +32,14 @@ from flair.tpm_tsv import CountsRow, TpmReader, tpm_writer
 from flair.transcript_counts_tsv import TranscriptCountsReader, TranscriptCountsWriter
 from flair.var_counts_tsv import VarCountsReader, var_counts_writer
 from flair.vargroup_counts_tsv import VarGroupCountsReader, vargroup_counts_writer
+
+def chained_messages(ex):
+    "every message on an exception chain, for checking why a row was refused"
+    messages = []
+    while ex is not None:
+        messages.append(str(ex))
+        ex = ex.__cause__
+    return '\n'.join(messages)
 
 def tsv_path(tmp_path, name):
     return str(tmp_path / name)
@@ -161,10 +169,19 @@ def test_diffsplice_fishers_round_trip(tmp_path):
 
 def test_gene_juncs_round_trip(tmp_path):
     path = written(GeneJuncsWriter, tsv_path(tmp_path, 'gj.txt'),
-                   [('gene1', ['100.200', '300.400'], 50, 500, '+', 'readA')])
+                   [('gene1', [(100, 200), (300, 400)], 50, 500, '+', 'readA')])
     rows = list(GeneJuncsReader(path))
-    assert rows[0].juncs == ['100.200', '300.400']
-    assert parse_junc_coord(rows[0].juncs[0]) == (100, 200)
+    assert rows[0].juncs == [(100, 200), (300, 400)]
+
+def test_gene_juncs_bad_junction(tmp_path):
+    path = tsv_path(tmp_path, 'gj.txt')
+    with open(path, 'w') as fh:
+        fh.write('gene\tjuncs\tstart\tend\tstrand\tread\n')
+        fh.write('gene1\t100.200\t50\t500\t+\treadA\n')
+    with pytest.raises(Exception) as caught:
+        list(GeneJuncsReader(path))
+    # the reader wraps the column error twice over, so the reason is on the chain
+    assert "is not start-end" in chained_messages(caught.value)
 
 def test_indel_vars_round_trip(tmp_path):
     path = written(IndelVarsWriter, tsv_path(tmp_path, 'indels.txt'),
@@ -198,7 +215,7 @@ def test_marked_isoforms_round_trip(tmp_path):
     with MarkedIsoformsWriter(path, len(bed_row)) as writer:
         writer.writeIsoform(bed_row, True)
         writer.writeIsoform(bed_row, False)
-    rows = list(MarkedIsoformsReader(path, len(bed_row)))
+    rows = list(MarkedIsoformsReader(path))
     assert [r.retains_intron for r in rows] == [1, 0]
 
 def test_read_ends_round_trip(tmp_path):

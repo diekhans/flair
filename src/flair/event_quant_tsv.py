@@ -10,6 +10,10 @@ Columns, in order:
   isoform_ids  ids of the isoforms on this side, comma separated in the file
                and a list on the row
 
+Coordinates are zero based and half open, as they come from a BED: a
+junction start is the end of the exon before it, a junction end the start of
+the exon after.
+
 Written by call_diffsplice_events for alternative 3' and 5' splice sites and
 intron retention, and by es_as_inc_excl_to_counts for exon skipping.  DRIMSeq
 reads it; flair diffsplice skips an event type whose file holds only the header.

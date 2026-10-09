@@ -14,6 +14,8 @@ The four coordinate columns are comma separated in the file and lists on the
 row.
   <sample>             one column per sample
 
+Coordinates are zero based and half open, as they come from a BED.
+
 Three files share these columns and differ only in what the sample columns hold:
 
   .diffsplice.counts.tsv    reads supporting the event

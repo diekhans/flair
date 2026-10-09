@@ -1,7 +1,7 @@
 """Where each read's ends fall on the transcript it was assigned to, written by
 count_sam_transcripts --output_endpos.
 
-Columns, in order, with no header line:
+Columns, in order:
 
   read             the read name
   transcript       the transcript it was assigned to
@@ -29,9 +29,9 @@ TYPE_MAP = {'read': str, 'transcript': str,
 
 class ReadEndsReader(TsvReader):
     def __init__(self, read_ends_tsv):
-        super().__init__(read_ends_tsv, columns=COLUMNS, typeMap=TYPE_MAP)
+        super().__init__(read_ends_tsv, typeMap=TYPE_MAP)
 
 class ReadEndsWriter(TsvWriter):
     def __init__(self, read_ends_tsv, *, outFh=None):
         super().__init__(read_ends_tsv, columns=COLUMNS, typeMap=TYPE_MAP,
-                         outFh=outFh, writeHeader=False)
+                         outFh=outFh)

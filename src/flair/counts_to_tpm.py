@@ -3,6 +3,7 @@
 import sys
 from flair import FlairInputDataError
 from flair.counts_matrix_tsv import ID_COLUMNS, CountsRow
+from flair.seq_lengths_tsv import SeqLengthsReader
 from flair.tpm_tsv import tpm_writer
 from flair.pycbio.sys import cli
 
@@ -10,10 +11,7 @@ def parse_input():
     try:
         counts_matrix = open(sys.argv[1])
         outfilename = sys.argv[2]
-        if len(sys.argv) > 3:
-            sizefile = open(sys.argv[3])
-        else:
-            sizefile = None
+        sizefile = sys.argv[3] if len(sys.argv) > 3 else None
     except Exception:
         raise FlairInputDataError('usage: counts_to_tpm.py counts_matrix.tsv count_matrix.tpm.tsv [iso.sizes]\n'
                                   'convenience script for obtaining a file of isoform sizes: bin/fasta_seq_lengths.py\n'
@@ -23,9 +21,7 @@ def parse_input():
 def counts_to_tpm(counts_matrix, outfilename, sizefile=None):
     sizes = {}
     if sizefile:
-        for line in sizefile:
-            line = line.rstrip().split('\t')
-            sizes[line[0]] = float(line[1])
+        sizes = {row.name: row.length for row in SeqLengthsReader(sizefile)}
 
     header = counts_matrix.readline().rstrip().split('\t')
     num_id_cols = len(ID_COLUMNS)

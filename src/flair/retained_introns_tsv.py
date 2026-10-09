@@ -1,6 +1,6 @@
 """Introns that an isoform retains, one row per distinct intron.
 
-Columns, in order, with no header line:
+Columns, in order:
 
   chrom        the chromosome
   start        the intron start, zero based
@@ -17,9 +17,8 @@ TYPE_MAP = {'chrom': str, 'start': int, 'end': int, 'strand': str}
 
 class RetainedIntronsReader(TsvReader):
     def __init__(self, retained_introns_tsv):
-        super().__init__(retained_introns_tsv, columns=COLUMNS, typeMap=TYPE_MAP)
+        super().__init__(retained_introns_tsv, typeMap=TYPE_MAP)
 
 class RetainedIntronsWriter(TsvWriter):
     def __init__(self, retained_introns_tsv):
-        super().__init__(retained_introns_tsv, columns=COLUMNS, typeMap=TYPE_MAP,
-                         writeHeader=False)
+        super().__init__(retained_introns_tsv, columns=COLUMNS, typeMap=TYPE_MAP)

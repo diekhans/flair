@@ -7,6 +7,8 @@ from shutil import rmtree
 import logging
 from flair import FlairInputDataError
 from flair.counts_matrix_tsv import CountsRow, write_counts_matrix
+from flair.read_map_tsv import ReadMapReader, ReadMapWriter
+from flair.transcript_counts_tsv import TranscriptCountsReader
 from flair.sample_info_tsv import SampleInfo, sample_info_path, write_sample_info
 from flair.io_utils import make_temp_dir
 from flair.pycbio.hgdata.bed import BedReader, BedBlock
@@ -151,9 +153,8 @@ def gene_counts_rows(sample_data, gene_data, temp_dir, gene_id):
     gene_info = gene_data[gene_id]
     iso_to_counts = {x.name: [0] * len(sample_data) for x in gene_info.isoform_beds}
     for i, (sample, group, batch, bamfile) in enumerate(sample_data):
-        for line in open(temp_dir + gene_id + '/' + sample + '.isoform.counts.txt'):
-            line = line.rstrip().split('\t')
-            iso_to_counts[line[0]][i] = int(line[1])
+        for row in TranscriptCountsReader(temp_dir + gene_id + '/' + sample + '.isoform.counts.txt'):
+            iso_to_counts[row.transcript][i] = row.count
     return [CountsRow(gene_id, iso, counts) for iso, counts in iso_to_counts.items()]
 
 def write_combined_counts(sample_data, gene_data, temp_dir, output):
@@ -167,10 +168,10 @@ def write_combined_counts(sample_data, gene_data, temp_dir, output):
 def write_map_out(sample_data, gene_data, temp_dir, output, generate_map):
     if generate_map:
         for sample, group, batch, bamfile in sample_data:
-            with open(f'{output}.{sample}.read.map.txt', 'w') as fh:
+            with ReadMapWriter(f'{output}.{sample}.read.map.txt') as writer:
                 for gene_id in gene_data:
-                    for line in open(temp_dir + gene_id + '/' + sample + '.isoform.read.map.txt'):
-                        fh.write(line)
+                    for row in ReadMapReader(temp_dir + gene_id + '/' + sample + '.isoform.read.map.txt'):
+                        writer.writeReads(row.name, row.reads)
 
 def get_counts_for_sample(sample, bamfile, temp_prefix, gene_info, generate_map, trust_ends):
     temp_prefix_sample = temp_prefix + sample

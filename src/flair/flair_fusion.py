@@ -15,6 +15,7 @@ from flair.read_processing import get_sequence_from_bed
 from flair.pycbio.hgdata.bed import Bed, BedReader
 from flair.bed_to_gtf import bed_to_gtf
 from flair.isoform_data import make_big_bed
+from flair.read_map_tsv import ReadMapReader, ReadMapWriter
 
 def add_subparser(subparsers):
     desc = "Identify gene fusions and generate a fusion transcriptome"
@@ -405,11 +406,10 @@ def detectfusions(*, genome, gtf, genome_aligned_bam, sample_name, output, threa
             if good:
                 out.write(line)
 
-    with open(output + '.fusion.isoform.read.map.txt', 'w') as out:
-        for line in open(output + '.syntheticAligned.flair.isoform.read.map.txt'):
-            name = line.split('\t', 1)[0]
-            if name in goodisos:
-                out.write(line)
+    with ReadMapWriter(output + '.fusion.isoform.read.map.txt') as out:
+        for row in ReadMapReader(output + '.syntheticAligned.flair.isoform.read.map.txt'):
+            if row.name in goodisos:
+                out.writeReads(row.name, row.reads)
 
     bed_to_gtf(output + '.fusions.isoforms.bed', output + '.fusions.isoforms.gtf', is_flair_bed=True)
 

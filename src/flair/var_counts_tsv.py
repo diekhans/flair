@@ -9,6 +9,8 @@ Columns, in order:
   <sample>     one column per sample, holding the unmodified and modified read
                counts, ';' separated in the file and a pair on the row
 
+Positions are one based, as the VCF they came from writes them.
+
 A variant is written when some sample has at least --threshold reads over it and
 some sample carries it, or always with --output_all.
 """

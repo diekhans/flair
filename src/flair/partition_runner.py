@@ -18,12 +18,21 @@ _GTF_DATA_PKL = 'gtf_data.pkl'
 _JUNCTION_CORRECTOR_PKL = 'junction_corrector.pkl'
 
 
-def combine_temp_files_by_suffix(output, temp_prefixes, suffixes):
+def _copy_part(in_fh, combined_fh, skip_header):
+    "one partition file, without its header when the joined file already has one"
+    if skip_header:
+        in_fh.readline()
+    shutil.copyfileobj(in_fh, combined_fh, 1024 * 1024 * 10)
+
+def combine_temp_files_by_suffix(output, temp_prefixes, suffixes, *, headers=()):
+    """Join each partition file into one.  A suffix named in headers is a TSV whose
+    parts each carry the header, so only the first part keeps it."""
     for filesuffix in suffixes:
+        has_header = filesuffix in headers
         with open(output + filesuffix, 'wb') as combined_fh:
-            for temp_prefix in temp_prefixes:
+            for num, temp_prefix in enumerate(temp_prefixes):
                 with open(temp_prefix + filesuffix, 'rb') as in_fh:
-                    shutil.copyfileobj(in_fh, combined_fh, 1024 * 1024 * 10)
+                    _copy_part(in_fh, combined_fh, has_header and (num > 0))
 
 
 def parallel_mode_parse(parallel_mode):

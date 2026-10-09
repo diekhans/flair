@@ -9,7 +9,7 @@ from flair.flair_bed import FlairBed
 from flair.predictProductivity import translate_from_bed
 from flair.aaseq_tsv import write_aaseqs
 from flair.iso_allele_counts_tsv import IsoAlleleCountsWriter
-from flair.read_map_tsv import ReadMapWriter
+from flair.read_map_tsv import ReadMapReader, ReadMapWriter
 from flair.isoform_data import make_big_bed, get_reverse_complement, translate_codon, COMPBASE
 from flair import FlairInputDataError
 
@@ -85,9 +85,9 @@ def get_bedisoform_info(bedisofile):
 
 def load_read_maps(read_map_files, read_to_data, index):
     for label, mapfile in read_map_files:
-        for line in open(mapfile):
-            data, reads = line.rstrip().split('\t', 1)
-            for read in reads.split(','):
+        for row in ReadMapReader(mapfile):
+            data, reads = row.name, row.reads
+            for read in reads:
                 if (label, read) not in read_to_data:
                     read_to_data[(label, read)] = [None, None]
                 read_to_data[(label, read)][index] = data

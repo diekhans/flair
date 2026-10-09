@@ -23,7 +23,9 @@ from flair.annotation_data import annot_data_from_gtf
 from flair.pycbio.hgdata.bed import BedReader
 from flair.predictProductivity import predict_prod_temp
 from flair.aaseq_tsv import write_aaseqs
-from flair.read_ends_tsv import ReadEndsReader
+from flair.read_ends_tsv import ReadEndsReader, ReadEndsWriter
+from flair.read_map_tsv import ReadMapReader, ReadMapWriter
+from flair.isoform_counts_tsv import IsoformCountsWriter
 from flair.flair_bed import FlairBed
 
 MIN_POLYA_FRAC_DIFF_FOR_SE_STRANDING = 0.1
@@ -1142,10 +1144,21 @@ def _iso_passes_support_filter(args, iso, gene, num_exons, iso_to_counts, gene_t
         else:
             return (count >= args.single_exon_support) and (count / gene_to_tot[gene][1]) >= args.frac_support, (count / gene_to_tot[gene][1])
 
+
+# the empty intermediates that are TSVs: an empty TSV is still its header, since
+# the next stage reads it with the format's reader
+EMPTY_TSV_WRITERS = {'.isoform.counts.txt': IsoformCountsWriter,
+                     '.isoform.read.map.txt': ReadMapWriter,
+                     '.countsam.read.map.txt': ReadMapWriter,
+                     '.isoform.ends.tsv': ReadEndsWriter}
+
 def generate_empty_intermediate_files(file_prefix, suffixes):
     for s in suffixes:
-        out = open(file_prefix + s, 'w')
-        out.close()
+        writer_class = EMPTY_TSV_WRITERS.get(s)
+        if writer_class is None:
+            open(file_prefix + s, 'w').close()
+        else:
+            writer_class(file_prefix + s).close()
 
 def calc_final_iso_support(read_ends_file, final_transcript_objs, trust_ends):
     iso_to_counts = {}
@@ -1190,14 +1203,13 @@ def calc_final_iso_support(read_ends_file, final_transcript_objs, trust_ends):
 def write_final_isoform_output(partition, args, final_transcript_objs, iso_to_counts, gene_to_tot, annots, genome, generate_map):
     transcript_to_reads = {}
     if generate_map:
-        for line in open(partition.output_path('countsam.read.map.txt')):
-            iso, reads = line.split('\t', 1)
-            transcript_to_reads[iso] = reads
+        for row in ReadMapReader(partition.output_path('countsam.read.map.txt')):
+            transcript_to_reads[row.name] = row.reads
 
     with open(partition.output_path('isoforms.bed'), 'w') as iso_fh, \
          open(partition.output_path('isoforms.fa'), 'w') as seq_fh, \
-         open(partition.output_path('isoform.counts.txt'), 'w') as counts_fh, \
-         open(partition.output_path('isoform.read.map.txt'), 'w') as map_fh:
+         IsoformCountsWriter(partition.output_path('isoform.counts.txt')) as counts_fh, \
+         ReadMapWriter(partition.output_path('isoform.read.map.txt')) as map_fh:
         for tname in final_transcript_objs:
             # spliced isos checked against spliced total, single exon checked against full-length total
             isoform = final_transcript_objs[tname]
@@ -1217,9 +1229,10 @@ def write_final_isoform_output(partition, args, final_transcript_objs, iso_to_co
                                      frac_support=my_frac_support, productivity=productivity, samples=(args.sample_name,), aaseq_id=aaseq).write(iso_fh)
                 seq_fh.write('>' + isoform.name + '\n')
                 seq_fh.write(isoform.get_sequence(genome) + '\n')
-                counts_fh.write(f'{isoform.name}\t{iso_to_counts[tname][0]}\t{iso_to_counts[tname][1]}\n')
+                counts_fh.writeRow((isoform.name, iso_to_counts[tname][0],
+                                    iso_to_counts[tname][1]))
                 if generate_map:
-                    map_fh.write(f'{isoform.name}\t{transcript_to_reads[tname]}')
+                    map_fh.writeReads(isoform.name, transcript_to_reads[tname])
 
 
 def _run_region(*, partition, gtf_data, junction_corrector, args):
@@ -1319,13 +1332,18 @@ def _run_region_reads(*, partition, region, gtf_data, junction_corrector, args):
         iso_to_counts, gene_to_tot = calc_final_iso_support(partition.output_path('isoform.ends.tsv'), final_transcript_objs, args.trust_ends)
         write_final_isoform_output(partition, args, final_transcript_objs, iso_to_counts, gene_to_tot, annots, genome, args.generate_map)
 
+
+# the joined files that are TSVs with a header, as against BED and FASTA
+TSV_SUFFIXES = ('.isoform.counts.txt', '.isoform.read.map.txt')
+
 def combine_chunks(args, output, partitions):
     files_to_combine = ['.isoforms.bed', '.isoforms.fa', '.isoform.counts.txt']
     if args.generate_map:
         files_to_combine.append('.isoform.read.map.txt')
     if args.keep_intermediate:
         files_to_combine.extend(['.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed', '.firstpass.bed'])
-    combine_temp_files_by_suffix(output, [p.file_prefix for p in partitions], files_to_combine)
+    combine_temp_files_by_suffix(output, [p.file_prefix for p in partitions], files_to_combine,
+                                 headers=TSV_SUFFIXES)
 
 def get_new_ids(output):
     iso_hash_to_ID, gene_hash_to_ID, aaseq_to_id = {}, {}, {}
@@ -1353,8 +1371,10 @@ def get_new_ids(output):
     return iso_hash_to_ID
 
 def fix_ids_txt_file(iso_hash_to_ID, oldfile, newfile):
-    with open(newfile, 'w') as fh:
-        for line in open(oldfile):
+    "rename the ids in the first column, keeping the header"
+    with open(oldfile) as in_fh, open(newfile, 'w') as fh:
+        fh.write(in_fh.readline())  # header, whose first field is a column name
+        for line in in_fh:
             line = line.split('\t', 1)
             if line[0] in iso_hash_to_ID:  # had to add this check due to having isoforms in this file that were not in bed due to not passing final filters
                 line[0] = iso_hash_to_ID[line[0]]

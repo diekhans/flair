@@ -10,8 +10,7 @@ import pysam
 import logging
 import scipy.stats as sps
 from flair.partition_runner import PartitionRunner, combine_temp_files_by_suffix
-from flair.pycbio.sys import fileOps
-from flair.gene_juncs_tsv import GeneJuncsReader, GeneJuncsWriter, parse_junc_coord
+from flair.gene_juncs_tsv import GeneJuncsReader, GeneJuncsWriter
 from flair.read_ends_tsv import ReadEndsReader
 from flair import SeqRange, resolve_deprecated_option
 from statistics import median
@@ -23,13 +22,18 @@ from flair.read_correction import filter_correct_group_reads
 from flair.gtf_io import gtf_data_parser, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
 from flair.annotation_data import annot_data_from_gtf
 from flair.gtf_to_bed import GENE_ID_EXTRA_COL
-from flair.splicing_events_tsv import SplicingEventsWriter, columns as splicing_events_columns
-from flair.splicing_outliers_tsv import SplicingOutliersWriter, COLUMNS as OUTLIER_COLUMNS
+from flair.splicing_events_tsv import SplicingEventsWriter
+from flair.splicing_outliers_tsv import SplicingOutliersWriter
 from flair.pycbio.hgdata.bed import Bed, BedReader
 from flair.count_sam_transcripts import run_count_sam_transcripts
 
 pkgdir = osp.dirname(osp.realpath(__file__))
 gtf_to_bed_prog = osp.join(pkgdir, "gtf_to_bed.py")
+
+# joined files whose parts each carry a header
+EVENT_SUFFIXES = ('.diffsplice.counts.tsv', '.diffsplice.PSIjunc.tsv',
+                  '.diffsplice.PSItot.tsv')
+OUTLIER_SUFFIXES = ('.diffsplice.outliers.tsv', '.diffsplice.outliers.filtered.tsv')
 
 def get_args():
     parser = argparse.ArgumentParser(description='identifies counts of different splicing events directly from a '
@@ -997,12 +1001,12 @@ def process_gene_to_events(temp_prefix, thischrom, allsamples, all_genes_to_junc
     allgenes = set.union(*[set(all_genes_to_juncs[s].keys()) for s in range(len(all_genes_to_juncs))])
     outoutlier, outolfilt = None, None
     if check_outliers:
-        outoutlier = SplicingOutliersWriter(temp_prefix + '.diffsplice.outliers.tsv', writeHeader=False)
-        outolfilt = SplicingOutliersWriter(temp_prefix + '.diffsplice.outliers.filtered.tsv', writeHeader=False)
+        outoutlier = SplicingOutliersWriter(temp_prefix + '.diffsplice.outliers.tsv')
+        outolfilt = SplicingOutliersWriter(temp_prefix + '.diffsplice.outliers.filtered.tsv')
     with open(temp_prefix + '.diffsplice.bed', 'w') as outbed, \
-            SplicingEventsWriter(temp_prefix + '.diffsplice.counts.tsv', allsamples, writeHeader=False) as outcounts, \
-            SplicingEventsWriter(temp_prefix + '.diffsplice.PSIjunc.tsv', allsamples, writeHeader=False) as outpsijunc, \
-            SplicingEventsWriter(temp_prefix + '.diffsplice.PSItot.tsv', allsamples, writeHeader=False) as outpsitot:
+            SplicingEventsWriter(temp_prefix + '.diffsplice.counts.tsv', allsamples) as outcounts, \
+            SplicingEventsWriter(temp_prefix + '.diffsplice.PSIjunc.tsv', allsamples) as outpsijunc, \
+            SplicingEventsWriter(temp_prefix + '.diffsplice.PSItot.tsv', allsamples) as outpsitot:
 
         for gene in allgenes:
 
@@ -1126,10 +1130,10 @@ def get_juncs_single_sample(args, region, temp_prefix, sample, bamfile_name, reg
     with GeneJuncsWriter(temp_prefix + '_gene_to_juncs.txt') as out:
         for gene in genetojuncs:
             for juncs in genetojuncs[gene]:
-                junc_coords = ['.'.join([str(y) for y in x]) for x in juncs]
+                junc_chain = [(junc[0], junc[1]) for junc in juncs]
                 for read_info in genetojuncs[gene][juncs].reads:
                     c += 1
-                    out.writeRow((gene, junc_coords, read_info.start, read_info.end,
+                    out.writeRow((gene, junc_chain, read_info.start, read_info.end,
                                   genetojuncs[gene][juncs].strand, read_info.name))
     remove_region_temp_files(temp_prefix, good_annot_aligns is not None)
 
@@ -1197,7 +1201,7 @@ def _run_region(*, partition, gtf_data, junction_corrector, args, allsamples):  
         for sample, bamfile in allsamples:
             gene_to_juncs = {}
             for row in GeneJuncsReader(partition.file_prefix + '_' + sample + '_gene_to_juncs.txt'):
-                juncs = tuple(parse_junc_coord(coord) for coord in row.juncs)
+                juncs = tuple(row.juncs)
                 if row.gene not in gene_to_juncs:
                     gene_to_juncs[row.gene] = {}
                 if juncs not in gene_to_juncs[row.gene]:
@@ -1233,16 +1237,6 @@ def combine_regions(regions, buffersize=0):
         new_regions.append(SeqRange(lastchrom, laststart, lastend))
     return new_regions
 
-
-def prepend_header(tsv, columns):
-    """Put the header on a file concatenated from headerless partition parts.
-    Written beside the file and renamed, so an interrupted run cannot leave a
-    file with no header."""
-    with fileOps.AtomicFileCreate(tsv) as tmp_tsv:
-        with open(tmp_tsv, 'w') as out_fh:
-            out_fh.write('\t'.join(columns) + '\n')
-            with open(tsv) as in_fh:
-                shutil.copyfileobj(in_fh, out_fh)
 
 def main():  # noqa: C901 - FIXME: reduce complexity
     logging.basicConfig(level=logging.INFO)
@@ -1300,20 +1294,13 @@ def main():  # noqa: C901 - FIXME: reduce complexity
     runner.run(_run_region, args=args, allsamples=allsamples)
 
     combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner],
-                                 ['.diffsplice.bed', '.diffsplice.counts.tsv', '.diffsplice.PSIjunc.tsv', '.diffsplice.PSItot.tsv'])
+                                 ['.diffsplice.bed'] + list(EVENT_SUFFIXES),
+                                 headers=EVENT_SUFFIXES)
     if args.output_read_ends:
         combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner], ['.diffsplice.readends.bed'])
     if args.check_outliers:
-        combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner], ['.diffsplice.outliers.tsv', '.diffsplice.outliers.filtered.tsv'])
-
-    sample_names = [x[0] for x in allsamples]
-    for suffix in ['.diffsplice.counts', '.diffsplice.PSIjunc', '.diffsplice.PSItot']:
-        prepend_header(args.output + suffix + '.tsv',
-                       splicing_events_columns(sample_names))
-
-    if args.check_outliers:
-        for suffix in ['.diffsplice.outliers', '.diffsplice.outliers.filtered']:
-            prepend_header(args.output + suffix + '.tsv', OUTLIER_COLUMNS)
+        combine_temp_files_by_suffix(args.output, [p.file_prefix for p in runner],
+                                     list(OUTLIER_SUFFIXES), headers=OUTLIER_SUFFIXES)
 
     if not args.keep_intermediate:
         shutil.rmtree(tempDir)

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import argparse
-import csv
-import os
+from flair.marked_isoforms_bed import MarkedIsoformsWriter, bed_column_count
 from flair.pycbio.sys import cli
+from flair.retained_introns_tsv import RetainedIntronsWriter
 from flair.pycbio.hgdata.bed import BedReader
 
 def overlap(coords0, coords1):
@@ -63,19 +63,16 @@ def mark_intron_retention(isoform_bed, marked_bed, intron_txt):  # noqa C901
                             introncoords.add((chrom, str(prev5), (start1), isoforms[chrom][iname0]['strand']))
                     prev5 = start1 + size1
 
-    with open(outfilename, 'wt') as outfile:
-        writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
-        for chrom in isoforms:
-            for name in isoforms[chrom]:
-                if isoforms[chrom][name]['ir']:
-                    writer.writerow(isoforms[chrom][name]['entry'] + [1])
-                else:
-                    writer.writerow(isoforms[chrom][name]['entry'] + [0])
+    marked = [(isoforms[chrom][name]['entry'], isoforms[chrom][name]['ir'])
+              for chrom in isoforms for name in isoforms[chrom]]
+    with MarkedIsoformsWriter(outfilename, bed_column_count([e for e, _ in marked])) as writer:
+        for entry, retains_intron in marked:
+            writer.writeIsoform(entry, retains_intron)
 
-    with open(txtout, 'wt') as outfile:
-        writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
-        for intron in introncoords:
-            writer.writerow(intron)
+    # sorted, since introncoords is a set and an unordered file cannot be diffed
+    with RetainedIntronsWriter(txtout) as writer:
+        for intron in sorted(introncoords):
+            writer.writeRow(intron)
 
 
 def main():

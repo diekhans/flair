@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 
 import argparse
-import csv
-import os
-import scipy.stats as sps
 from flair import FlairInputDataError
+from flair.iso_usage_tsv import iso_usage_writer
 from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows
 from flair.pycbio.sys import cli
 
@@ -33,6 +31,42 @@ def sample_column_index(sample_columns, colname, counts_matrix_tsv):
             f"{' '.join(sample_columns)}")
     return sample_columns.index(colname)
 
+def iso_psi(this_counts, other_counts):
+    "each sample's PSI for one isoform, and the change, NA where it cannot be taken"
+    s1PSI, s2PSI, deltaPSI = 'NA', 'NA', 'NA'
+    if other_counts[0] + this_counts[0] > 0:
+        s1PSI = round(this_counts[0] / (other_counts[0] + this_counts[0]), 3)
+    if other_counts[1] + this_counts[1] > 0:
+        s2PSI = round(this_counts[1] / (other_counts[1] + this_counts[1]), 3)
+    if s1PSI != 'NA' and s2PSI != 'NA':
+        deltaPSI = round(s2PSI - s1PSI, 3)
+    return [s1PSI, s2PSI, deltaPSI]
+
+def other_isoform_counts(gene_counts, iso):
+    "the gene's counts without this isoform"
+    other = [0, 0]
+    for other_iso, counts in gene_counts.items():
+        if other_iso != iso:
+            other[0] += counts[0]
+            other[1] += counts[1]
+    return other
+
+def gene_usage_rows(gene, gene_counts, colname1, colname2):
+    "one row per isoform of a gene"
+    import scipy.stats as sps
+    rows = []
+    for iso, this_counts in gene_counts.items():
+        other_counts = other_isoform_counts(gene_counts, iso)
+        ctable = [this_counts, other_counts]
+        # an isoform with no expression of its gene in one sample cannot be tested
+        if (this_counts[0] + other_counts[0] == 0 or this_counts[1] + other_counts[1] == 0
+                or sum(this_counts) == 0 or sum(other_counts) == 0):
+            rows.append([gene, iso, 'NA'] + this_counts + other_counts + ['NA', 'NA', 'NA'])
+        else:
+            rows.append([gene, iso, sps.fisher_exact(ctable)[1]] + this_counts +
+                        other_counts + iso_psi(this_counts, other_counts))
+    return rows
+
 def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):  # noqa: C901 - FIXME: reduce complexity
     sample_columns = read_sample_columns(counts_matrix_tsv)
     col1 = sample_column_index(sample_columns, colname1, counts_matrix_tsv)
@@ -44,45 +78,10 @@ def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):  # noqa:
             counts[row.gene_id] = {}
         counts[row.gene_id][row.isoform_id] = [float(row.counts[col1]), float(row.counts[col2])]
 
-    with open(outfilename, 'wt') as outfile:
-        writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
-        # the column names say which sample each number came from, so the sign of
-        # delta_PSI can be read from the file without knowing the argument order
-        writer.writerow(['geneID', 'isoID', 'fisher_pval',
-                         f'this_iso_{colname1}_count', f'this_iso_{colname2}_count',
-                         f'other_isos_{colname1}_count', f'other_isos_{colname2}_count',
-                         f'{colname1}_PSI', f'{colname2}_PSI', 'delta_PSI'])
-        geneordered = sorted(counts.keys())
-        for gene in geneordered:
-            generes = []
-            for iso in counts[gene]:
-                thesecounts = counts[gene][iso]
-                othercounts = [0, 0]
-                for iso_ in counts[gene]:
-                    if iso_ != iso:
-                        othercounts[0] += counts[gene][iso_][0]
-                        othercounts[1] += counts[gene][iso_][1]
-                ctable = [thesecounts, othercounts]
-                if thesecounts[0] + othercounts[0] == 0 or thesecounts[1] + othercounts[1] == 0 or sum(thesecounts) == 0 or sum(othercounts) == 0:  # do not test this isoform if no gene exp in one sample
-                    generes.append([gene, iso, 'NA'] + ctable[0] + ctable[1] + ['NA', 'NA', 'NA'])
-                else:
-                    s1PSI, s2PSI, deltaPSI = 'NA', 'NA', 'NA'
-                    if ctable[1][0] + ctable[0][0] > 0:
-                        s1PSI = round(ctable[0][0] / (ctable[1][0] + ctable[0][0]), 3)
-                    if ctable[1][1] + ctable[0][1] > 0:
-                        s2PSI = round(ctable[0][1] / (ctable[1][1] + ctable[0][1]), 3)
-                    if s1PSI != 'NA' and s2PSI != 'NA':
-                        deltaPSI = round(s2PSI - s1PSI, 3)
-                    psi_data = [s1PSI, s2PSI, deltaPSI]
-
-                    generes.append([gene, iso, sps.fisher_exact(ctable)[1]] + ctable[0] + ctable[1] + psi_data)
-
-            # if not generes:
-            #     writer.writerow([gene, iso, 'NA'] + ctable[0] + ctable[1] + psi_data)
-            #     continue
-
-            for res in generes:
-                writer.writerow(res)
+    with iso_usage_writer(outfilename, colname1, colname2) as writer:
+        for gene in sorted(counts.keys()):
+            for row in gene_usage_rows(gene, counts[gene], colname1, colname2):
+                writer.writeRow(row)
 
 
 def main():

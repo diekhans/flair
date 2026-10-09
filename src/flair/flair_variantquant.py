@@ -10,7 +10,7 @@ from flair.pycbio.hgdata.bed import BedReader
 from flair.flair_bed import FlairBed
 from flair.var_counts_tsv import var_counts_writer
 from flair.vargroup_counts_tsv import vargroup_counts_writer
-from flair.io_utils import make_temp_dir
+from flair.io_utils import make_clean_temp_dir
 from flair import FlairInputDataError
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 
@@ -314,7 +314,7 @@ def combine_vcf_files(vcffilelist):
     return vartoalt
 
 class TempVarFiles:
-    """Append handles for the per-reference temp files, opened once each.  The write
+    """Write handles for the per-reference temp files, opened once each.  The write
     path used to open, append and close the file for every read covering a variant."""
     def __init__(self, tempdir, stack):
         self.tempdir = tempdir
@@ -324,7 +324,7 @@ class TempVarFiles:
     def open(self, refname):
         out = self.by_refname.get(refname)
         if out is None:
-            out = self.stack.enter_context(open(self.tempdir + refname + '.txt', 'a'))
+            out = self.stack.enter_context(open(self.tempdir + refname + '.txt', 'w'))
             self.by_refname[refname] = out
         return out
 
@@ -350,11 +350,14 @@ def parse_all_bam_files(sampledata, tempdir, vcfvars):
             logging.info(f'done parsing reads for {sample}')
 
 def get_genes_from_tempdir(tempdir):
+    """The references the run wrote temp files for, sorted: the output rows follow
+    the order these are read in, and os.listdir with a set made that depend on the
+    hash seed, so two runs over the same data could order the file differently."""
     genenames = set()
     for f in os.listdir(tempdir):
         if f[0] != '.' and 'processed' not in f:
             genenames.add(f.split('.txt')[0])
-    return genenames
+    return sorted(genenames)
 
 def quantvarpos(*, manifest, transcriptome_bam, pos_ref, vcf, output, isoform_bed,
                 min_coverage, output_all, keep_intermediate):
@@ -389,7 +392,9 @@ def quantvarpos(*, manifest, transcriptome_bam, pos_ref, vcf, output, isoform_be
             vcfvars[poskey][pos] = (ref, alts, name)
 
     logging.info('done combining vcf variants')
-    tempdir = make_temp_dir(output)
+    # cleaned first: every file in here is read back and summed, so one left
+    # by an earlier run would be counted as this run's
+    tempdir = make_clean_temp_dir(output)
     parse_all_bam_files(sampledata, tempdir, vcfvars)  # parses to intermediate files with read name to all vars
     logging.info('parsed all reads')
     genenames = get_genes_from_tempdir(tempdir)

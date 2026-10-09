@@ -15,6 +15,9 @@
     annotation fasta and isoform names, alignments without AS or MD tags, and the
     option and input problems in junctions_from_sam and identify_vars say what to
     do about them.
+  * `flair variantquant` no longer multiplies its counts when rerun into an
+    output directory an earlier run left intermediates in, and its rows are
+    written in a fixed order rather than one that depended on the hash seed.
   * `flair diffsplice` fails when a counts matrix isoform id has no record in
     `--isoform_bed`.  That combination used to produce empty results silently.
   * `flair diffexp` gained `--condition_a` and `--condition_b`, matching

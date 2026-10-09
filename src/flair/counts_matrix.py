@@ -1,4 +1,10 @@
-"""A flair quantify counts matrix: its sample columns and its isoform row ids.
+"""A flair quantify counts matrix: its id columns, its sample columns and its rows.
+
+The matrix opens with two id columns, gene_id then isoform_id, followed by one
+column of counts per sample.  Each row is one isoform of one gene.  A matrix from an
+earlier FLAIR joined the two into a single isoform_gene column; that form is
+rejected rather than parsed, since splitting it needs a heuristic that is wrong for
+some gene ids.
 
 flair quantify writes a sample info TSV beside the counts matrix, one row per counts
 column, naming each sample's condition and batch.  Readers take the fields from there
@@ -24,8 +30,15 @@ BATCH_FIELD = -1
 
 SAMPLE_INFO_COLUMNS = ('sample_id', 'condition', 'batch')
 
+# the id columns every counts matrix starts with, in this order
+ID_COLUMNS = ('gene_id', 'isoform_id')
+
 # ids named when an error reports a set of offending ids, the rest being redundant
 MAX_REPORTED_IDS = 10
+
+class CountsRow(namedtuple('CountsRow', ('gene_id', 'isoform_id', 'counts'))):
+    "one counts matrix row: one isoform of one gene, and its count in each sample"
+    __slots__ = ()
 
 class SampleInfo(namedtuple('SampleInfo', SAMPLE_INFO_COLUMNS)):
     "one counts matrix column: which sample it holds and how that sample was grouped"
@@ -80,16 +93,44 @@ def read_sample_info(counts_matrix_tsv):
     _check_sample_info(sample_infos, sample_columns, sample_info_tsv, counts_matrix_tsv)
     return sample_infos
 
-def read_sample_columns(counts_matrix_tsv):
-    "the sample column names, in column order, without the leading id column"
+def read_header(counts_matrix_tsv):
+    "the column names, checking that the matrix opens with the two id columns"
     with open(counts_matrix_tsv) as fh:
-        return fh.readline().split()[1:]
+        columns = fh.readline().rstrip('\n').split('\t')
+    if tuple(columns[:len(ID_COLUMNS)]) != ID_COLUMNS:
+        raise FlairInputDataError(
+            f"{counts_matrix_tsv}: a counts matrix must start with the columns "
+            f"{', '.join(ID_COLUMNS)}, found: {', '.join(columns[:len(ID_COLUMNS)])}; "
+            "a matrix from an earlier FLAIR, with one isoform_gene column, must be "
+            "remade with flair quantify")
+    return columns
+
+def read_sample_columns(counts_matrix_tsv):
+    "the sample column names, in column order, without the id columns"
+    return read_header(counts_matrix_tsv)[len(ID_COLUMNS):]
+
+def read_counts_rows(counts_matrix_tsv):
+    "the rows of the matrix, counts still as written"
+    rows = []
+    with open(counts_matrix_tsv) as fh:
+        fh.readline()  # header, checked by read_header
+        for line in fh:
+            if line.strip() != '':
+                fields = line.rstrip('\n').split('\t')
+                rows.append(CountsRow(fields[0], fields[1], fields[len(ID_COLUMNS):]))
+    return rows
+
+def write_counts_matrix(counts_matrix_tsv, sample_columns, rows):
+    "write a counts matrix, rows being CountsRow or any (gene_id, isoform_id, counts)"
+    with open(counts_matrix_tsv, 'w') as fh:
+        writer = csv.writer(fh, delimiter='\t', dialect='unix', quoting=csv.QUOTE_NONE)
+        writer.writerow(list(ID_COLUMNS) + list(sample_columns))
+        for gene_id, isoform_id, counts in rows:
+            writer.writerow([gene_id, isoform_id] + list(counts))
 
 def read_isoform_ids(counts_matrix_tsv):
     "the isoform id of each row, in file order"
-    with open(counts_matrix_tsv) as fh:
-        fh.readline()  # header
-        return [line.split('\t')[0] for line in fh if line.strip() != '']
+    return [row.isoform_id for row in read_counts_rows(counts_matrix_tsv)]
 
 def describe_ids(ids):
     "the first few ids, for naming the offenders in an error without listing them all"

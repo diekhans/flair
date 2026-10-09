@@ -5,7 +5,7 @@ import csv
 import os
 import scipy.stats as sps
 from flair import FlairInputDataError
-from flair.iso_gene_id import split_iso_gene, ISOFORM_GENE_ID_ADVICE
+from flair.counts_matrix import read_header, read_counts_rows, ID_COLUMNS
 from flair.pycbio.sys import cli
 
 
@@ -25,31 +25,25 @@ def build_parser():
                         'isoform usage for each isoform')
     return parser
 
-def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):  # noqa: C901 - FIXME: reduce complexity
-    counts_matrix_fh = open(counts_matrix_tsv)
-    header = counts_matrix_fh.readline().rstrip().split('\t')
+def sample_column_index(header, colname, counts_matrix_tsv):
+    "index of a named sample column within a row's counts"
+    sample_columns = header[len(ID_COLUMNS):]
+    if colname not in sample_columns:
+        raise FlairInputDataError(
+            f"{counts_matrix_tsv} has no sample column named {colname}; it has: "
+            f"{' '.join(sample_columns)}")
+    return sample_columns.index(colname)
 
-    if colname1 in header:
-        col1 = header.index(colname1)
-    else:
-        raise FlairInputDataError('Could not find {} in {}\n'.format(colname1, ' '.join(header)))
-    if colname2 in header:
-        col2 = header.index(colname2)
-    else:
-        raise FlairInputDataError('Could not find {} in {}\n'.format(colname2, ' '.join(header)))
+def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):  # noqa: C901 - FIXME: reduce complexity
+    header = read_header(counts_matrix_tsv)
+    col1 = sample_column_index(header, colname1, counts_matrix_tsv)
+    col2 = sample_column_index(header, colname2, counts_matrix_tsv)
 
     counts = {}
-    for line in counts_matrix_fh:
-        line = line.rstrip().split('\t')
-        iso_gene, count1, count2 = line[0], float(line[col1]), float(line[col2])
-        if '_' not in iso_gene:
-            raise FlairInputDataError(
-                f"row id {iso_gene} in {counts_matrix_tsv} does not name a gene, so isoforms "
-                f"cannot be grouped by gene; {ISOFORM_GENE_ID_ADVICE}")
-        iso, gene = split_iso_gene(iso_gene)
-        if gene not in counts:
-            counts[gene] = {}
-        counts[gene][iso] = [count1, count2]
+    for row in read_counts_rows(counts_matrix_tsv):
+        if row.gene_id not in counts:
+            counts[row.gene_id] = {}
+        counts[row.gene_id][row.isoform_id] = [float(row.counts[col1]), float(row.counts[col2])]
 
     with open(outfilename, 'wt') as outfile:
         writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)

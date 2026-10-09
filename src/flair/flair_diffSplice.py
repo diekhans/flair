@@ -87,8 +87,7 @@ def check_isoform_ids(isoform_bed, counts_matrix):
         raise FlairInputDataError(
             f"{len(missing)} isoform ids in counts matrix {counts_matrix} have no record in "
             f"{isoform_bed}: {describe_ids(missing)}; pass the isoform BED that was quantified "
-            "to produce this counts matrix, quantified without --with_gene, which appends the "
-            "gene to every row id and so matches no BED name")
+            "to produce this counts matrix")
 
 def diffSplice(*, isoform_bed, counts_matrix, output, threads, test, min_samps_gene_expr,  # noqa: C901 - FIXME: reduce complexity
                min_samps_feature_expr, min_gene_expr, min_feature_expr, batch,

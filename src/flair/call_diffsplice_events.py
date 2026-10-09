@@ -4,6 +4,7 @@ retention events from an isoform BED."""
 import argparse
 import csv
 import os
+from flair.counts_matrix import read_sample_columns, read_counts_rows
 from flair.pycbio.hgdata.bed import BedReader
 
 # minimum distance apart for alt SS to be tested
@@ -88,16 +89,13 @@ def main():  # noqa: C901 - FIXME: reduce complexity
     args = parse_args()
     bedfh = open(args.isoforms_bed)
     outfilenamebase = args.out_prefix
-    counts_tsv = open(args.counts_tsv) if args.counts_tsv else ''
 
     iso_counts = {}
     sample_names = []
-    if counts_tsv:
-        sample_names = counts_tsv.readline().rstrip().split('\t')[1:]
-        for line in counts_tsv:
-            line = line.rstrip().split('\t')
-            iso = line[0]
-            iso_counts[iso] = [float(x) for x in line[1:]]
+    if args.counts_tsv:
+        sample_names = read_sample_columns(args.counts_tsv)
+        for row in read_counts_rows(args.counts_tsv):
+            iso_counts[row.isoform_id] = [float(x) for x in row.counts]
 
     isoforms = {}  # ir detection
     ir_junctions = {}  # ir detection

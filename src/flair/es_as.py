@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 import sys
-from flair.iso_gene_id import parse_gene_id
+from flair import FlairInputDataError
+from flair.flair_bed import FlairBed
+from flair.pycbio.hgdata.bed import BedReader
 
 
 class Gene(object):
@@ -116,42 +118,20 @@ class Exon(object):
         self.inclusionJuncs = set()
 
 
-def bed12toExons(start, starts, sizes):
-    '''
-    Take bed12 entry and convert block/sizes to exon coordinates.
-    '''
-    start = int(start)
-    sizes, starts = list(map(int, sizes)), list(map(int, starts))
-    exons = list()
-    for num, st in enumerate(starts, 0):
-        c1 = st + start
-        c2 = c1 + sizes[num]
-        exons.append((c1, c2))
-    return exons
-
-
-# main #
-
-
 def main():
 
     flairIsoforms = sys.argv[1]
     genes = dict()
-    with open(flairIsoforms) as fin:
-        for line in fin:
-            cols = line.rstrip().split()
-            iso, start, starts, sizes = cols[3], cols[1], cols[11], cols[10]
-            chrom, strand = cols[0], cols[5]
-            starts = starts.rstrip(",").split(",")
-            sizes = sizes.rstrip(",").split(",")
+    for bed in BedReader(flairIsoforms, bedClass=FlairBed, fixScores=True):
+        if bed.gene_id is None:
+            raise FlairInputDataError(
+                f"{flairIsoforms}: isoform {bed.name} has no gene_id column; exon "
+                "skipping is called within a gene, so a FLAIR isoform BED is needed")
+        exons = [(blk.start, blk.end) for blk in bed.blocks]
 
-            geneID = parse_gene_id(iso)
-            exons = bed12toExons(start, starts, sizes)
-
-            if geneID not in genes:
-                genes[geneID] = Gene(geneID, chrom, strand)
-            geneObj = genes[geneID]
-            geneObj.isoforms[iso] = exons
+        if bed.gene_id not in genes:
+            genes[bed.gene_id] = Gene(bed.gene_id, bed.chrom, bed.strand)
+        genes[bed.gene_id].isoforms[bed.name] = exons
 
     for gobj in genes.values():
         gobj.buildGraph()

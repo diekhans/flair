@@ -4,6 +4,7 @@ import sys
 import csv
 import os
 from flair import FlairInputDataError
+from flair.counts_matrix import ID_COLUMNS
 from flair.pycbio.sys import cli
 
 def parse_input():
@@ -28,19 +29,21 @@ def counts_to_tpm(counts_matrix, outfilename, sizefile=None):
             sizes[line[0]] = float(line[1])
 
     header = counts_matrix.readline().rstrip().split('\t')
-    num_samples = len(header[1:])
+    num_id_cols = len(ID_COLUMNS)
+    num_samples = len(header[num_id_cols:])
     matrix_data = [header]
     all_rpk = [0] * num_samples
     for line in counts_matrix:
         line = line.rstrip().split('\t')
-        isoform_id = line[0]
+        ids, counts = line[:num_id_cols], line[num_id_cols:]
+        isoform_id = ids[-1]
         if sizes:
-            rpk = [float(count) / sizes[isoform_id] for count in line[1:]]
+            rpk = [float(count) / sizes[isoform_id] for count in counts]
         else:
-            rpk = [float(count) for count in line[1:]]
+            rpk = [float(count) for count in counts]
         for n in range(num_samples):
             all_rpk[n] += rpk[n]
-        matrix_data += [[isoform_id] + rpk]
+        matrix_data += [ids + rpk]
 
     all_rpk = [rpk / 1e6 for rpk in all_rpk]
     empty = [n for n, rpk in enumerate(all_rpk) if rpk == 0]
@@ -53,7 +56,7 @@ def counts_to_tpm(counts_matrix, outfilename, sizefile=None):
         writer.writerow(matrix_data[0])
         for line in matrix_data[1:]:
             for n in range(num_samples):
-                line[n + 1] = round(line[n + 1] / all_rpk[n], 5)
+                line[n + num_id_cols] = round(line[n + num_id_cols] / all_rpk[n], 5)
             writer.writerow(line)
 
 

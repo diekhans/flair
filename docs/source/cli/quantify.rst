@@ -6,8 +6,7 @@
 
    usage: flair quantify [-h] --manifest MANIFEST -g GENOME --isoform_bed
                          ISOFORM_BED [-o OUTPUT] [-t THREADS] [--tpm]
-                         [--trust_ends] [--generate_map] [--with_gene]
-                         [--normalize_ends]
+                         [--trust_ends] [--generate_map] [--normalize_ends]
 
 .. rubric:: options
 
@@ -30,10 +29,6 @@
 .. option:: --generate_map
 
    create read-to-isoform assignment files for each sample
-
-.. option:: --with_gene
-
-   output lines with isoform_gene
 
 .. option:: --normalize_ends
 

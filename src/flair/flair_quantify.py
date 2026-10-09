@@ -6,7 +6,8 @@ import pysam
 from shutil import rmtree
 import logging
 from flair import FlairInputDataError
-from flair.counts_matrix import SampleInfo, sample_info_path, write_sample_info
+from flair.counts_matrix import (SampleInfo, sample_info_path, write_sample_info,
+                                 CountsRow, write_counts_matrix)
 from flair.io_utils import make_temp_dir
 from flair.pycbio.hgdata.bed import BedReader, BedBlock
 from flair.flair_bed import FlairBed
@@ -42,8 +43,6 @@ def add_subparser(subparsers):
                         help='specify if reads are generated from a long read method with minimal fragmentation')
     parser.add_argument('--generate_map', action='store_true',
                         help='create read-to-isoform assignment files for each sample')
-    parser.add_argument('--with_gene', action='store_true',
-                        help='output lines with isoform_gene')
     parser.add_argument('--normalize_ends', action='store_true',
                         help="normalize transcript ends; recommended when not using --trust_ends and "
                              "different transcript ends do not matter")
@@ -61,7 +60,7 @@ def quantify_cmd(args):
     quantify(manifest=args.manifest, genome=args.genome, isoform_bed=args.isoform_bed,
              output=args.output, threads=args.threads,
              tpm=args.tpm, trust_ends=args.trust_ends, generate_map=args.generate_map,
-             with_gene=args.with_gene, normalize_ends=args.normalize_ends)
+             normalize_ends=args.normalize_ends)
 
 def check_input_files(*, manifest, genome, isoform_bed):
     for what, path in (('isoform models bed', isoform_bed), ('genome fasta', genome),
@@ -147,21 +146,23 @@ def load_unique_bound(temp_prefix, gene_info):
                                                terminal_exon_is_subset, superset_support, unique_seq_bound)
                 write_unique_bound(fh, isoform, unique_seq_bound)
 
-def write_combined_counts(sample_data, gene_data, temp_dir, output, with_gene):
-    with open(output + '.counts.tsv', 'w') as fh:
-        # just the sample id; the condition and batch of each column are in the
-        # sample info file written beside this one
-        fh.write('\t'.join(['ids'] + [x[0] for x in sample_data]) + '\n')
-        for gene_id in gene_data:
-            gene_info = gene_data[gene_id]
-            iso_to_counts = {x.name: [0] * len(sample_data) for x in gene_info.isoform_beds}
-            for i, (sample, group, batch, bamfile) in enumerate(sample_data):
-                for line in open(temp_dir + gene_id + '/' + sample + '.isoform.counts.txt'):
-                    line = line.rstrip().split('\t')
-                    iso_to_counts[line[0]][i] = int(line[1])
-            for iso in iso_to_counts:
-                iso_id = iso + '_' + gene_id if with_gene else iso
-                fh.write('\t'.join([iso_id] + [str(x) for x in iso_to_counts[iso]]) + '\n')
+def gene_counts_rows(sample_data, gene_data, temp_dir, gene_id):
+    "the counts rows of one gene, one per isoform"
+    gene_info = gene_data[gene_id]
+    iso_to_counts = {x.name: [0] * len(sample_data) for x in gene_info.isoform_beds}
+    for i, (sample, group, batch, bamfile) in enumerate(sample_data):
+        for line in open(temp_dir + gene_id + '/' + sample + '.isoform.counts.txt'):
+            line = line.rstrip().split('\t')
+            iso_to_counts[line[0]][i] = int(line[1])
+    return [CountsRow(gene_id, iso, counts) for iso, counts in iso_to_counts.items()]
+
+def write_combined_counts(sample_data, gene_data, temp_dir, output):
+    # just the sample id in each column name; the condition and batch of each column
+    # are in the sample info file written beside this one
+    rows = []
+    for gene_id in gene_data:
+        rows.extend(gene_counts_rows(sample_data, gene_data, temp_dir, gene_id))
+    write_counts_matrix(output + '.counts.tsv', [x[0] for x in sample_data], rows)
 
 def write_map_out(sample_data, gene_data, temp_dir, output, generate_map):
     if generate_map:
@@ -224,7 +225,7 @@ def get_counts_for_gene(input):
         get_counts_for_sample(sample, bamfile, temp_prefix, gene_info, generate_map, trust_ends)
 
 def quantify(*, manifest, genome, isoform_bed, output, threads, tpm,
-             trust_ends, generate_map, with_gene, normalize_ends):
+             trust_ends, generate_map, normalize_ends):
     logging.info('loading isos')
     temp_dir = make_temp_dir(output)
     sample_data = load_manifest(manifest)
@@ -245,7 +246,7 @@ def quantify(*, manifest, genome, isoform_bed, output, threads, tpm,
             pool.map(get_counts_for_gene, packed)
 
     logging.info('writing quantify output')
-    write_combined_counts(sample_data, gene_data, temp_dir, output, with_gene)
+    write_combined_counts(sample_data, gene_data, temp_dir, output)
     write_sample_info(sample_info_path(output + '.counts.tsv'),
                       [SampleInfo(sample, condition, batch)
                        for sample, condition, batch, _ in sample_data])

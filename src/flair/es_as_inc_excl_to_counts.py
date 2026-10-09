@@ -4,18 +4,15 @@ import os
 import sys
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import numpy as np  # noqa: E402 - openblas setting must be before numpy import
+from flair.counts_matrix import read_sample_columns, read_counts_rows  # noqa: E402
 
-data = dict()
-with open(sys.argv[1]) as fin1:
-    header = next(fin1).rstrip().split()
-    nSamps = len(header) - 1
-    for line in fin1:
-        cols = line.rstrip().split()
-        tid, vals = cols[0], np.asarray(cols[1:], dtype=np.float32)
-        data[tid] = vals
+sample_names = read_sample_columns(sys.argv[1])
+nSamps = len(sample_names)
+data = {row.isoform_id: np.asarray(row.counts, dtype=np.float32)
+        for row in read_counts_rows(sys.argv[1])}
 
 with open(sys.argv[2]) as fin2:
-    print('\t'.join(['feature_id', 'coordinate'] + header[1:] + ['isoform_ids']))
+    print('\t'.join(['feature_id', 'coordinate'] + sample_names + ['isoform_ids']))
     for line in fin2:
         cols = line.rstrip().split()
         if int(cols[3]) == 0:

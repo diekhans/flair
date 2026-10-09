@@ -450,14 +450,14 @@ quantify-tests: test-quantify test-quantify-normends test-quantify-help
 
 test-quantify: mkdirs ${TOME_OUT_FAI} ${QUANTIFY_INPUT_BAMS} ${GENOME_FA}
 	rm -rf $O/$@.intermediate
-	flair quantify --manifest $(QUANTIFY_MANIFEST) --genome ${GENOME_FA} --isoform_bed $(TOME_ISOFORM_BED) --generate_map --tpm -o $O/$@ --with_gene
+	flair quantify --manifest $(QUANTIFY_MANIFEST) --genome ${GENOME_FA} --isoform_bed $(TOME_ISOFORM_BED) --generate_map --tpm -o $O/$@
 	$(call cmp_expect,$@.counts.tsv)
 	$(call cmp_expect,$@.sample_info.tsv)
 	$(call cmp_expect,$@.tpm.tsv)
 
 test-quantify-normends: mkdirs ${TOME_OUT_FAI} ${QUANTIFY_INPUT_BAMS} ${GENOME_FA}
 	rm -rf $O/$@.intermediate
-	flair quantify --manifest $(QUANTIFY_MANIFEST) --genome ${GENOME_FA} --isoform_bed $(TOME_ISOFORM_BED) --generate_map --tpm -o $O/$@ --with_gene --normalize_ends
+	flair quantify --manifest $(QUANTIFY_MANIFEST) --genome ${GENOME_FA} --isoform_bed $(TOME_ISOFORM_BED) --generate_map --tpm -o $O/$@ --normalize_ends
 	$(call cmp_expect,$@.counts.tsv)
 	$(call cmp_expect,$@.sample_info.tsv)
 	$(call cmp_expect,$@.tpm.tsv)
@@ -553,7 +553,6 @@ test-diff-iso-usage-help: mkdirs
 # ##
 plot-usage-tests: test-plot-usage test-plot-usage-help
 
-# only works with quantify output run with with-gene
 test-plot-usage: mkdirs
 	plot_isoform_usage $(TOME_ISOFORM_BED) $E/test-quantify.counts.tsv FLG00000002 --min_reads 1 -o $O/$@
 	file $O/test-plot-usage_FLG00000002_usage.pdf | grep 'PDF document' >/dev/null

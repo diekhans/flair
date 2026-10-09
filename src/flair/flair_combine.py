@@ -6,6 +6,7 @@ from flair import FlairError
 from flair.bed_to_gtf import bed_to_gtf
 from flair.pycbio.hgdata.bed import BedReader
 from flair.flair_bed import FlairBed
+from flair.counts_matrix import CountsRow, write_counts_matrix
 from statistics import median
 from flair.isoform_data import make_big_bed, get_sequence_for_exons
 
@@ -185,7 +186,8 @@ def get_iso_counts_per_sample(bed_list_group, new_iso_id, iso_to_samples_to_coun
             iso_to_samples_to_counts[new_iso_id][sample] += bed_list[0].read_support
 
 def correct_bed_fields_write_out(bed_list_group, new_iso_to_og, ref_gene_to_new, new_gene_to_og, og_flair_gene_to_new,
-                                 genome, bed_fh, fa_fh, iso_count, gene_count, iso_to_samples_to_counts):
+                                 genome, bed_fh, fa_fh, iso_count, gene_count, iso_to_samples_to_counts,
+                                 iso_to_gene):
     # need to adjust: new FLAIR isoform ID, new FLAIR gene ID, sum read support, median frac support, samples,
     # also need to adjust fused_gene_ids if relevant
     # keep dictionary of new isos to OG isos (with sample), new genes to OG genes (with sample)
@@ -201,6 +203,7 @@ def correct_bed_fields_write_out(bed_list_group, new_iso_to_og, ref_gene_to_new,
     iso_to_samples_to_counts[new_iso_id] = {}
 
     new_gene_id, new_fused_genes, gene_count = get_new_gene_ids(bed_list_group, ref_gene_to_new, new_gene_to_og, og_flair_gene_to_new, gene_count)
+    iso_to_gene[new_iso_id] = new_gene_id
 
     get_iso_counts_per_sample(bed_list_group, new_iso_id, iso_to_samples_to_counts)
 
@@ -229,17 +232,14 @@ def write_map_files(output, new_iso_to_og, new_gene_to_og):
             og_names = [','.join(x[0]) + ':' + x[1] for x in new_gene_to_og[new_id]]
             fh.write(new_id + '\t' + '; '.join(og_names) + '\n')
 
-def write_counts_file(output, allsamples, iso_to_samples_to_counts):
-    with open(output + '.combined.isoform.counts.tsv', 'w') as fh:
-        fh.write('\t'.join(['isoform_id'] + allsamples) + '\n')
-        for new_id in iso_to_samples_to_counts:
-            outline = [new_id]
-            for sample in allsamples:
-                if sample in iso_to_samples_to_counts[new_id]:
-                    outline.append(str(iso_to_samples_to_counts[new_id][sample]))
-                else:
-                    outline.append('0')
-            fh.write('\t'.join(outline) + '\n')
+def iso_counts_row(new_id, gene_id, allsamples, samples_to_counts):
+    counts = [str(samples_to_counts.get(sample, 0)) for sample in allsamples]
+    return CountsRow(gene_id, new_id, counts)
+
+def write_counts_file(output, allsamples, iso_to_samples_to_counts, iso_to_gene):
+    rows = [iso_counts_row(new_id, iso_to_gene[new_id], allsamples, samples_to_counts)
+            for new_id, samples_to_counts in iso_to_samples_to_counts.items()]
+    write_counts_matrix(output + '.combined.isoform.counts.tsv', allsamples, rows)
 
 def combine(*, manifest, prefixes, isoform_beds, genome, output, end_window,
             min_frac_usage, remove_single_exon, max_ends, min_reads):
@@ -253,6 +253,7 @@ def combine(*, manifest, prefixes, isoform_beds, genome, output, end_window,
 
     new_iso_to_og, new_gene_to_og, ref_gene_to_new, og_flair_gene_to_new = {}, {}, {}, {}
     iso_to_samples_to_counts = {}
+    iso_to_gene = {}
     iso_count, gene_count = 1, 1
     genome_fa = pysam.FastaFile(genome)
     with open(output + '.combined.isoforms.bed', 'w') as bed_fh, open(output + '.combined.isoforms.fa', 'w') as fa_fh:
@@ -276,11 +277,12 @@ def combine(*, manifest, prefixes, isoform_beds, genome, output, end_window,
                     groups_after_end_filtering = filter_groups(ends_to_iso_groups, max_ends, min_frac_usage, min_reads)
                     for bed_list_group in groups_after_end_filtering:
                         iso_count, gene_count = correct_bed_fields_write_out(bed_list_group, new_iso_to_og, ref_gene_to_new, new_gene_to_og,
-                                                                             og_flair_gene_to_new, genome_fa, bed_fh, fa_fh, iso_count, gene_count, iso_to_samples_to_counts)
+                                                                             og_flair_gene_to_new, genome_fa, bed_fh, fa_fh, iso_count, gene_count, iso_to_samples_to_counts,
+                                                                             iso_to_gene)
 
     write_map_files(output, new_iso_to_og, new_gene_to_og)
 
-    write_counts_file(output, allsamples, iso_to_samples_to_counts)
+    write_counts_file(output, allsamples, iso_to_samples_to_counts, iso_to_gene)
 
     bed_to_gtf(output + '.combined.isoforms.bed', output + '.combined.isoforms.gtf', is_flair_bed=True)
 

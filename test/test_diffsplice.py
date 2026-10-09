@@ -3,7 +3,8 @@ Tests for flair_diffSplice module.
 """
 import pytest
 from flair import FlairInputDataError
-from flair.counts_matrix import MAX_REPORTED_IDS
+from flair.counts_matrix import (MAX_REPORTED_IDS, CountsRow,
+                                 write_counts_matrix as write_counts_rows)
 from flair.flair_diffSplice import check_isoform_ids
 
 def write_bed(path, names):
@@ -13,10 +14,8 @@ def write_bed(path, names):
             fh.write('\t'.join(['chr1', str(start), str(start + 50), name, '0', '+']) + '\n')
 
 def write_counts_matrix(path, iso_ids):
-    with open(path, 'w') as fh:
-        fh.write('\t'.join(['ids', 's1_ctl_b1', 's2_test_b1']) + '\n')
-        for iso_id in iso_ids:
-            fh.write('\t'.join([iso_id, '1', '2']) + '\n')
+    write_counts_rows(path, ['s1_ctl_b1', 's2_test_b1'],
+                      [CountsRow('gene1', iso_id, ['1', '2']) for iso_id in iso_ids])
 
 def write_inputs(tmp_path, bed_names, counts_ids):
     bed = str(tmp_path / 'isoforms.bed')

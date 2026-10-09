@@ -16,8 +16,7 @@
     option and input problems in junctions_from_sam and identify_vars say what to
     do about them.
   * `flair diffsplice` fails when a counts matrix isoform id has no record in
-    `--isoform_bed`, and `flair diffexp` fails when a counts matrix row id does
-    not name a gene.  Both combinations used to produce results silently.
+    `--isoform_bed`.  That combination used to produce empty results silently.
   * `flair diffexp` gained `--condition_a` and `--condition_b`, matching
     `flair diffsplice`.  `condition_a` is the reference that fold changes are
     measured against.
@@ -26,6 +25,11 @@
     The BioConda package still does not carry them; `installing.rst` gives the
     `conda install` command to add them.
 * Incompatibles
+  * The counts matrix now starts with two id columns, `gene_id` then `isoform_id`,
+    in place of the single `isoform_gene` column.  `flair quantify --with_gene` is
+    gone, the gene is always named.  A matrix from an earlier FLAIR is refused
+    rather than split on an underscore, which was wrong for some gene ids.
+    `flair combine` writes its counts file the same way.
   * Removed flair correct and collapse modules, the functionality is replaced
     by flair transcriptome.
   * Removed the identify_annotated_gene script.  It read and wrote PSL, which no

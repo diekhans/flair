@@ -22,8 +22,8 @@ import pipettor
 
 from flair import FlairError, FlairInputDataError
 from flair.counts_matrix import (read_sample_info, condition_column_indexes,
-                                 select_condition_pair, read_isoform_ids, describe_ids)
-from flair.iso_gene_id import split_iso_gene, parse_gene_id, ISOFORM_GENE_ID_ADVICE
+                                 select_condition_pair, read_counts_rows, CountsRow,
+                                 write_counts_matrix)
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import numpy as np  # noqa: E402
@@ -108,55 +108,53 @@ def multipletests(pvals, alpha=0.05):
     return reject_, pvals_corrected_, alphacSidak, alphacBonf
 
 
-def get_gene_to_counts(filename):
+def get_gene_to_counts(rows):
     genetototcounts = {}
-    for line in open(filename):
-        line = line.rstrip().split('\t')
-        if line[0] != 'ids':
-            gene = parse_gene_id(line[0])
-            counts = [int(x) for x in line[1:]]
-            if gene not in genetototcounts:
-                genetototcounts[gene] = [0 for x in range(len(counts))]
-            genetototcounts[gene] = [genetototcounts[gene][x] + counts[x] for x in range(len(counts))]
+    for row in rows:
+        counts = [int(x) for x in row.counts]
+        if row.gene_id not in genetototcounts:
+            genetototcounts[row.gene_id] = [0 for x in range(len(counts))]
+        genetototcounts[row.gene_id] = [genetototcounts[row.gene_id][x] + counts[x] for x in range(len(counts))]
     return genetototcounts
 
 
-def do_mtc_ttest(filename, genetototcounts, ref_cols, test_cols):
+def row_ttest(ttest_ind, row, genetot, ref_cols, test_cols):
+    """The t-test of one isoform, or None when the two conditions differ by too
+    little to be worth testing."""
+    counts = [int(x) for x in row.counts]
+    wtcounts = [counts[i] for i in ref_cols]
+    varcounts = [counts[i] for i in test_cols]
+
+    # Compute median difference between variant and WT
+    deltaval = median(varcounts) - median(wtcounts)
+    wttot = mean([genetot[i] for i in ref_cols])
+    vartot = mean([genetot[i] for i in test_cols])
+
+    # Compute normalized usage difference, ignore if totals are zero
+    deltausage = (mean(varcounts) / vartot if vartot > 0 else 0) - (mean(wtcounts) / wttot if wttot > 0 else 0)
+
+    # Only test if median difference is large enough (|Δ| > 3)
+    if abs(deltaval) <= 3:
+        return None
+    # Two-sample t-test between WT and VAR counts
+    # ranksums() wast too strict for small replicates
+    return deltausage, ttest_ind(wtcounts, varcounts).pvalue
+
+def do_mtc_ttest(rows, genetototcounts, ref_cols, test_cols):
     # imported here rather than at module scope; scipy takes 0.7s to import and
     # this is the only use of it, which would be paid by every flair command
     from scipy.stats import ttest_ind
     allids, allpval, alldeltas = [], [], []
-    for line in open(filename):
-        line = line.rstrip().split('\t')
-        if line[0] != 'ids':
-            id = line[0]
-            gene = parse_gene_id(id)
-
-            counts = [int(x) for x in line[1:]]
-            wtcounts = [counts[i] for i in ref_cols]
-            varcounts = [counts[i] for i in test_cols]
-
-            # Compute median difference between variant and WT
-            deltaval = median(varcounts) - median(wtcounts)
-            genetot = genetototcounts[gene]
-            wttot = mean([genetot[i] for i in ref_cols])
-            vartot = mean([genetot[i] for i in test_cols])
-
-            # Compute normalized usage difference, ignore if totals are zero
-            deltausage = (mean(varcounts) / vartot if vartot > 0 else 0) - (mean(wtcounts) / wttot if wttot > 0 else 0)
-
-            # Only test if median difference is large enough (|Δ| > 3)
-            if abs(deltaval) > 3:
-                # Two-sample t-test between WT and VAR counts
-                # ranksums() wast too strict for small replicates
-                pval = ttest_ind(wtcounts, varcounts).pvalue
-
-                allids.append(id)
-                allpval.append(pval)
-                alldeltas.append(deltausage)
+    for row in rows:
+        tested = row_ttest(ttest_ind, row, genetototcounts[row.gene_id], ref_cols, test_cols)
+        if tested is not None:
+            deltausage, pval = tested
+            allids.append((row.gene_id, row.isoform_id))
+            allpval.append(pval)
+            alldeltas.append(deltausage)
 
     if len(allpval) == 0:
-        raise FlairInputDataError(f"no p-values with sufficient delta values from: {filename}")
+        raise FlairInputDataError("no p-values with sufficient delta values from the counts matrix")
 
     # Apply multiple-testing correction.  This is Holm-Sidak, not Benjamini-Hochberg
     # as this comment used to say: the adjusted values control the family-wise error
@@ -166,67 +164,22 @@ def do_mtc_ttest(filename, genetototcounts, ref_cols, test_cols):
     return allids, alldeltas, corrpval
 
 
-def get_sig_from_norm_by_gene(outname, filename, ref_cols, test_cols):
+def get_sig_from_norm_by_gene(outname, norm_rows, ref_cols, test_cols):
     """
-    This function runs t-tests with multiple testing correction on a file of isoforms counts normalized by gene
+    This function runs t-tests with multiple testing correction on isoform counts normalized by gene
     This method essentially does differential isoform usage testing, but accounts for differences in gene expression
     This is better for detecting novel transcripts than DRIM-seq
     """
 
-    genetototcounts = get_gene_to_counts(filename)
-    allids, alldeltas, corrpval = do_mtc_ttest(filename, genetototcounts, ref_cols, test_cols)
+    genetototcounts = get_gene_to_counts(norm_rows)
+    allids, alldeltas, corrpval = do_mtc_ttest(norm_rows, genetototcounts, ref_cols, test_cols)
 
-    out = open(outname, 'w')
-    for i in range(len(allids)):
-        gene = allids[i]
-        if corrpval[i] < 0.05:
-            out.write('\t'.join([gene, str(round(alldeltas[i], 3)), str(corrpval[i])]) + '\n')
-
-def check_gene_ids_present(counts_matrix_tsv, iso_gene_ids):
-    "a row id with no separator at all names no gene"
-    bad = [iso_gene for iso_gene in iso_gene_ids if parse_gene_id(iso_gene) == iso_gene]
-    if len(bad) > 0:
-        raise FlairInputDataError(
-            f"{len(bad)} row ids in counts matrix {counts_matrix_tsv} do not name a gene: "
-            f"{describe_ids(bad)}; {ISOFORM_GENE_ID_ADVICE}")
-
-def check_genes_group_isoforms(counts_matrix_tsv, iso_gene_ids):
-    """No gene holding two isoforms means the gene halves are not genes.  A transcript
-    accession carrying an underscore of its own, NM_000123.4, splits into a gene of its
-    own, so the per-id check above cannot catch a matrix of bare RefSeq ids."""
-    per_gene = Counter(parse_gene_id(iso_gene) for iso_gene in iso_gene_ids)
-    if max(per_gene.values()) < 2:
-        raise FlairInputDataError(
-            f"no gene in counts matrix {counts_matrix_tsv} holds more than one isoform, so "
-            f"the row ids are isoform ids rather than isoform_gene ids: "
-            f"{describe_ids(iso_gene_ids)}; {ISOFORM_GENE_ID_ADVICE}")
-
-def check_iso_gene_ids(counts_matrix_tsv):
-    """Each counts row id must name the isoform and its gene, since the gene half is
-    what groups isoforms into the gene table and into the DRIMSeq usage test.  Without
-    it every isoform becomes a gene of its own and the tests have nothing to compare."""
-    iso_gene_ids = read_isoform_ids(counts_matrix_tsv)
-    if len(iso_gene_ids) == 0:
-        raise FlairInputDataError(f"counts matrix {counts_matrix_tsv} has no isoform rows")
-    check_gene_ids_present(counts_matrix_tsv, iso_gene_ids)
-    check_genes_group_isoforms(counts_matrix_tsv, iso_gene_ids)
-
-def quant_row_check(linenum, row):
-    if len(row) < 7:
-        raise FlairInputDataError(f"line {linenum}: found {len(row)} columns in counts matrix, expected >6")
-
-def quant_table_reader(quant_table_tsv):
-    """Generator for rows of (name, counts) from counts file"""
-    try:
-        with open(quant_table_tsv, "r", encoding='utf-8', errors='ignore') as fh:
-            csvreader = csv.reader(fh, delimiter='\t')
-            cols = next(csvreader)
-            quant_row_check(1, cols)
-            for linenum, row in enumerate(csvreader, start=2):
-                quant_row_check(linenum, row)
-                yield row[0], np.asarray(row[1:], dtype=float)
-    except Exception as exc:
-        raise FlairInputDataError(f"error parsing counts table: {quant_table_tsv}") from exc
+    with open(outname, 'w') as out:
+        for i in range(len(allids)):
+            gene_id, isoform_id = allids[i]
+            if corrpval[i] < 0.05:
+                out.write('\t'.join([gene_id, isoform_id, str(round(alldeltas[i], 3)),
+                                     str(corrpval[i])]) + '\n')
 
 def write_name_values_tsv(samples, names, values, out_tsv):
     "write gene or isoform matrix tsv"
@@ -244,30 +197,27 @@ def write_tsv(columns, rows, out_tsv):
         for row in rows:
             writer.writerow(row)
 
-def separate_tables(quant_table_tsv, thresh, samples, a_cols, b_cols, outDir):
+def add_counts_row(genes, isoforms, row, duplicateID):
+    "add one counts row to its gene and to the isoform table"
+    counts = np.asarray(row.counts, dtype=float)
+    if row.gene_id not in genes:
+        genes[row.gene_id] = Gene(row.gene_id, np.zeros(len(counts)))
+    geneObj = genes[row.gene_id]
+    geneObj.exp += counts
+
+    iso = row.isoform_id
+    if iso in isoforms:
+        duplicateID += 1
+        iso = iso + "-" + str(duplicateID)
+    isoforms[iso] = Isoform(iso, geneObj, counts)
+    return duplicateID
+
+def separate_tables(counts_rows, thresh, samples, a_cols, b_cols, outDir):
     genes, isoforms = dict(), dict()
     duplicateID = 1
 
-    for name, counts in quant_table_reader(quant_table_tsv):
-        iso, gene = name, parse_gene_id(name)
-        # if "-" in gene:
-        #     gene = gene.split("-")[0]
-        # m = iso.count("_")
-        # if m > 1:
-        #     iso = iso.replace("_", "", 1)
-
-        if gene not in genes:
-            genes[gene] = Gene(gene, np.zeros(len(counts)))
-
-        geneObj = genes[gene]
-        geneObj.exp += counts
-
-        if iso not in isoforms:
-            isoforms[iso] = Isoform(iso, geneObj, counts)
-        else:
-            duplicateID += 1
-            iso = iso + "-" + str(duplicateID)
-            isoforms[iso] = Isoform(iso, geneObj, counts)
+    for row in counts_rows:
+        duplicateID = add_counts_row(genes, isoforms, row, duplicateID)
 
     # the two conditions' column indexes are chosen by name in calculate_sig; taking
     # them from the first and last column made the filter depend on column order, and
@@ -279,7 +229,7 @@ def separate_tables(quant_table_tsv, thresh, samples, a_cols, b_cols, outDir):
     geneIDs = np.asarray(list(genes.keys()))
     vals = np.asarray([genes[x].exp for x in geneIDs])
     if len(geneIDs) == 0:
-        raise FlairInputDataError(f"no genes parsed from {quant_table_tsv}")
+        raise FlairInputDataError("no genes parsed from the counts matrix")
 
     # genes must be expressed in all samples of at least one group
     filteredRows = (np.min(vals[:, g1Ind], axis=1) > thresh) | (np.min(vals[:, g2Ind], axis=1) > thresh)
@@ -310,43 +260,33 @@ def separate_tables(quant_table_tsv, thresh, samples, a_cols, b_cols, outDir):
     return genes, isoforms
 
 
-def calc_gene_norm_sig(workdir, quant_table_tsv):
+def gene_sample_totals(counts_rows):
+    "total counts of each gene in each sample"
+    genetosampletotot = {}
+    for row in counts_rows:
+        counts = [float(x) for x in row.counts]
+        if row.gene_id not in genetosampletotot:
+            genetosampletotot[row.gene_id] = [0 for x in range(len(counts))]
+        genetosampletotot[row.gene_id] = [genetosampletotot[row.gene_id][x] + counts[x]
+                                          for x in range(len(counts))]
+    return genetosampletotot
+
+def norm_row_by_gene(row, genetot):
+    "one isoform's counts scaled so that its gene totals the same in every sample"
+    geneavg = sum(genetot) / len(genetot)
+    counts = [(float(count) / genetot[i]) * geneavg if genetot[i] > 0 else 0
+              for i, count in enumerate(row.counts)]
+    return CountsRow(row.gene_id, row.isoform_id, [str(round(x)) for x in counts])
+
+def calc_gene_norm_sig(workdir, counts_rows, sample_columns):
     """
-    Make a file of counts normalized by gene.
+    Counts normalized by gene, written for the record and returned for the t-test.
     This is not a standard normalization method, only used for downstream stats.
     """
-    genetosampletotot = {}
-    lines = []
-    # FIXME: just load into memory rather than reading three timnes!!
-    out = open(workdir + '/counts.normbygene.tsv', 'w')
-    for line in open(quant_table_tsv):
-        line = line.rstrip().split('\t')
-        if line[0] == 'ids':
-            out.write('\t'.join(line) + '\n')
-        else:
-            oggenes = parse_gene_id(line[0])
-            genes = oggenes.split('--')
-            isoname = split_iso_gene(line[0])[0]
-            l = len(line)
-            for gene in genes:
-                if '--' in oggenes:  # is fusion ?
-                    line[0] = isoname + '_' + oggenes + '_' + gene
-
-                counts = [float(x) for x in line[1:]]
-                lines.append([line[0]] + counts)
-                if gene not in genetosampletotot:
-                    genetosampletotot[gene] = [0 for x in range(len(counts))]
-                genetosampletotot[gene] = [genetosampletotot[gene][x] + counts[x] for x in range(len(counts))]
-    for l in lines:
-        gene = parse_gene_id(l[0])
-        thisgenetot = genetosampletotot[gene]
-        geneavg = sum(thisgenetot) / len(thisgenetot)
-        thesecounts = l[1:]
-        thesecounts = [(thesecounts[x] / thisgenetot[x]) * geneavg if thisgenetot[x] > 0 else 0 for x in
-                       range(len(thisgenetot))]
-        thesecounts = [str(round(x)) for x in thesecounts]
-        out.write('\t'.join([l[0]] + thesecounts) + '\n')
-    out.close()
+    genetosampletotot = gene_sample_totals(counts_rows)
+    norm_rows = [norm_row_by_gene(row, genetosampletotot[row.gene_id]) for row in counts_rows]
+    write_counts_matrix(workdir + '/counts.normbygene.tsv', sample_columns, norm_rows)
+    return norm_rows
 
 def run_deseq2(prefix, workdir, condition_a, condition_b, matrixFile, outDir, formulaMatrixFile):
     # no --batch: neither R script ever read it, and one arbitrary batch label would
@@ -378,9 +318,10 @@ def calculate_sig(*, counts_matrix, output, condition_a, condition_b, min_expres
     sFilter = min_expression
     force_dir = overwrite_output
 
-    check_iso_gene_ids(quant_table_tsv)
+    counts_rows = read_counts_rows(quant_table_tsv)
+    if len(counts_rows) == 0:
+        raise FlairInputDataError(f"counts matrix {quant_table_tsv} has no isoform rows")
 
-    # FIXME convert to just loading table upfront
     # Get sample data info
     sample_infos = read_sample_info(quant_table_tsv)
     groups = [si.condition for si in sample_infos]
@@ -421,14 +362,14 @@ def calculate_sig(*, counts_matrix, output, condition_a, condition_b, min_expres
     else:
         raise FlairInputDataError(f"** Error. Name {outDir} already exists. Choose another name for out_dir")
 
-    calc_gene_norm_sig(workdir, quant_table_tsv)
-    # counts.normbygene.tsv keeps the counts matrix header, so the same column
-    # indexes apply to it
+    # the normalized rows keep the counts matrix column order, so the same column
+    # indexes apply to them
+    norm_rows = calc_gene_norm_sig(workdir, counts_rows, samples)
     get_sig_from_norm_by_gene(outDir + '/isoforms_sig_exp_change_norm_by_gene.tsv',
-                              workdir + '/counts.normbygene.tsv', a_cols, b_cols)
+                              norm_rows, a_cols, b_cols)
 
     # Convert count tables to dataframe and update isoform objects.
-    genes, isoforms = separate_tables(quant_table_tsv, sFilter, samples, a_cols, b_cols, workdir)
+    genes, isoforms = separate_tables(counts_rows, sFilter, samples, a_cols, b_cols, workdir)
 
     # checks linear combination
     if len(combos) == 2:

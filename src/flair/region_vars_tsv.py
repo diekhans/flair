@@ -7,14 +7,17 @@ Columns, in order, with no header line:
   region       the region the variant falls in
   pos          the position
   ref          the reference allele
-  alts         comma separated alternate alleles
+  alts         the alternate alleles, comma separated in the file and a list
+               on the row
   name         the variant name from the VCF
 """
 from flair.pycbio.tsv import TsvWriter
+from flair.tsv_column_types import commaListType
 
 COLUMNS = ('chrom', 'region', 'pos', 'ref', 'alts', 'name')
 
 class RegionVarsWriter(TsvWriter):
     def __init__(self, region_vars_tsv, *, outFh=None):
         super().__init__(region_vars_tsv, columns=COLUMNS, defaultColType=str,
+                         typeMap={'alts': commaListType},
                          outFh=outFh, writeHeader=False)

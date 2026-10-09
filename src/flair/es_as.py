@@ -98,7 +98,7 @@ class Gene(object):
             exclusionIsos = sorted(list(exclusionIsos))
             self.writer.writeRow(("%s:%s-%s" % (self.chrom, acceptor.name, donor.name),
                                   self.strand, len(inclusionIsos), len(exclusionIsos),
-                                  ",".join(inclusionIsos), ",".join(exclusionIsos)))
+                                  inclusionIsos, exclusionIsos))
             # print(self.chrom, "\t".join(str(x) for x in sorted([acceptor.name,donor.name])), "%s:%s-%s" % (self.chrom,acceptor.name,donor.name), self.name, self.strand, sep="\t")
 
 

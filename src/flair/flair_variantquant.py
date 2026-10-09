@@ -257,8 +257,8 @@ def read_vars_to_genome_pos_counts(tempfilenames, tempdir, outprefix, sampledata
             for readmods in readinfo:
                 totmods = len([x for x in readmods if x == 1])
                 outmods.append(str(totmods))
-            outline = [chrom, gene, str(len(outmods)), str(totpos), ','.join(outmods), varpos]
-            out2.writeRow(outline)
+            out2.writeRow((chrom, gene, len(outmods), totpos, outmods,
+                           varpos.split(',')))
 
         for var in vartocounts:
             if any([x[0] + x[1] >= threshold for x in vartocounts[var]]) and (any([x[1] > 0 for x in vartocounts[var]]) or output_all):  # any modified reads in any sample

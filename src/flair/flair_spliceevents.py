@@ -832,15 +832,15 @@ def write_counts_psi(info, ncounts, junctot, fulltot, allsamples, outcounts, out
     outpsitot.writeEvent(info, psi_values(ncounts, fulltot, allsamples, event_support))
     return juncpsi
 
-def get_junc_string(chrom, juncs):
+def get_junc_coords(chrom, juncs):
+    "the coordinates of a set of junctions or exons, as the event columns hold them"
+    juncs = sorted(juncs)
     if len(juncs) == 0:
-        return ''
+        return []
+    elif isinstance(juncs[0], int):
+        return [f'{chrom}:{x}' for x in juncs]
     else:
-        juncs = sorted(list(juncs))
-        if isinstance(juncs[0], int):
-            return ','.join([f'{chrom}:{x}' for x in juncs])
-        else:
-            return ','.join([f'{chrom}:{x[0]}-{x[1]}' for x in juncs])
+        return [f'{chrom}:{x[0]}-{x[1]}' for x in juncs]
 
 
 def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_of_event, outbed, outcounts, outpsijunc, outpsitot, event_support, outoutlier, outolfilt):  # noqa: C901 - FIXME: reduce complexity
@@ -867,8 +867,8 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                 for jname in event.events:
                     jinfo = event.events[jname]
 
-                    outinfo = [f'{jname}_{ename}', event.eventtype, event.gene, get_junc_string(event.chrom, jinfo.inc_juncs),
-                               get_junc_string(event.chrom, jinfo.exc_juncs), get_junc_string(event.chrom, jinfo.outer_juncs), get_junc_string(event.chrom, jinfo.inc_exon)]
+                    outinfo = [f'{jname}_{ename}', event.eventtype, event.gene, get_junc_coords(event.chrom, jinfo.inc_juncs),
+                               get_junc_coords(event.chrom, jinfo.exc_juncs), get_junc_coords(event.chrom, jinfo.outer_juncs), get_junc_coords(event.chrom, jinfo.inc_exon)]
                     juncpsi = write_counts_psi(outinfo, jinfo.samplecounts, event.totjunc, event.totoverlap, allsamples, outcounts, outpsijunc, outpsitot, event_support)
 
                     # every sample can be below event_support, leaving no PSI to
@@ -903,7 +903,7 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                                             etype_to_sig[event.eventtype][all_these_juncs] = {}
                                         etype_to_sig[event.eventtype][all_these_juncs][s] = outline
                 if any([event.other[s] > 0 for s in allsamples]):
-                    outinfo = [f'other_{ename}', event.eventtype, event.gene, '', '', '', '']
+                    outinfo = [f'other_{ename}', event.eventtype, event.gene, [], [], [], []]
                     write_counts_psi(outinfo, event.other, event.totjunc, event.totoverlap, allsamples, outcounts, outpsijunc, outpsitot, event_support)
     if outoutlier is not None:
         sig_events.sort(reverse=True, key=lambda x: x[::-1])

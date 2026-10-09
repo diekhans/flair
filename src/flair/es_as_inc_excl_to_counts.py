@@ -5,7 +5,7 @@ import sys
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import numpy as np  # noqa: E402 - openblas setting must be before numpy import
 from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows  # noqa: E402
-from flair.es_events_tsv import EsEventsReader, isoform_ids  # noqa: E402
+from flair.es_events_tsv import EsEventsReader  # noqa: E402
 from flair.event_quant_tsv import EventQuantWriter  # noqa: E402
 
 def side_counts(data, nSamps, isos):
@@ -23,12 +23,12 @@ def write_es_events(counts_matrix_tsv, es_events_tsv):
         for row in EsEventsReader(es_events_tsv):
             # an exon that no isoform skips is not an event
             if row.num_exclusion > 0:
-                inc_isos = isoform_ids(row.inclusion_isos)
-                exc_isos = isoform_ids(row.exclusion_isos)
                 writer.writeSide('inclusion', row.exon, row.exon,
-                                 side_counts(data, nSamps, inc_isos), inc_isos)
+                                 side_counts(data, nSamps, row.inclusion_isos),
+                                 row.inclusion_isos)
                 writer.writeSide('exclusion', row.exon, row.exon,
-                                 side_counts(data, nSamps, exc_isos), exc_isos)
+                                 side_counts(data, nSamps, row.exclusion_isos),
+                                 row.exclusion_isos)
 
 
 write_es_events(sys.argv[1], sys.argv[2])

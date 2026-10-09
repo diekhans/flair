@@ -7,8 +7,9 @@ Columns, in order, with no header line:
                    reads' variants
   num_reads        how many reads carry this set of positions
   num_positions    how many variant positions the set has
-  mods_per_read    comma separated count of carried variants, one per read
-  varpos           comma separated variant positions
+  mods_per_read    how many of the positions each read carries, one per read;
+                   comma separated in the file and a list on the row
+  varpos           the variant positions, likewise
 
 Headerless, as written before the file had a format of its own; the column names
 here are the documentation.
@@ -16,12 +17,15 @@ here are the documentation.
 from contextlib import contextmanager
 from flair.pycbio.sys import fileOps
 from flair.pycbio.tsv import TsvWriter
+from flair.tsv_column_types import commaListType
 
 COLUMNS = ('chrom', 'gene', 'num_reads', 'num_positions', 'mods_per_read', 'varpos')
+TYPE_MAP = {'chrom': str, 'gene': str, 'num_reads': int, 'num_positions': int,
+            'mods_per_read': commaListType, 'varpos': commaListType}
 
 class VarGroupCountsWriter(TsvWriter):
     def __init__(self, vargroup_counts_tsv, *, outFh=None):
-        super().__init__(vargroup_counts_tsv, columns=COLUMNS, defaultColType=str,
+        super().__init__(vargroup_counts_tsv, columns=COLUMNS, typeMap=TYPE_MAP,
                          outFh=outFh, writeHeader=False)
 
 @contextmanager

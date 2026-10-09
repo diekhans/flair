@@ -15,7 +15,7 @@ def parse_args():
 def annotate_vars_in_region(vcf_vars_for_region, chrom, region, out):
     for pos in vcf_vars_for_region:
         ref, alts, name = vcf_vars_for_region[pos]
-        out.writeRow((chrom, region, pos, ref, ','.join(alts), name))
+        out.writeRow((chrom, region, pos, ref, alts, name))
 
 def main():
     args = parse_args()

@@ -313,7 +313,7 @@ def process_reads_for_region(args):
             for k in pos_to_var_filtered[pos]:
                 chrom, pos, indel_type, ref_seq, var_seq, indel_reads, tot_cov, filters = pos_to_var_filtered[pos][k]
                 out.writeRow((chrom, pos, indel_type, ref_seq, var_seq, indel_reads,
-                              tot_cov, ','.join(filters)))
+                              tot_cov, filters))
 
 def get_regions_from_bed(region_bed):
     regions = []

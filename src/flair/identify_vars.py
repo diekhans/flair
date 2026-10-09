@@ -10,6 +10,7 @@ from flair import FlairInputDataError
 from flair.pycbio.sys import cli
 from flair.io_utils import make_temp_dir
 from flair.pycbio.hgdata.bed import BedReader
+from flair.indel_vars_tsv import IndelVarsWriter
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -295,7 +296,8 @@ def process_var_pos(pos, pos_to_var_filtered, pos_to_var, pos_to_cov, genome, ch
 
 def process_reads_for_region(args):
     temp_dir, bam_file, region, genome_file, min_cov, min_var_reads, min_vaf, min_read_end_dist, min_sj_dist, num_repeats_for_filtering, identify_indels, identify_snvs, density_dist, density_count = args
-    with pysam.FastaFile(genome_file) as genome, open(temp_dir + '-'.join([str(x) for x in region]) + '.txt', 'w') as out:
+    with pysam.FastaFile(genome_file) as genome, \
+            IndelVarsWriter(temp_dir + '-'.join([str(x) for x in region]) + '.txt') as out:
         pos_to_cov, pos_to_var, donor_counts, acceptor_counts = get_indels_from_bam(region, bam_file, genome, min_read_end_dist, min_sj_dist, identify_indels, identify_snvs)
         pos_to_var_filtered = {}
         for pos in pos_to_var:
@@ -310,7 +312,8 @@ def process_reads_for_region(args):
                     pos_to_var_filtered[pos][k][-1].append('dn')
             for k in pos_to_var_filtered[pos]:
                 chrom, pos, indel_type, ref_seq, var_seq, indel_reads, tot_cov, filters = pos_to_var_filtered[pos][k]
-                out.write('\t'.join([str(x) for x in (chrom, pos, indel_type, ref_seq, var_seq, indel_reads, tot_cov, ','.join(filters))]) + '\n')
+                out.writeRow((chrom, pos, indel_type, ref_seq, var_seq, indel_reads,
+                              tot_cov, ','.join(filters)))
 
 def get_regions_from_bed(region_bed):
     regions = []

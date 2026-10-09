@@ -11,6 +11,7 @@ import logging
 import scipy.stats as sps
 from flair.partition_runner import PartitionRunner, combine_temp_files_by_suffix
 from flair.pycbio.sys import fileOps
+from flair.read_ends_tsv import ReadEndsReader
 from flair import SeqRange, resolve_deprecated_option
 from statistics import median
 from flair.junction_correct import junction_corrector_factory
@@ -1073,14 +1074,13 @@ def read_annot_alignments(good_annot_aligns):
     read_to_transcript = {}
     if good_annot_aligns is None:
         return read_to_transcript
-    for line in open(good_annot_aligns):
-        line = line.rstrip().split('\t')
-        read, transcript = line[:2]
-        start_sj_index, start_sj_dist, start_tend_dist, end_sj_index, end_sj_dist, end_tend_dist = [int(x) if x != 'None' else None for x in line[2:]]
-        # is not None: the value was converted on the line above, so the old
-        # comparison with the string 'None' was always true
-        if start_sj_index is not None:  # not a single exon transcript
-            read_to_transcript[read] = (transcript, start_sj_index, start_sj_dist, end_sj_index, end_sj_dist)
+    for row in ReadEndsReader(good_annot_aligns):
+        # an empty start_sj_index is a single exon transcript, with no junction to
+        # measure the read's ends from
+        if row.start_sj_index is not None:
+            read_to_transcript[row.read] = (row.transcript, row.start_sj_index,
+                                            row.start_sj_dist, row.end_sj_index,
+                                            row.end_sj_dist)
     return read_to_transcript
 
 

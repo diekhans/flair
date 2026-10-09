@@ -9,6 +9,9 @@ from dataclasses import dataclass, field
 import pipettor
 import pysam
 from flair import FlairError, FlairInputDataError, FlairNotImplementedError
+from flair.read_ends_tsv import ReadEndsWriter
+from flair.read_map_tsv import ReadMapWriter
+from flair.transcript_counts_tsv import TranscriptCountsWriter
 from flair.pycbio.hgdata.bed import BedReader
 
 
@@ -591,12 +594,12 @@ def parse_sam(sam, info, readstoclipping,  # noqa: C901 - FIXME: reduce complexi
 
 def _write_transcript_counts(transcripttoreads, countout, mapout, endout):
     for t in transcripttoreads:
-        countout.write(t + '\t' + str(len(transcripttoreads[t])) + '\n')
+        countout.writeRow((t, len(transcripttoreads[t])))
         if mapout is not None:
-            mapout.write(t + '\t' + ','.join([x[0] for x in transcripttoreads[t]]) + '\n')
+            mapout.writeReads(t, [x[0] for x in transcripttoreads[t]])
         if endout is not None:
             for r, s, e in transcripttoreads[t]:
-                endout.write('\t'.join([str(x) for x in [r, t, s[0], s[1], s[2], e[0], e[1], e[2]]]) + '\n')
+                endout.writeRow((r, t, s[0], s[1], s[2], e[0], e[1], e[2]))
 
 
 def write_output(args, transcripttoreads):
@@ -604,9 +607,9 @@ def write_output(args, transcripttoreads):
     than left to interpreter shutdown, where an exception in the loop left a partial
     file behind with no error."""
     with ExitStack() as stack:
-        countout = stack.enter_context(open(args.output, 'wt'))
-        mapout = stack.enter_context(open(args.generate_map, 'w')) if args.generate_map else None
-        endout = stack.enter_context(open(args.output_endpos, 'w')) if args.output_endpos else None
+        countout = stack.enter_context(TranscriptCountsWriter(args.output))
+        mapout = stack.enter_context(ReadMapWriter(args.generate_map)) if args.generate_map else None
+        endout = stack.enter_context(ReadEndsWriter(args.output_endpos)) if args.output_endpos else None
         _write_transcript_counts(transcripttoreads, countout, mapout, endout)
 
 

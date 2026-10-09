@@ -23,6 +23,7 @@ from flair.annotation_data import annot_data_from_gtf
 from flair.pycbio.hgdata.bed import BedReader
 from flair.predictProductivity import predict_prod_temp
 from flair.aaseq_tsv import write_aaseqs
+from flair.read_ends_tsv import ReadEndsReader
 from flair.flair_bed import FlairBed
 
 MIN_POLYA_FRAC_DIFF_FOR_SE_STRANDING = 0.1
@@ -598,14 +599,13 @@ def identify_good_match_to_annot(args, temp_prefix, chrom, annots, genome):
                                       None, True,
                                       clipping_file,
                                       temp_prefix + '.annotated_transcripts_uniquebound.txt')
-        for line in open(temp_prefix + '.matchannot.ends.tsv'):
-            line = line.rstrip().split('\t')
-            read, transcript = line[:2]
-            start_sj_index, start_sj_dist, start_tend_dist, end_sj_index, end_sj_dist, end_tend_dist = [int(x) if x != 'None' else None for x in line[2:]]
-            # is not None: the value was converted on the line above, so the old
-            # comparison with the string 'None' was always true
-            if start_sj_index is not None:  # not a single exon transcript
-                read_to_transcript[read] = (transcript, start_sj_index, start_sj_dist, end_sj_index, end_sj_dist)
+        for row in ReadEndsReader(temp_prefix + '.matchannot.ends.tsv'):
+            # an empty start position means a single exon transcript, which has no
+            # splice junction to measure the read's ends from
+            if row.start_sj_index is not None:
+                read_to_transcript[row.read] = (row.transcript, row.start_sj_index,
+                                                row.start_sj_dist, row.end_sj_index,
+                                                row.end_sj_dist)
     # good_align_to_annot = set(good_align_to_annot)
     # return good_align_to_annot, firstpass_SE, sup_annot_transcript_to_juncs
     return read_to_transcript
@@ -1151,10 +1151,10 @@ def calc_final_iso_support(read_ends_file, final_transcript_objs, trust_ends):
     iso_to_counts = {}
     gene_to_tot = {}
     # FIXME: with new count sam transcripts logic, there are now no longer non-full-length transcripts in the isoform.ends.tsv
-    for line in open(read_ends_file):
-        line = line.rstrip().split('\t')
-        read, transcript = line[:2]
-        start_sj_index, start_sj_dist, start_tend_dist, end_sj_index, end_sj_dist, end_tend_dist = [int(x) if x != 'None' else None for x in line[2:]]
+    for row in ReadEndsReader(read_ends_file):
+        read, transcript = row.read, row.transcript
+        start_sj_index, end_sj_index = row.start_sj_index, row.end_sj_index
+        start_tend_dist, end_tend_dist = row.start_tend_dist, row.end_tend_dist
         gene = final_transcript_objs[transcript].gene_id
         if gene not in gene_to_tot:
             # total spliced full-length, total full-length spliced + unspliced, total all

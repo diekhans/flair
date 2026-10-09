@@ -3,8 +3,8 @@ Tests for flair_diffSplice module.
 """
 import pytest
 from flair import FlairInputDataError
-from flair.counts_matrix import (MAX_REPORTED_IDS, CountsRow,
-                                 write_counts_matrix as write_counts_rows)
+from flair.counts_matrix_tsv import (MAX_REPORTED_IDS, CountsRow,
+                                     write_counts_matrix as write_counts_rows)
 from flair.flair_diffSplice import check_isoform_ids
 
 def write_bed(path, names):

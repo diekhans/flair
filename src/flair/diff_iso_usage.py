@@ -5,7 +5,7 @@ import csv
 import os
 import scipy.stats as sps
 from flair import FlairInputDataError
-from flair.counts_matrix import read_header, read_counts_rows, ID_COLUMNS
+from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows
 from flair.pycbio.sys import cli
 
 
@@ -25,9 +25,8 @@ def build_parser():
                         'isoform usage for each isoform')
     return parser
 
-def sample_column_index(header, colname, counts_matrix_tsv):
+def sample_column_index(sample_columns, colname, counts_matrix_tsv):
     "index of a named sample column within a row's counts"
-    sample_columns = header[len(ID_COLUMNS):]
     if colname not in sample_columns:
         raise FlairInputDataError(
             f"{counts_matrix_tsv} has no sample column named {colname}; it has: "
@@ -35,9 +34,9 @@ def sample_column_index(header, colname, counts_matrix_tsv):
     return sample_columns.index(colname)
 
 def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):  # noqa: C901 - FIXME: reduce complexity
-    header = read_header(counts_matrix_tsv)
-    col1 = sample_column_index(header, colname1, counts_matrix_tsv)
-    col2 = sample_column_index(header, colname2, counts_matrix_tsv)
+    sample_columns = read_sample_columns(counts_matrix_tsv)
+    col1 = sample_column_index(sample_columns, colname1, counts_matrix_tsv)
+    col2 = sample_column_index(sample_columns, colname2, counts_matrix_tsv)
 
     counts = {}
     for row in read_counts_rows(counts_matrix_tsv):

@@ -21,9 +21,9 @@ from statistics import median, mean
 import pipettor
 
 from flair import FlairError, FlairInputDataError
-from flair.counts_matrix import (read_sample_info, condition_column_indexes,
-                                 select_condition_pair, read_counts_rows, CountsRow,
-                                 write_counts_matrix)
+from flair.conditions import condition_column_indexes, select_condition_pair
+from flair.counts_matrix_tsv import read_counts_rows, CountsRow, write_counts_matrix
+from flair.sample_info_tsv import read_sample_info
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import numpy as np  # noqa: E402

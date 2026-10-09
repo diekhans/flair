@@ -14,7 +14,8 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "../../src"))
 
-from flair.counts_matrix import parse_sample_fields, ID_COLUMNS  # noqa: E402
+from flair.counts_matrix_tsv import ID_COLUMNS  # noqa: E402
+from flair.sample_info_tsv import parse_sample_fields  # noqa: E402
 
 def parse_args():
     desc = "reorder counts matrix sample columns so the first and last share a condition"

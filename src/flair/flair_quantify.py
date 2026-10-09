@@ -6,8 +6,8 @@ import pysam
 from shutil import rmtree
 import logging
 from flair import FlairInputDataError
-from flair.counts_matrix import (SampleInfo, sample_info_path, write_sample_info,
-                                 CountsRow, write_counts_matrix)
+from flair.counts_matrix_tsv import CountsRow, write_counts_matrix
+from flair.sample_info_tsv import SampleInfo, sample_info_path, write_sample_info
 from flair.io_utils import make_temp_dir
 from flair.pycbio.hgdata.bed import BedReader, BedBlock
 from flair.flair_bed import FlairBed

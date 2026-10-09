@@ -6,8 +6,9 @@ import sys
 import pipettor
 import logging
 from flair import FlairError, FlairInputDataError
-from flair.counts_matrix import (read_sample_info, select_condition_pair, write_sample_info,
-                                 read_isoform_ids, describe_ids)
+from flair.conditions import select_condition_pair
+from flair.counts_matrix_tsv import read_isoform_ids, describe_ids
+from flair.sample_info_tsv import read_sample_info, write_sample_info
 from flair.pycbio.hgdata.bed import BedReader
 
 pkgdir = osp.dirname(osp.realpath(__file__))

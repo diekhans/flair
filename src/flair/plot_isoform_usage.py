@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import matplotlib.patches as mplpatches  # noqa: E402
 from flair import FlairInputDataError  # noqa: E402
 from flair.pycbio.sys import cli  # noqa: E402
-from flair.counts_matrix import read_sample_columns, read_counts_rows  # noqa: E402
+from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows  # noqa: E402
 
 def build_parser():
     desc = '''The script will produce two images, one of the isoform models and another of the usage proportions.

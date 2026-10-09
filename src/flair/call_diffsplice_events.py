@@ -4,7 +4,7 @@ retention events from an isoform BED."""
 import argparse
 import csv
 import os
-from flair.counts_matrix import read_sample_columns, read_counts_rows
+from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows
 from flair.pycbio.hgdata.bed import BedReader
 
 # minimum distance apart for alt SS to be tested

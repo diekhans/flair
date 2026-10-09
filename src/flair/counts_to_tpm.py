@@ -4,7 +4,7 @@ import sys
 import csv
 import os
 from flair import FlairInputDataError
-from flair.counts_matrix import ID_COLUMNS
+from flair.counts_matrix_tsv import ID_COLUMNS
 from flair.pycbio.sys import cli
 
 def parse_input():

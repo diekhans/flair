@@ -4,7 +4,7 @@ import os
 import sys
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import numpy as np  # noqa: E402 - openblas setting must be before numpy import
-from flair.counts_matrix import read_sample_columns, read_counts_rows  # noqa: E402
+from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows  # noqa: E402
 
 sample_names = read_sample_columns(sys.argv[1])
 nSamps = len(sample_names)

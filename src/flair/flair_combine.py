@@ -6,7 +6,7 @@ from flair import FlairError
 from flair.bed_to_gtf import bed_to_gtf
 from flair.pycbio.hgdata.bed import BedReader
 from flair.flair_bed import FlairBed
-from flair.counts_matrix import CountsRow, write_counts_matrix
+from flair.counts_matrix_tsv import CountsRow, write_counts_matrix
 from statistics import median
 from flair.isoform_data import make_big_bed, get_sequence_for_exons
 

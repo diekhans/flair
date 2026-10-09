@@ -36,6 +36,19 @@ from.
 A fusion isoform has an isoform id and a gene id of its own. The genes it joins keep
 their own gene ids, listed in transcript order.
 
+One id per column
+-----------------
+
+No FLAIR file puts an isoform and its gene in one field. The gene is a column of its
+own: ``gene_id`` in an isoforms BED, ``gene_id`` beside ``isoform_id`` in a counts
+matrix, and the column ``gtf_to_bed --include_gene`` adds. An id is therefore read,
+never parsed.
+
 The annotated gene or transcript an isoform was matched to, when it was matched to
-one, is not part of its id. FLAIR records the accession separately, so an id never
-has to be parsed to recover it.
+one, is likewise its own column rather than part of the id.
+
+Releases before FLAIR 3 joined the two with an underscore,
+``ENST00000225792.10_ENSG00000108654.15``. Splitting that needs a guess, since gene
+ids contain underscores of their own, so FLAIR no longer writes or reads it. The one
+exception is ``bed_to_gtf`` given a BED that FLAIR did not write, which has no column
+to read and so must guess.

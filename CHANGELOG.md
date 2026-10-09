@@ -25,6 +25,12 @@
     The BioConda package still does not carry them; `installing.rst` gives the
     `conda install` command to add them.
 * Incompatibles
+  * `gtf_to_bed --include_gene` adds a column naming the gene instead of appending
+    it to the isoform name.  The annotation BED and FASTA that flair transcriptome
+    builds are named by the transcript alone for the same reason.  A transcript id
+    that appears under two genes is now an error.
+  * The fusiongeneX isoform name prefix is gone; a FLAIR BED gives an isoform's
+    position in a fusion in its `pos_in_fusion` column.
   * The counts matrix now starts with two id columns, `gene_id` then `isoform_id`,
     in place of the single `isoform_gene` column.  `flair quantify --with_gene` is
     gone, the gene is always named.  A matrix from an earlier FLAIR is refused

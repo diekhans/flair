@@ -262,7 +262,7 @@ def read_vars_to_genome_pos_counts(tempfilenames, tempdir, outprefix, sampledata
 
         for var in vartocounts:
             if any([x[0] + x[1] >= threshold for x in vartocounts[var]]) and (any([x[1] > 0 for x in vartocounts[var]]) or output_all):  # any modified reads in any sample
-                varcounts = [f'{x[0]};{x[1]}' for x in vartocounts[var]]
+                varcounts = [[x[0], x[1]] for x in vartocounts[var]]
                 outline = list(var) + varcounts
                 out.writeRow(outline)
 

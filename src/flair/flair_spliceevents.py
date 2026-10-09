@@ -11,7 +11,7 @@ import logging
 import scipy.stats as sps
 from flair.partition_runner import PartitionRunner, combine_temp_files_by_suffix
 from flair.pycbio.sys import fileOps
-from flair.gene_juncs_tsv import GeneJuncsWriter
+from flair.gene_juncs_tsv import GeneJuncsReader, GeneJuncsWriter, parse_junc_coord
 from flair.read_ends_tsv import ReadEndsReader
 from flair import SeqRange, resolve_deprecated_option
 from statistics import median
@@ -889,10 +889,10 @@ def get_psi_and_filter(event_to_info, allsamples, event_frac_of_tot, junc_frac_o
                                 thispsi = thiscount / thistot if thistot > event_support else 'NA'
                                 if thispsi != 'NA' and abs(thispsi - med) >= 0.1:  # 10% PSI
                                     delta = abs(thispsi - med)
-                                    countsstr = f'{thiscount};{thistot}'
+                                    read_counts = [thiscount, thistot]
                                     # event_name, gene, median, dev, psi, numsamplesused, thiscount/junctot, absdeltapsi, numberofdev
                                     if (dev == 0 and thispsi != med) or delta > dev * 3:
-                                        outline = outinfo[:3] + [s, round(med, 6), round(dev, 6), round(thispsi, 6), len(vals_for_outlier), countsstr, round(delta, 6), 100000]
+                                        outline = outinfo[:3] + [s, round(med, 6), round(dev, 6), round(thispsi, 6), len(vals_for_outlier), read_counts, round(delta, 6), 100000]
                                         if dev != 0:
                                             outline[-1] = round(delta / dev, 6)
                                         sig_events.append(outline)
@@ -1126,10 +1126,10 @@ def get_juncs_single_sample(args, region, temp_prefix, sample, bamfile_name, reg
     with GeneJuncsWriter(temp_prefix + '_gene_to_juncs.txt') as out:
         for gene in genetojuncs:
             for juncs in genetojuncs[gene]:
-                juncstring = ','.join(['.'.join([str(y) for y in x]) for x in juncs])
+                junc_coords = ['.'.join([str(y) for y in x]) for x in juncs]
                 for read_info in genetojuncs[gene][juncs].reads:
                     c += 1
-                    out.writeRow((gene, juncstring, read_info.start, read_info.end,
+                    out.writeRow((gene, junc_coords, read_info.start, read_info.end,
                                   genetojuncs[gene][juncs].strand, read_info.name))
     remove_region_temp_files(temp_prefix, good_annot_aligns is not None)
 
@@ -1196,16 +1196,14 @@ def _run_region(*, partition, gtf_data, junction_corrector, args, allsamples):  
         all_genes_to_juncs = []
         for sample, bamfile in allsamples:
             gene_to_juncs = {}
-            for line in open(partition.file_prefix + '_' + sample + '_gene_to_juncs.txt'):
-                line = line.rstrip().split('\t')
-                gene, juncstring, start, end, strand, readname = line
-                juncs = [x.split('.') for x in juncstring.split(',')]
-                juncs = tuple([(int(x[0]), int(x[1])) for x in juncs])
-                if gene not in gene_to_juncs:
-                    gene_to_juncs[gene] = {}
-                if juncs not in gene_to_juncs[gene]:
-                    gene_to_juncs[gene][juncs] = []
-                gene_to_juncs[gene][juncs].append(ReadRec(None, strand, (), int(start), int(end), readname))
+            for row in GeneJuncsReader(partition.file_prefix + '_' + sample + '_gene_to_juncs.txt'):
+                juncs = tuple(parse_junc_coord(coord) for coord in row.juncs)
+                if row.gene not in gene_to_juncs:
+                    gene_to_juncs[row.gene] = {}
+                if juncs not in gene_to_juncs[row.gene]:
+                    gene_to_juncs[row.gene][juncs] = []
+                gene_to_juncs[row.gene][juncs].append(
+                    ReadRec(None, row.strand, (), row.start, row.end, row.read))
             all_genes_to_juncs.append(gene_to_juncs)
 
         process_gene_to_events(

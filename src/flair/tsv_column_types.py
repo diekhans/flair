@@ -7,9 +7,14 @@ stated once, here and in the format that uses it.
 """
 
 def separated_list_type(sep):
-    "a column holding values joined by sep; the row carries the list of them"
+    "a column holding strings joined by sep; the row carries the list of them"
     return (lambda value: [] if value == '' else value.split(sep),
             lambda values: sep.join(values))
+
+def separated_int_list_type(sep):
+    "the same for a column whose values are numbers"
+    return (lambda value: [] if value == '' else [int(v) for v in value.split(sep)],
+            lambda values: sep.join(str(v) for v in values))
 
 
 # comma separated, the usual case: read names, isoform ids, filter tags
@@ -17,3 +22,7 @@ commaListType = separated_list_type(',')
 
 # '; ' separated, used where the values themselves contain commas
 semicolonSpaceListType = separated_list_type('; ')
+
+# ';' separated counts, used by the columns that pack a pair of counts into one
+# field
+semicolonIntListType = separated_int_list_type(';')

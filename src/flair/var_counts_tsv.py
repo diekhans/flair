@@ -6,7 +6,8 @@ Columns, in order:
   gene         the gene it falls in, the first of the sorted list when it falls
                in more than one
   transcript   the transcript, left empty for now
-  <sample>     one column per sample, holding unmodified;modified read counts
+  <sample>     one column per sample, holding the unmodified and modified read
+               counts, ';' separated in the file and a pair on the row
 
 A variant is written when some sample has at least --threshold reads over it and
 some sample carries it, or always with --output_all.
@@ -14,6 +15,7 @@ some sample carries it, or always with --output_all.
 from contextlib import contextmanager
 from flair.pycbio.sys import fileOps
 from flair.pycbio.tsv import TsvWriter
+from flair.tsv_column_types import semicolonIntListType
 
 ID_COLUMNS = ('varpos', 'gene', 'transcript')
 
@@ -23,7 +25,8 @@ def columns(sample_columns):
 class VarCountsWriter(TsvWriter):
     def __init__(self, var_counts_tsv, sample_columns, *, outFh=None):
         super().__init__(var_counts_tsv, columns=columns(sample_columns),
-                         defaultColType=str, outFh=outFh)
+                         defaultColType=str, outFh=outFh,
+                         typeMap={col: semicolonIntListType for col in sample_columns})
 
 @contextmanager
 def var_counts_writer(var_counts_tsv, sample_columns):

@@ -96,8 +96,6 @@ def diffSplice(*, isoform_bed, counts_matrix, output, threads, test, min_samps_g
         raise FlairInputDataError('Counts matrix file path does not exist')
     if not os.path.exists(isoform_bed):
         raise FlairInputDataError('Isoform bed file path does not exist')
-    if isoform_bed.endswith('psl'):
-        raise FlairInputDataError('** Error. Flair no longer accepts PSL input. Please use psl_to_bed first.')
     check_isoform_ids(isoform_bed, counts_matrix)
 
     # Create output directory including a working directory for intermediate files.

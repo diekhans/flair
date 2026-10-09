@@ -64,8 +64,6 @@ def quantify_cmd(args):
              with_gene=args.with_gene, normalize_ends=args.normalize_ends)
 
 def check_input_files(*, manifest, genome, isoform_bed):
-    if isoform_bed.endswith('.psl'):
-        raise FlairInputDataError('FLAIR no longer accepts PSL input, convert it with psl_to_bed: ' + isoform_bed)
     for what, path in (('isoform models bed', isoform_bed), ('genome fasta', genome),
                        ('manifest', manifest)):
         if not os.path.exists(path):

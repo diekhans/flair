@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 import sys
+from flair.aaseq_pred_tsv import AaSeqPredWriter
 
 
 def translate(seq):
@@ -69,7 +70,7 @@ for line in open(referencetranscriptfile):
         tname, gname = '_'.join(tinfo[:-1]), tinfo[-1]
         transcriptToInfo[(tname, gname)] = TranscriptInfo(seq, int(orfstart), int(orfstop), propred, ptcpoint)
 
-out = open(outfile, 'w')
+out = AaSeqPredWriter(outfile)
 
 last = None
 for line in open(modtranscriptsfile):  # noqa: C901 - FIXME: reduce complexity
@@ -194,4 +195,6 @@ for line in open(modtranscriptsfile):  # noqa: C901 - FIXME: reduce complexity
             utrvars.append('5utr')
         if has3utrvars:
             utrvars.append('3utr')
-        out.write('\t'.join([tinfo, predProd, ','.join(utrvars), newpredseq]) + '\n')
+        out.writeRow((tinfo, predProd, ','.join(utrvars), newpredseq))
+
+out.close()

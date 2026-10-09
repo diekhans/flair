@@ -6,6 +6,7 @@ from flair import FlairError
 from flair.bed_to_gtf import bed_to_gtf
 from flair.pycbio.hgdata.bed import BedReader
 from flair.flair_bed import FlairBed
+from flair.combined_map_tsv import CombinedMapWriter
 from flair.counts_matrix_tsv import CountsRow, write_counts_matrix
 from statistics import median
 from flair.isoform_data import make_big_bed, get_sequence_for_exons
@@ -222,15 +223,14 @@ def correct_bed_fields_write_out(bed_list_group, new_iso_to_og, ref_gene_to_new,
     fa_fh.write('>' + new_iso_id + '\n' + my_sequence + '\n')
     return iso_count, gene_count
 
+def write_map_file(combined_map_txt, new_to_og):
+    with CombinedMapWriter(combined_map_txt) as writer:
+        for new_id, sources in new_to_og.items():
+            writer.writeSources(new_id, [','.join(x[0]) + ':' + x[1] for x in sources])
+
 def write_map_files(output, new_iso_to_og, new_gene_to_og):
-    with open(output + '.combined.isoform.map.txt', 'w') as fh:
-        for new_id in new_iso_to_og:
-            og_names = [','.join(x[0]) + ':' + x[1] for x in new_iso_to_og[new_id]]
-            fh.write(new_id + '\t' + '; '.join(og_names) + '\n')
-    with open(output + '.combined.gene.map.txt', 'w') as fh:
-        for new_id in new_gene_to_og:
-            og_names = [','.join(x[0]) + ':' + x[1] for x in new_gene_to_og[new_id]]
-            fh.write(new_id + '\t' + '; '.join(og_names) + '\n')
+    write_map_file(output + '.combined.isoform.map.txt', new_iso_to_og)
+    write_map_file(output + '.combined.gene.map.txt', new_gene_to_og)
 
 def iso_counts_row(new_id, gene_id, allsamples, samples_to_counts):
     counts = [str(samples_to_counts.get(sample, 0)) for sample in allsamples]

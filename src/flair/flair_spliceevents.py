@@ -11,6 +11,7 @@ import logging
 import scipy.stats as sps
 from flair.partition_runner import PartitionRunner, combine_temp_files_by_suffix
 from flair.pycbio.sys import fileOps
+from flair.gene_juncs_tsv import GeneJuncsWriter
 from flair.read_ends_tsv import ReadEndsReader
 from flair import SeqRange, resolve_deprecated_option
 from statistics import median
@@ -1122,14 +1123,14 @@ def get_juncs_single_sample(args, region, temp_prefix, sample, bamfile_name, reg
     genetojuncs, nogenejuncs, sereads = group_juncs_by_annot_gene(sj_to_ends, annots.sjc_to_gene, annots.junc_to_gene_id, annots.gene_to_exons, annots.gene_to_annot_juncs)
 
     c = 0
-    with open(temp_prefix + '_gene_to_juncs.txt', 'w') as out:
+    with GeneJuncsWriter(temp_prefix + '_gene_to_juncs.txt') as out:
         for gene in genetojuncs:
             for juncs in genetojuncs[gene]:
                 juncstring = ','.join(['.'.join([str(y) for y in x]) for x in juncs])
                 for read_info in genetojuncs[gene][juncs].reads:
                     c += 1
-                    outline = [gene, juncstring, str(read_info.start), str(read_info.end), genetojuncs[gene][juncs].strand, read_info.name]
-                    out.write('\t'.join(outline) + '\n')
+                    out.writeRow((gene, juncstring, read_info.start, read_info.end,
+                                  genetojuncs[gene][juncs].strand, read_info.name))
     remove_region_temp_files(temp_prefix, good_annot_aligns is not None)
 
 

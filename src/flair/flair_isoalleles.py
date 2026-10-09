@@ -7,6 +7,9 @@ from copy import deepcopy
 from flair.pycbio.hgdata.bed import BedReader
 from flair.flair_bed import FlairBed
 from flair.predictProductivity import translate_from_bed
+from flair.aaseq_tsv import write_aaseqs
+from flair.iso_allele_counts_tsv import IsoAlleleCountsWriter
+from flair.read_map_tsv import ReadMapWriter
 from flair.isoform_data import make_big_bed, get_reverse_complement, translate_codon, COMPBASE
 from flair import FlairInputDataError
 
@@ -88,12 +91,6 @@ def load_read_maps(read_map_files, read_to_data, index):
                 if (label, read) not in read_to_data:
                     read_to_data[(label, read)] = [None, None]
                 read_to_data[(label, read)][index] = data
-
-def write_file_header(fh_counts, has_norm):
-    outline = ['gene', 'source_isoform', 'phase_set', 'allele_group', 'allele_labeled_isoform', 'aaseq_id', 'tumor_counts']
-    if has_norm is not None:
-        outline.append('normal_counts')
-    fh_counts.write('\t'.join(outline) + '\n')
 
 def identify_cds_pos(isoform):
     cds_start_genomic, new_cds_start = None, 0
@@ -274,12 +271,12 @@ def write_counts_map(ol_base, out_name, iso_allele_reads, fh_counts, fh_map, fh_
     ol_base.append(str(len(iso_allele_reads['t'])))
     if fh_map_norm is not None:
         ol_base.append(str(len(iso_allele_reads['n'])))
-    fh_counts.write('\t'.join(ol_base) + '\n')
+    fh_counts.writeRow(ol_base)
 
     if fh_map is not None:
-        fh_map.write(f'{out_name}\t{",".join(sorted(iso_allele_reads["t"]))}\n')
+        fh_map.writeReads(out_name, sorted(iso_allele_reads["t"]))
         if fh_map_norm is not None:
-            fh_map_norm.write(f'{out_name}\t{",".join(sorted(iso_allele_reads["n"]))}\n')
+            fh_map_norm.writeReads(out_name, sorted(iso_allele_reads["n"]))
 
 def write_iso_allele_counts_map(new_isoform, allele_group, iso_allele_reads, fh_counts, fh_map, fh_map_norm):
     ol_aaseq = new_isoform.aaseq_id if new_isoform.aaseq_id is not None else ''
@@ -350,10 +347,7 @@ def write_out_isoform_allele_groups(iso_allele_to_reads, allele_to_vars, isoform
     return aaseq_to_id
 
 def write_aaseq_key(output, aaseq_to_id):
-    with open(output + '.aaseq.allelegroups.tsv', 'w') as fh:
-        fh.write('aaseq_id\taaseq\n')
-        for aaseq, id in aaseq_to_id.items():
-            fh.write(f'{id}\t{aaseq}\n')
+    write_aaseqs(output + '.aaseq.allelegroups.tsv', aaseq_to_id)
 
 def load_iso_allele_read_maps(iso_read_map, iso_read_map_norm, allele_read_map, allele_read_map_norm):
     iso_read_maps, allele_read_maps = [('t', iso_read_map)], [('t', allele_read_map)]
@@ -428,13 +422,13 @@ def getvariants(*, allele_vcf, allele_read_map, allele_read_map_normal, genome, 
     with pysam.FastaFile(genome) as genome_fa:
         with open(output + '.isoalleles.bed', 'w') as fh_bed, \
              open(output + '.isoalleles.fa', 'w') as fh_fa, \
-             open(output + '.isoallele.counts.tsv', 'w') as fh_counts:
+             IsoAlleleCountsWriter(output + '.isoallele.counts.tsv',
+                                   with_normal=iso_read_map_normal is not None) as fh_counts:
             fh_map, fh_map_norm = None, None
             if generate_map:
-                fh_map = open(output + '.isoallele.tumor.read.map.txt', 'w')
+                fh_map = ReadMapWriter(output + '.isoallele.tumor.read.map.txt')
                 if iso_read_map_normal is not None:
-                    fh_map_norm = open(output + '.isoallele.normal.read.map.txt', 'w')
-            write_file_header(fh_counts, iso_read_map_normal)
+                    fh_map_norm = ReadMapWriter(output + '.isoallele.normal.read.map.txt')
             aaseq_to_id = write_out_isoform_allele_groups(iso_allele_to_reads, allele_to_vars, isoforms, gene_to_tot_reads, genome_fa,
                                                           fh_bed, fh_fa, fh_counts, fh_map, fh_map_norm)
             if generate_map:

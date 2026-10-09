@@ -8,6 +8,8 @@ from contextlib import ExitStack
 import pysam
 from flair.pycbio.hgdata.bed import BedReader
 from flair.flair_bed import FlairBed
+from flair.var_counts_tsv import var_counts_writer
+from flair.vargroup_counts_tsv import vargroup_counts_writer
 from flair.io_utils import make_temp_dir
 from flair import FlairInputDataError
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
@@ -206,8 +208,8 @@ def parse_single_bam_read(s, temp_files, vcfvars, sampleindex):
 def read_vars_to_genome_pos_counts(tempfilenames, tempdir, outprefix, sampledata, threshold, output_all):  # noqa: C901 - FIXME: reduce complexity
     samplenames = [x[0] for x in sampledata]
 
-    with open(f'{outprefix}.var.counts.tsv', 'w') as out, open(f'{outprefix}.vargroup.counts.tsv', 'w') as out2:
-        out.write('\t'.join(['varpos', 'gene', 'transcript'] + samplenames) + '\n')
+    with var_counts_writer(f'{outprefix}.var.counts.tsv', samplenames) as out, \
+            vargroup_counts_writer(f'{outprefix}.vargroup.counts.tsv') as out2:
         vartocounts = {}
         vargroup_to_data = {}
         for tf in tempfilenames:
@@ -256,13 +258,13 @@ def read_vars_to_genome_pos_counts(tempfilenames, tempdir, outprefix, sampledata
                 totmods = len([x for x in readmods if x == 1])
                 outmods.append(str(totmods))
             outline = [chrom, gene, str(len(outmods)), str(totpos), ','.join(outmods), varpos]
-            out2.write('\t'.join(outline) + '\n')
+            out2.writeRow(outline)
 
         for var in vartocounts:
             if any([x[0] + x[1] >= threshold for x in vartocounts[var]]) and (any([x[1] > 0 for x in vartocounts[var]]) or output_all):  # any modified reads in any sample
                 varcounts = [f'{x[0]};{x[1]}' for x in vartocounts[var]]
                 outline = list(var) + varcounts
-                out.write('\t'.join(outline) + '\n')
+                out.writeRow(outline)
 
 def retrieve_good_iso_pos(potgenes, genestoboundaries, gpos, genetoiso, isotoblocks):
     for gene in potgenes:

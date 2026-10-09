@@ -5,6 +5,8 @@ import logging
 from flair.gtf_io import load_gtf_to_gene_data, GtfExon
 from copy import deepcopy
 # import graphviz
+from flair.allele_group_counts_tsv import allele_group_counts_writer
+from flair.read_map_tsv import ReadMapWriter
 from flair.pycbio.hgdata.bed import BedReader
 from flair.flair_bed import FlairBed
 import math
@@ -616,25 +618,27 @@ def write_allele_group_counts_read_map(index_to_allele_group_info, output, gener
     """Read counts per allele group.  With --norm_bam, a group supported by fewer than
     read_support normal reads is called somatic; this is the only place that call is
     reported."""
-    with open(output + '.allelegroups.counts.tsv', 'w') as fh:
-        outline = ['phase_set', 'allele_group', 'tumor_counts']
-        if norm_bam is not None:
-            outline.extend(['normal_counts', 'somatic'])
-        fh.write('\t'.join(outline) + '\n')
+    with_normal = norm_bam is not None
+    with allele_group_counts_writer(output + '.allelegroups.counts.tsv',
+                                    with_normal=with_normal) as writer:
         for (ps, ag), group_info in index_to_allele_group_info.items():
             ol = [str(ps), ag, str(len(group_info['t']))]
-            if norm_bam is not None:
+            if with_normal:
                 normal_counts = len(group_info['n'])
                 ol.extend([str(normal_counts), 'yes' if normal_counts < read_support else 'no'])
-            fh.write('\t'.join(ol) + '\n')
+            writer.writeRow(ol)
     if generate_map:
-        with open(output + '.allelegroups.tumor.read.map.txt', 'w') as fh:
-            for (ps, ag), group_info in index_to_allele_group_info.items():
-                fh.write(f'{ps}|{ag}\t{",".join(sorted(group_info["t"]))}\n')
-        if norm_bam is not None:
-            with open(output + '.allelegroups.normal.read.map.txt', 'w') as fh:
-                for (ps, ag), group_info in index_to_allele_group_info.items():
-                    fh.write(f'{ps}|{ag}\t{",".join(sorted(group_info["n"]))}\n')
+        write_allele_group_read_map(index_to_allele_group_info,
+                                    output + '.allelegroups.tumor.read.map.txt', 't')
+        if with_normal:
+            write_allele_group_read_map(index_to_allele_group_info,
+                                        output + '.allelegroups.normal.read.map.txt', 'n')
+
+def write_allele_group_read_map(index_to_allele_group_info, read_map_txt, which):
+    "the reads of each allele group in one BAM, tumor or normal"
+    with ReadMapWriter(read_map_txt) as writer:
+        for (ps, ag), group_info in index_to_allele_group_info.items():
+            writer.writeReads(f'{ps}|{ag}', sorted(group_info[which]))
 
 def make_allele_group_label(phaseset, allele_group_count):
     """Label of the next allele group in a phase set.  combine_phase_sets relabels

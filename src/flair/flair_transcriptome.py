@@ -22,6 +22,7 @@ from flair.count_sam_transcripts import TRUST_ENDS_WINDOW, run_count_sam_transcr
 from flair.annotation_data import annot_data_from_gtf
 from flair.pycbio.hgdata.bed import BedReader
 from flair.predictProductivity import predict_prod_temp
+from flair.aaseq_tsv import write_aaseqs
 from flair.flair_bed import FlairBed
 
 MIN_POLYA_FRAC_DIFF_FOR_SE_STRANDING = 0.1
@@ -1348,10 +1349,7 @@ def get_new_ids(output):
             if bed_rec.aaseq_id is not None:
                 bed_rec.aaseq_id = aaseq_to_id[bed_rec.aaseq_id]
             bed_rec.write(fh)
-    with open(output + '.aaseq.tsv', 'w') as fh:
-        fh.write('aaseq_id\taaseq\n')
-        for aaseq, id in aaseq_to_id.items():
-            fh.write(f'{id}\t{aaseq}\n')
+    write_aaseqs(output + '.aaseq.tsv', aaseq_to_id)
     return iso_hash_to_ID
 
 def fix_ids_txt_file(iso_hash_to_ID, oldfile, newfile):

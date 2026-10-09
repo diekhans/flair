@@ -7,12 +7,16 @@ import pipettor
 import logging
 from flair import FlairError, FlairInputDataError
 from flair.counts_matrix import read_sample_info, select_condition_pair, write_sample_info
+from flair.pycbio.hgdata.bed import BedReader
 
 pkgdir = osp.dirname(osp.realpath(__file__))
 diffSplice_drimSeq = osp.join(pkgdir, "diffSplice_drimSeq.R")
 call_diffsplice_events = osp.join(pkgdir, "call_diffsplice_events.py")
 es_as = osp.join(pkgdir, "es_as.py")
 es_as_inc_excl_to_counts = osp.join(pkgdir, "es_as_inc_excl_to_counts.py")
+
+# number of missing isoform ids named in the error, the rest being redundant
+MAX_REPORTED_MISSING_IDS = 10
 
 def add_subparser(subparsers):
     desc = "Call alternative splicing events from isoforms and test them for differential usage"
@@ -74,6 +78,27 @@ def diffsplice_cmd(args):
                batch=args.batch, condition_a=args.condition_a, condition_b=args.condition_b,
                overwrite_output=args.overwrite_output)
 
+def read_counts_isoform_ids(counts_matrix):
+    "isoform ids in the first column of the counts matrix, in file order"
+    with open(counts_matrix) as fh:
+        fh.readline()  # header
+        return [line.split('\t')[0] for line in fh if line.strip() != '']
+
+def check_isoform_ids(isoform_bed, counts_matrix):
+    """Every counted isoform must have a BED record, since the events are called from
+    the BED and the counts attached to them by id.  Extra BED records are allowed; they
+    contribute no counts."""
+    bed_names = frozenset(bed.name for bed in BedReader(isoform_bed, fixScores=True))
+    missing = [iso_id for iso_id in read_counts_isoform_ids(counts_matrix)
+               if iso_id not in bed_names]
+    if len(missing) > 0:
+        named = ', '.join(missing[:MAX_REPORTED_MISSING_IDS])
+        elided = ', ...' if len(missing) > MAX_REPORTED_MISSING_IDS else ''
+        raise FlairInputDataError(
+            f"{len(missing)} isoform ids in counts matrix {counts_matrix} have no record in "
+            f"{isoform_bed}: {named}{elided}; pass the isoform BED that was quantified to "
+            "produce this counts matrix")
+
 def diffSplice(*, isoform_bed, counts_matrix, output, threads, test, min_samps_gene_expr,  # noqa: C901 - FIXME: reduce complexity
                min_samps_feature_expr, min_gene_expr, min_feature_expr, batch,
                condition_a, condition_b, overwrite_output):
@@ -81,6 +106,9 @@ def diffSplice(*, isoform_bed, counts_matrix, output, threads, test, min_samps_g
         raise FlairInputDataError('Counts matrix file path does not exist')
     if not os.path.exists(isoform_bed):
         raise FlairInputDataError('Isoform bed file path does not exist')
+    if isoform_bed.endswith('psl'):
+        raise FlairInputDataError('** Error. Flair no longer accepts PSL input. Please use psl_to_bed first.')
+    check_isoform_ids(isoform_bed, counts_matrix)
 
     # Create output directory including a working directory for intermediate files.
     workdir = os.path.join(output, 'workdir')
@@ -95,8 +123,6 @@ def diffSplice(*, isoform_bed, counts_matrix, output, threads, test, min_samps_g
             raise OSError("** ERROR cannot create directory %s" % (workdir)) from ex
     else:
         raise FlairInputDataError(f'** Error. Name {output} already exists. Choose another name for out_dir')
-    if isoform_bed.endswith('psl'):
-        raise FlairInputDataError('** Error. Flair no longer accepts PSL input. Please use psl_to_bed first.')
 
     filebase = os.path.join(output, 'diffsplice')
     pipettor.run([sys.executable, call_diffsplice_events, isoform_bed, filebase, counts_matrix])

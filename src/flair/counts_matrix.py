@@ -1,4 +1,4 @@
-"""The sample columns of a flair quantify counts matrix.
+"""A flair quantify counts matrix: its sample columns and its isoform row ids.
 
 flair quantify writes a sample info TSV beside the counts matrix, one row per counts
 column, naming each sample's condition and batch.  Readers take the fields from there
@@ -23,6 +23,9 @@ CONDITION_FIELD = 1
 BATCH_FIELD = -1
 
 SAMPLE_INFO_COLUMNS = ('sample_id', 'condition', 'batch')
+
+# ids named when an error reports a set of offending ids, the rest being redundant
+MAX_REPORTED_IDS = 10
 
 class SampleInfo(namedtuple('SampleInfo', SAMPLE_INFO_COLUMNS)):
     "one counts matrix column: which sample it holds and how that sample was grouped"
@@ -81,6 +84,17 @@ def read_sample_columns(counts_matrix_tsv):
     "the sample column names, in column order, without the leading id column"
     with open(counts_matrix_tsv) as fh:
         return fh.readline().split()[1:]
+
+def read_isoform_ids(counts_matrix_tsv):
+    "the isoform id of each row, in file order"
+    with open(counts_matrix_tsv) as fh:
+        fh.readline()  # header
+        return [line.split('\t')[0] for line in fh if line.strip() != '']
+
+def describe_ids(ids):
+    "the first few ids, for naming the offenders in an error without listing them all"
+    named = ', '.join(ids[:MAX_REPORTED_IDS])
+    return named + (', ...' if len(ids) > MAX_REPORTED_IDS else '')
 
 def parse_sample_fields(sample_columns, counts_matrix_tsv):
     "the condition and the batch of each sample column"

@@ -22,7 +22,8 @@ import pipettor
 
 from flair import FlairError, FlairInputDataError
 from flair.counts_matrix import (read_sample_info, condition_column_indexes,
-                                 select_condition_pair)
+                                 select_condition_pair, read_isoform_ids, describe_ids)
+from flair.iso_gene_id import split_iso_gene, parse_gene_id
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import numpy as np  # noqa: E402
@@ -31,6 +32,9 @@ import numpy as np  # noqa: E402
 pkgdir = osp.dirname(osp.realpath(__file__))
 diffExp_deseq2 = osp.join(pkgdir, "diffExp_deseq2.R")
 diffExp_drimseq = osp.join(pkgdir, "diffExp_drimseq.R")
+
+ISOFORM_GENE_ID_ADVICE = ("quantify an isoform BED whose names are isoform_gene, as flair "
+                          "collapse and flair transcriptome write them")
 
 
 ##
@@ -112,7 +116,7 @@ def get_gene_to_counts(filename):
     for line in open(filename):
         line = line.rstrip().split('\t')
         if line[0] != 'ids':
-            gene = line[0].split('_')[-1]
+            gene = parse_gene_id(line[0])
             counts = [int(x) for x in line[1:]]
             if gene not in genetototcounts:
                 genetototcounts[gene] = [0 for x in range(len(counts))]
@@ -129,7 +133,7 @@ def do_mtc_ttest(filename, genetototcounts, ref_cols, test_cols):
         line = line.rstrip().split('\t')
         if line[0] != 'ids':
             id = line[0]
-            gene = id.split('_')[-1]
+            gene = parse_gene_id(id)
 
             counts = [int(x) for x in line[1:]]
             wtcounts = [counts[i] for i in ref_cols]
@@ -181,6 +185,35 @@ def get_sig_from_norm_by_gene(outname, filename, ref_cols, test_cols):
         if corrpval[i] < 0.05:
             out.write('\t'.join([gene, str(round(alldeltas[i], 3)), str(corrpval[i])]) + '\n')
 
+def check_gene_ids_present(counts_matrix_tsv, iso_gene_ids):
+    "a row id with no separator at all names no gene"
+    bad = [iso_gene for iso_gene in iso_gene_ids if parse_gene_id(iso_gene) == iso_gene]
+    if len(bad) > 0:
+        raise FlairInputDataError(
+            f"{len(bad)} row ids in counts matrix {counts_matrix_tsv} do not name a gene: "
+            f"{describe_ids(bad)}; {ISOFORM_GENE_ID_ADVICE}")
+
+def check_genes_group_isoforms(counts_matrix_tsv, iso_gene_ids):
+    """No gene holding two isoforms means the gene halves are not genes.  A transcript
+    accession carrying an underscore of its own, NM_000123.4, splits into a gene of its
+    own, so the per-id check above cannot catch a matrix of bare RefSeq ids."""
+    per_gene = Counter(parse_gene_id(iso_gene) for iso_gene in iso_gene_ids)
+    if max(per_gene.values()) < 2:
+        raise FlairInputDataError(
+            f"no gene in counts matrix {counts_matrix_tsv} holds more than one isoform, so "
+            f"the row ids are isoform ids rather than isoform_gene ids: "
+            f"{describe_ids(iso_gene_ids)}; {ISOFORM_GENE_ID_ADVICE}")
+
+def check_iso_gene_ids(counts_matrix_tsv):
+    """Each counts row id must name the isoform and its gene, since the gene half is
+    what groups isoforms into the gene table and into the DRIMSeq usage test.  Without
+    it every isoform becomes a gene of its own and the tests have nothing to compare."""
+    iso_gene_ids = read_isoform_ids(counts_matrix_tsv)
+    if len(iso_gene_ids) == 0:
+        raise FlairInputDataError(f"counts matrix {counts_matrix_tsv} has no isoform rows")
+    check_gene_ids_present(counts_matrix_tsv, iso_gene_ids)
+    check_genes_group_isoforms(counts_matrix_tsv, iso_gene_ids)
+
 def quant_row_check(linenum, row):
     if len(row) < 7:
         raise FlairInputDataError(f"line {linenum}: found {len(row)} columns in counts matrix, expected >6")
@@ -219,8 +252,7 @@ def separate_tables(quant_table_tsv, thresh, samples, a_cols, b_cols, outDir):
     duplicateID = 1
 
     for name, counts in quant_table_reader(quant_table_tsv):
-        # FIXME: gene name parsing needs to be moved to a common module
-        iso, gene = name, name.split("_")[-1]
+        iso, gene = name, parse_gene_id(name)
         # if "-" in gene:
         #     gene = gene.split("-")[0]
         # m = iso.count("_")
@@ -295,9 +327,9 @@ def calc_gene_norm_sig(workdir, quant_table_tsv):
         if line[0] == 'ids':
             out.write('\t'.join(line) + '\n')
         else:
-            oggenes = line[0].split('_')[-1]
+            oggenes = parse_gene_id(line[0])
             genes = oggenes.split('--')
-            isoname = '_'.join(line[0].split('_')[:-1])
+            isoname = split_iso_gene(line[0])[0]
             l = len(line)
             for gene in genes:
                 if '--' in oggenes:  # is fusion ?
@@ -309,7 +341,7 @@ def calc_gene_norm_sig(workdir, quant_table_tsv):
                     genetosampletotot[gene] = [0 for x in range(len(counts))]
                 genetosampletotot[gene] = [genetosampletotot[gene][x] + counts[x] for x in range(len(counts))]
     for l in lines:
-        gene = l[0].split('_')[-1]
+        gene = parse_gene_id(l[0])
         thisgenetot = genetosampletotot[gene]
         geneavg = sum(thisgenetot) / len(thisgenetot)
         thesecounts = l[1:]
@@ -348,6 +380,8 @@ def calculate_sig(*, counts_matrix, output, condition_a, condition_b, min_expres
     quant_table_tsv = counts_matrix
     sFilter = min_expression
     force_dir = overwrite_output
+
+    check_iso_gene_ids(quant_table_tsv)
 
     # FIXME convert to just loading table upfront
     # Get sample data info

@@ -3,7 +3,8 @@ Tests for flair_diffSplice module.
 """
 import pytest
 from flair import FlairInputDataError
-from flair.flair_diffSplice import check_isoform_ids, MAX_REPORTED_MISSING_IDS
+from flair.counts_matrix import MAX_REPORTED_IDS
+from flair.flair_diffSplice import check_isoform_ids
 
 def write_bed(path, names):
     with open(path, 'w') as fh:
@@ -40,7 +41,7 @@ def test_check_isoform_ids_missing_from_bed(tmp_path):
         check_isoform_ids(bed, counts)
 
 def test_check_isoform_ids_missing_list_elided(tmp_path):
-    missing = ['iso%d_gene1' % num for num in range(MAX_REPORTED_MISSING_IDS + 5)]
+    missing = ['iso%d_gene1' % num for num in range(MAX_REPORTED_IDS + 5)]
     bed, counts = write_inputs(tmp_path, ['iso0_gene1'], missing)
     with pytest.raises(FlairInputDataError, match=r"14 isoform ids .*, \.\.\.;"):
         check_isoform_ids(bed, counts)

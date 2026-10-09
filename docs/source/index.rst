@@ -76,7 +76,6 @@ individually to isoforms of the combined assembly for downstream analyses.
    flair-protocol.rst
    modules.rst
    scripts.rst
-   testrun.rst
    faqs.rst
    cite.rst
 

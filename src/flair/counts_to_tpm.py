@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
 import sys
-import csv
-import os
 from flair import FlairInputDataError
-from flair.counts_matrix_tsv import ID_COLUMNS
+from flair.counts_matrix_tsv import ID_COLUMNS, CountsRow
+from flair.tpm_tsv import tpm_writer
 from flair.pycbio.sys import cli
 
 def parse_input():
@@ -51,13 +50,11 @@ def counts_to_tpm(counts_matrix, outfilename, sizefile=None):
         raise FlairInputDataError(f"{outfilename}: samples in columns {empty} have no counts in any row, "
                                   "so TPM cannot be computed; drop them from the counts matrix")
 
-    with open(outfilename, 'wt') as outfile:
-        writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
-        writer.writerow(matrix_data[0])
+    sample_columns = matrix_data[0][num_id_cols:]
+    with tpm_writer(outfilename, sample_columns) as writer:
         for line in matrix_data[1:]:
-            for n in range(num_samples):
-                line[n + num_id_cols] = round(line[n + num_id_cols] / all_rpk[n], 5)
-            writer.writerow(line)
+            tpm = [round(line[n + num_id_cols] / all_rpk[n], 5) for n in range(num_samples)]
+            writer.writeCountsRow(CountsRow(line[0], line[1], tpm))
 
 
 def main():

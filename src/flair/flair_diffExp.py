@@ -15,7 +15,6 @@
 import os
 import os.path as osp
 import errno
-import csv
 from collections import Counter
 from statistics import median, mean
 import pipettor
@@ -23,6 +22,10 @@ import pipettor
 from flair import FlairError, FlairInputDataError
 from flair.conditions import condition_column_indexes, select_condition_pair
 from flair.counts_matrix_tsv import read_counts_rows, CountsRow, write_counts_matrix
+from flair.deseq2_counts_tsv import write_deseq2_counts
+from flair.drimseq_counts_tsv import drimseq_counts_writer
+from flair.formula_matrix_tsv import FormulaRow, write_formula_matrix
+from flair.iso_usage_change_tsv import iso_usage_change_writer
 from flair.sample_info_tsv import read_sample_info
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
@@ -174,28 +177,13 @@ def get_sig_from_norm_by_gene(outname, norm_rows, ref_cols, test_cols):
     genetototcounts = get_gene_to_counts(norm_rows)
     allids, alldeltas, corrpval = do_mtc_ttest(norm_rows, genetototcounts, ref_cols, test_cols)
 
-    with open(outname, 'w') as out:
+    with iso_usage_change_writer(outname) as out:
         for i in range(len(allids)):
             gene_id, isoform_id = allids[i]
             if corrpval[i] < 0.05:
-                out.write('\t'.join([gene_id, isoform_id, str(round(alldeltas[i], 3)),
-                                     str(corrpval[i])]) + '\n')
-
-def write_name_values_tsv(samples, names, values, out_tsv):
-    "write gene or isoform matrix tsv"
-    with open(out_tsv, 'w') as fh:
-        writer = csv.writer(fh, delimiter='\t', dialect='unix', quoting=csv.QUOTE_NONE)
-        writer.writerow([''] + samples)
-        for name, value in zip(names, values):
-            writer.writerow([name] + list(value))
-
-def write_tsv(columns, rows, out_tsv):
-    """write a TSV.  """
-    with open(out_tsv, 'w') as fh:
-        writer = csv.writer(fh, delimiter='\t', dialect='unix', quoting=csv.QUOTE_NONE)
-        writer.writerow(columns)
-        for row in rows:
-            writer.writerow(row)
+                out.writeColumns(gene_id=gene_id, isoform_id=isoform_id,
+                                 delta_usage=round(alldeltas[i], 3),
+                                 adj_pval=corrpval[i])
 
 def add_counts_row(genes, isoforms, row, duplicateID):
     "add one counts row to its gene and to the isoform table"
@@ -235,8 +223,8 @@ def separate_tables(counts_rows, thresh, samples, a_cols, b_cols, outDir):
     filteredRows = (np.min(vals[:, g1Ind], axis=1) > thresh) | (np.min(vals[:, g2Ind], axis=1) > thresh)
     filteredGeneVals = vals[filteredRows]
     filteredGeneIDs = geneIDs[filteredRows]
-    write_name_values_tsv(samples, filteredGeneIDs, filteredGeneVals,
-                          outDir + "/filtered_gene_counts_ds2.tsv")
+    write_deseq2_counts(outDir + "/filtered_gene_counts_ds2.tsv", samples,
+                        filteredGeneIDs, filteredGeneVals)
 
     # now do isoforms
     isoformIDs = np.asarray(list(isoforms.keys()))
@@ -245,18 +233,14 @@ def separate_tables(counts_rows, thresh, samples, a_cols, b_cols, outDir):
     filteredIsoVals = vals[filteredRows]
     filteredIsoIDs = isoformIDs[filteredRows]
 
-    write_name_values_tsv(samples, filteredIsoIDs, filteredIsoVals,
-                          outDir + "/filtered_iso_counts_ds2.tsv")
+    write_deseq2_counts(outDir + "/filtered_iso_counts_ds2.tsv", samples,
+                        filteredIsoIDs, filteredIsoVals)
 
-    # also make table for drimm-seq.  It must have a unique row undex
-    # added to prevent 'DataFrame contains duplicated elements in the index'
-    isoformIDs = np.asarray([[y.parent.name, x] for x, y in isoforms.items()])
-    vals = np.asarray([isoforms[x[-1]].exp for x in isoformIDs])
-    indices = np.arange(isoformIDs.shape[0]).reshape(-1, 1)
-    allIso = np.hstack((indices, isoformIDs, vals))
-
-    write_tsv(['irow', 'gene_id', 'feature_id'] + samples, allIso,
-              outDir + "/filtered_iso_counts_drim.tsv")
+    # the DRIMSeq table is every isoform, filtered or not; its serial irow column
+    # keeps the index unique, which a repeated isoform id would not
+    with drimseq_counts_writer(outDir + "/filtered_iso_counts_drim.tsv", samples) as writer:
+        for iso, isoform in isoforms.items():
+            writer.writeIsoform(isoform.parent.name, iso, isoform.exp)
     return genes, isoforms
 
 
@@ -371,19 +355,16 @@ def calculate_sig(*, counts_matrix, output, condition_a, condition_b, min_expres
     # Convert count tables to dataframe and update isoform objects.
     genes, isoforms = separate_tables(counts_rows, sFilter, samples, a_cols, b_cols, workdir)
 
-    # checks linear combination
-    if len(combos) == 2:
-        header = ['sample_id', 'condition']
-        formulaMatrix = [[x, y] for x, y in zip(samples, groups)]
-    elif len(set(batches)) > 1:
-        header = ['sample_id', 'condition', 'batch']
-        formulaMatrix = [[x, y, z] for x, y, z in zip(samples, groups, batches)]
-    else:
-        header = ['sample_id', ' condition']
-        formulaMatrix = [[x, y] for x, y in zip(samples, groups)]
+    # DESeq2 models batch when the formula matrix has a batch column, so it is
+    # written only when batch varies and is not a linear combination of condition.
+    # The no-batch branches used to differ only in a stray leading space in the
+    # condition column name
+    with_batch = (len(combos) != 2) and (len(set(batches)) > 1)
+    formula_rows = [FormulaRow(sample, group, batch)
+                    for sample, group, batch in zip(samples, groups, batches)]
 
     formulaMatrixFile = workdir + "/formula_matrix.tsv"
-    write_tsv(header, formulaMatrix, formulaMatrixFile)
+    write_formula_matrix(formulaMatrixFile, formula_rows, with_batch=with_batch)
 
     isoMatrixFile = workdir + "/filtered_iso_counts_ds2.tsv"
     geneMatrixFile = workdir + "/filtered_gene_counts_ds2.tsv"

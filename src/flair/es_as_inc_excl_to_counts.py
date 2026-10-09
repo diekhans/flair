@@ -5,32 +5,30 @@ import sys
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import numpy as np  # noqa: E402 - openblas setting must be before numpy import
 from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows  # noqa: E402
+from flair.es_events_tsv import EsEventsReader, isoform_ids  # noqa: E402
+from flair.event_quant_tsv import EventQuantWriter  # noqa: E402
 
-sample_names = read_sample_columns(sys.argv[1])
-nSamps = len(sample_names)
-data = {row.isoform_id: np.asarray(row.counts, dtype=np.float32)
-        for row in read_counts_rows(sys.argv[1])}
+def side_counts(data, nSamps, isos):
+    "the counts of one side of an event, summed over its isoforms"
+    vals = np.asarray([data.get(iso, np.zeros(nSamps)) for iso in isos])
+    return np.sum(vals, axis=0)
 
-with open(sys.argv[2]) as fin2:
-    print('\t'.join(['feature_id', 'coordinate'] + sample_names + ['isoform_ids']))
-    for line in fin2:
-        cols = line.rstrip().split()
-        if int(cols[3]) == 0:
-            continue
-        else:
-            exon, strand, _, exc, incIsos, excIsos = cols
-        incVals = np.asarray([data.get(x, np.zeros(nSamps)) for x in incIsos.split(",")])
-        excVals = np.asarray([data.get(x, np.zeros(nSamps)) for x in excIsos.split(",")])
+def write_es_events(counts_matrix_tsv, es_events_tsv):
+    sample_names = read_sample_columns(counts_matrix_tsv)
+    nSamps = len(sample_names)
+    data = {row.isoform_id: np.asarray(row.counts, dtype=np.float32)
+            for row in read_counts_rows(counts_matrix_tsv)}
 
-        incVals = np.sum(incVals, axis=0)
-        excVals = np.sum(excVals, axis=0)
-        # totVals = incVals + excVals
+    with EventQuantWriter(None, sample_names, outFh=sys.stdout) as writer:
+        for row in EsEventsReader(es_events_tsv):
+            # an exon that no isoform skips is not an event
+            if row.num_exclusion > 0:
+                inc_isos = isoform_ids(row.inclusion_isos)
+                exc_isos = isoform_ids(row.exclusion_isos)
+                writer.writeSide('inclusion', row.exon, row.exon,
+                                 side_counts(data, nSamps, inc_isos), inc_isos)
+                writer.writeSide('exclusion', row.exon, row.exon,
+                                 side_counts(data, nSamps, exc_isos), exc_isos)
 
-        # must have at least 1 count to support the inc and exc of this exon
-        # if incVals.all() < 1 or excVals.all() < 1:
-        #     continue
 
-        print("inclusion_%s" % exon, exon, "\t".join(str(x) for x in incVals), incIsos, sep="\t")
-        print("exclusion_%s" % exon, exon, "\t".join(str(x) for x in excVals), excIsos, sep="\t")
-
-        # print(exon,"\t".join("%.2f" % x for x in incVals/totVals))
+write_es_events(sys.argv[1], sys.argv[2])

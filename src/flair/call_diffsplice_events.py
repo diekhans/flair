@@ -2,9 +2,8 @@
 """Call alternative 3' splice site, alternative 5' splice site and intron
 retention events from an isoform BED."""
 import argparse
-import csv
-import os
 from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows
+from flair.event_quant_tsv import event_quant_writer
 from flair.pycbio.hgdata.bed import BedReader
 
 # minimum distance apart for alt SS to be tested
@@ -76,12 +75,12 @@ def find_altss(alljuncs, writer, search_threeprime=True):
                     feature_suffix = chrom_clean + ':' + str(fiveprime) if n == 0 else chrom_clean + ':' + str(fiveprime) + '-' + str(n)
                     event = chrom_clean + ':' + str(fiveprime) + '-' + str(inclusion) + '_' + chrom_clean + ':' + str(fiveprime) + '-' + str(exclusion)
 
-                    writer.writerow(['inclusion_' + feature_suffix, event] +
-                                    alljuncs[chrom][fiveprime][inclusion]['counts'] +
-                                    [','.join(sorted(alljuncs[chrom][fiveprime][inclusion]['isos']))])
-                    writer.writerow(['exclusion_' + feature_suffix, event] +
-                                    alljuncs[chrom][fiveprime][exclusion]['counts'] +
-                                    [','.join(sorted(alljuncs[chrom][fiveprime][exclusion]['isos']))])
+                    writer.writeSide('inclusion', feature_suffix, event,
+                                     alljuncs[chrom][fiveprime][inclusion]['counts'],
+                                     sorted(alljuncs[chrom][fiveprime][inclusion]['isos']))
+                    writer.writeSide('exclusion', feature_suffix, event,
+                                     alljuncs[chrom][fiveprime][exclusion]['counts'],
+                                     sorted(alljuncs[chrom][fiveprime][exclusion]['isos']))
                     n += 1
 
 
@@ -151,19 +150,13 @@ def main():  # noqa: C901 - FIXME: reduce complexity
             for c in range(len(sample_names)):
                 ir_junctions[chrom][j]['exclusion']['counts'][c] += iso_counts[name][c]
 
-    with open(outfilenamebase + '.alt3.events.quant.tsv', 'wt') as outfile:
-        writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
-        writer.writerow(['feature_id', 'coordinate'] + sample_names + ['isoform_ids'])
+    with event_quant_writer(outfilenamebase + '.alt3.events.quant.tsv', sample_names) as writer:
         find_altss(a3_junctions, writer)
 
-    with open(outfilenamebase + '.alt5.events.quant.tsv', 'wt') as outfile:
-        writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
-        writer.writerow(['feature_id', 'coordinate'] + sample_names + ['isoform_ids'])
+    with event_quant_writer(outfilenamebase + '.alt5.events.quant.tsv', sample_names) as writer:
         find_altss(a5_junctions, writer, search_threeprime=False)
 
-    with open(outfilenamebase + '.ir.events.quant.tsv', 'wt') as outfile:
-        writer = csv.writer(outfile, delimiter='\t', lineterminator=os.linesep)
-        writer.writerow(['feature_id', 'coordinate'] + sample_names + ['isoform_ids'])
+    with event_quant_writer(outfilenamebase + '.ir.events.quant.tsv', sample_names) as writer:
         for chrom in ir_junctions:  # noqa: C901 - FIXME: reduce complexity
             for j in ir_junctions[chrom]:
                 for iname in isoforms[chrom]:  # compare with all other isoforms to find IR
@@ -192,12 +185,12 @@ def main():  # noqa: C901 - FIXME: reduce complexity
 
                 chrom_clean = chrom[1:]
                 event = chrom_clean + ':' + str(j[0]) + '-' + str(j[1])
-                writer.writerow(['inclusion_' + event, event] +
-                                ir_junctions[chrom][j]['inclusion']['counts'] +
-                                [','.join(sorted(ir_junctions[chrom][j]['inclusion']['isos']))])
-                writer.writerow(['exclusion_' + event, event] +
-                                ir_junctions[chrom][j]['exclusion']['counts'] +
-                                [','.join(sorted(ir_junctions[chrom][j]['exclusion']['isos']))])
+                writer.writeSide('inclusion', event, event,
+                                 ir_junctions[chrom][j]['inclusion']['counts'],
+                                 sorted(ir_junctions[chrom][j]['inclusion']['isos']))
+                writer.writeSide('exclusion', event, event,
+                                 ir_junctions[chrom][j]['exclusion']['counts'],
+                                 sorted(ir_junctions[chrom][j]['exclusion']['isos']))
             ir_junctions[chrom] = None
 
 

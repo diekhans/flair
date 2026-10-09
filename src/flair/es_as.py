@@ -2,6 +2,7 @@
 
 import sys
 from flair import FlairInputDataError
+from flair.es_events_tsv import EsEventsWriter
 from flair.flair_bed import FlairBed
 from flair.pycbio.hgdata.bed import BedReader
 
@@ -75,10 +76,11 @@ class Gene(object):
                 self.knownJuncs[j1].add(i)
                 self.knownJuncs[j2].add(i)
 
-    def findSkippedExonsV1(self):
+    def findSkippedExonsV1(self, writer):
         '''
         '''
 
+        self.writer = writer
         for e, obj in self.exonGraph.items():
             donor, acceptor = obj.donor, obj.acceptor
             if donor is None or acceptor is None:
@@ -94,8 +96,9 @@ class Gene(object):
                     exclusionIsos = exclusionIsos.union(self.knownJuncs[j1[0], j2[-1]])
             inclusionIsos = sorted(list(inclusionIsos))
             exclusionIsos = sorted(list(exclusionIsos))
-            print("%s:%s-%s" % (self.chrom, acceptor.name, donor.name), self.strand, len(inclusionIsos),
-                  len(exclusionIsos), ",".join(inclusionIsos), ",".join(exclusionIsos), sep="\t")
+            self.writer.writeRow(("%s:%s-%s" % (self.chrom, acceptor.name, donor.name),
+                                  self.strand, len(inclusionIsos), len(exclusionIsos),
+                                  ",".join(inclusionIsos), ",".join(exclusionIsos)))
             # print(self.chrom, "\t".join(str(x) for x in sorted([acceptor.name,donor.name])), "%s:%s-%s" % (self.chrom,acceptor.name,donor.name), self.name, self.strand, sep="\t")
 
 
@@ -133,9 +136,10 @@ def main():
             genes[bed.gene_id] = Gene(bed.gene_id, bed.chrom, bed.strand)
         genes[bed.gene_id].isoforms[bed.name] = exons
 
-    for gobj in genes.values():
-        gobj.buildGraph()
-        gobj.findSkippedExonsV1()
+    with EsEventsWriter(None, outFh=sys.stdout) as writer:
+        for gobj in genes.values():
+            gobj.buildGraph()
+            gobj.findSkippedExonsV1(writer)
 
 
 if __name__ == "__main__":

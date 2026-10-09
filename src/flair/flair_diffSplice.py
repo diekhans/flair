@@ -8,6 +8,7 @@ import logging
 from flair import FlairError, FlairInputDataError
 from flair.conditions import select_condition_pair
 from flair.counts_matrix_tsv import read_isoform_ids, describe_ids
+from flair.event_quant_tsv import EventQuantReader
 from flair.sample_info_tsv import read_sample_info, write_sample_info
 from flair.pycbio.hgdata.bed import BedReader
 
@@ -161,9 +162,7 @@ def run_drimseq_event(ds_command, event, filebase, workdir, ds_stderr):
             raise FlairError(f"DRIMSeq failed on `{event}' event. "
                              f'Check {workdir}/ds.stderr.txt for details') from exc
 
-def emptyMatrix(infile):
-    '''Returns true if file has only a header line'''
-    with open(infile, 'r') as inf:
-        if len(inf.readlines()) <= 1:
-            return True
-    return False
+def emptyMatrix(event_quant_tsv):
+    "true when an event type called no events, leaving a file of only its header"
+    with EventQuantReader(event_quant_tsv) as reader:
+        return next(iter(reader), None) is None

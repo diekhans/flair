@@ -114,8 +114,6 @@ def read_isoforms_bed(*, isoforms, stringent=False, check_splice=False,  # noqa:
     if stringent or check_splice or fusion_dist or fusion_breakpoints or output_endpos:
         for bed in BedReader(isoforms, fixScores=True):
             name, left, right, chrom, strand = bed.name, bed.chromStart, bed.chromEnd, bed.chrom, bed.strand
-            if name[:10] == 'fusiongene':
-                name = '_'.join(name.split('_')[1:])
             blocksizes = [len(blk) for blk in bed.blocks]
             if strand == '+':
                 info.transcript_to_exons[name] = blocksizes

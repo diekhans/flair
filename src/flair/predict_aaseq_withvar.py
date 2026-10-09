@@ -67,8 +67,6 @@ for line in open(referencetranscriptfile):
         tinfo, propred, orfstart, orfstop, ptcpoint, seq = line
         tinfo = tinfo.split('_')
         tname, gname = '_'.join(tinfo[:-1]), tinfo[-1]
-        if 'fusiongene' in tname:
-            tname = '_'.join(tname.split('_')[1:])
         transcriptToInfo[(tname, gname)] = TranscriptInfo(seq, int(orfstart), int(orfstop), propred, ptcpoint)
 
 out = open(outfile, 'w')

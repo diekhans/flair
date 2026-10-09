@@ -130,9 +130,6 @@ def get_bedisoform_info(bedisofile):
     for bed in BedReader(bedisofile, bedClass=FlairBed):
         thischr, iso, dir, start, esizes, estarts, end, exonblocks, currtstart, gene = process_bedline(bed)
 
-        if iso[:10] == 'fusiongene':
-            iso = '_'.join(iso.split('_')[1:])
-
         isotoblocks = add_iso_to_blocks(isotoblocks, iso, exonblocks)
 
         if gene not in genetoiso:

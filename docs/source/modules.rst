@@ -87,8 +87,8 @@ use flair combine to merge it with normal isoforms.
 **Output**
 
 sample.fusions.isoforms.bed
-    Bed file of fusion transcriptome (each fusion has a line for each locus in the fusion, 
-    and position in the fusion is specified by the fusiongeneX prefix in the name field
+    Bed file of fusion transcriptome (each fusion has a line for each locus in the
+    fusion, and its position in the fusion is given by the ``pos_in_fusion`` column
 sample.fusions.isoforms.fa
     Fasta file of fusion transcriptome
 sample.syntheticAligned.isoform.read.map

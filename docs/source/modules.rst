@@ -175,8 +175,12 @@ The counts file names each column after the sample it holds:
 .. code:: text
 
    ids  sample1 sample2 sample3 sample4 sample5 sample6
-   ENST00000225792.10_ENSG00000108654.15   21.0    12.0    10.0    10.0    14.0    13.0
-   ENST00000256078.9_ENSG00000133703.12    7.0     6.0     7.0     15.0    12.0    7.0
+   FLT00000001  21.0    12.0    10.0    10.0    14.0    13.0
+   FLT00000002  7.0     6.0     7.0     15.0    12.0    7.0
+
+With ``--with_gene`` each row is named after the isoform and its gene instead,
+``FLT00000001_FLG00000001``, joining the ids described in :ref:`ids-label`.
+``flair diffexp`` needs that form and ``flair diffsplice`` needs the plain one.
 
 The condition and batch of each column are in ``<output>.sample_info.tsv``, written
 beside the counts file, which `flair diffexp` and `flair diffsplice` read:

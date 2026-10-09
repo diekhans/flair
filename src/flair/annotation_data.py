@@ -6,6 +6,7 @@ flair_transcriptome and flair_spliceevents for read correction, gene
 assignment, and isoform filtering.
 """
 
+from flair import FlairInputDataError
 from flair.isoform_data import Exon, exons_to_juncs
 
 
@@ -16,6 +17,10 @@ class AnnotData(object):
 
         # list of (transcript_id, gene_id, strand)
         self.transcripts = []
+
+        # map of transcript_id -> gene_id, so that a transcript id read back from an
+        # alignment target names its gene without the gene being part of the id
+        self.transcript_to_gene = {}
 
         # map of junction chain tuple -> (transcript_id, gene_id)
         self.juncchain_to_transcript = {}
@@ -126,6 +131,13 @@ def _save_transcript_annot(transcript_id, gene_id, region, region_map, t_start, 
     annots.transcript_to_exons[(transcript_id, gene_id)] = tuple(t_exons)
     juncs = exons_to_juncs(t_exons)
     annots.transcripts.append((transcript_id, gene_id, strand))
+    prev_gene = annots.transcript_to_gene.get(transcript_id)
+    if (prev_gene is not None) and (prev_gene != gene_id):
+        raise FlairInputDataError(
+            f"transcript {transcript_id} is in two genes, {prev_gene} and {gene_id}; "
+            "transcript ids must be unique across genes, since alignment targets are "
+            "named by them")
+    annots.transcript_to_gene[transcript_id] = gene_id
     if gene_id not in annots.gene_to_strand:
         annots.gene_to_strand[gene_id] = strand
     # accumulate exons per gene (as coordinate tuples for spliceevents compatibility)

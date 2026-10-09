@@ -2,7 +2,6 @@
 
 import logging
 
-from flair.iso_gene_id import split_iso_gene
 from flair.isoform_data import Junc, ReadRec
 from flair.read_processing import should_process_read, add_corrected_read_to_groups
 
@@ -23,11 +22,10 @@ def _correct_and_group_read(read, *, read_to_annot_transcript, annots,
 
     # annotated spliced: correct junctions and strand from annotation
     if read.query_name in read_to_annot_transcript:
-        tid, startindex, startdist, endindex, enddist = read_to_annot_transcript[read.query_name]
-        # the composite id heuristic, shared with bed_to_gtf and the rest, rather than
-        # a bare split on the last '_', which lands in the wrong place for any gene id
-        # containing one
-        transcript, gene = split_iso_gene(tid)
+        transcript, startindex, startdist, endindex, enddist = read_to_annot_transcript[read.query_name]
+        # the alignment target is named by the transcript alone; its gene comes from
+        # the annotation rather than from splitting the name
+        gene = annots.transcript_to_gene[transcript]
         exons = annots.transcript_to_exons[(transcript, gene)]
         annot_juncs = [(exons[x].end, exons[x + 1].start) for x in range(len(exons) - 1)]
         if len(annot_juncs) > 0:

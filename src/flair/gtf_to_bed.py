@@ -4,6 +4,9 @@ from flair.gtf_io import gtf_record_parser, GtfAttrsSet
 from flair.pycbio.sys import cli
 from flair.pycbio.hgdata.bed import Bed, BedBlock
 
+# with --include_gene, the column after the twelve standard ones holds the gene
+GENE_ID_EXTRA_COL = 0
+
 
 def build_parser():
     desc = ('converts a gtf to a bed, depending on the output filename extension; '
@@ -13,7 +16,7 @@ def build_parser():
     required.add_argument('gtf', type=str, help='annotated gtf')
     required.add_argument('bed', type=str, help='bed file')
     parser.add_argument('--include_gene', action='store_true',
-                        help='include gene name in the isoform name')
+                        help='add a column naming the gene of each isoform')
     return parser
 
 def main():
@@ -21,26 +24,26 @@ def main():
     with cli.ErrorHandler():
         gtf_to_bed(args.bed, args.gtf, args.include_gene)
 
-def write_bed_row(include_gene, name_sep, iso_to_cds, prev_transcript, blockstarts, blocksizes, prev_gene, prev_chrom, prev_strand, fh):
+def write_bed_row(include_gene, iso_to_cds, prev_transcript, blockstarts, blocksizes, prev_gene, prev_chrom, prev_strand, fh):
     blockcount = len(blockstarts)
     if blockcount > 1 and blockstarts[0] > blockstarts[1]:  # need to reverse exons
         blocksizes = blocksizes[::-1]
         blockstarts = blockstarts[::-1]
 
     tstart, tend = blockstarts[0], blockstarts[-1] + blocksizes[-1]  # target (e.g. chrom)
-    if include_gene:
-        qname = prev_transcript + name_sep + prev_gene
-    else:
-        qname = prev_transcript
-
-    # iso_to_cds is keyed by transcript id; qname may also carry the gene
     if prev_transcript in iso_to_cds:
         cds_start, cds_end = iso_to_cds[prev_transcript]
     else:
         cds_start, cds_end = tstart, tend
     blocks = [BedBlock(blockstarts[i], blockstarts[i] + blocksizes[i]) for i in range(blockcount)]
-    Bed(prev_chrom, tstart, tend, name=qname, score=1000, strand=prev_strand,
-        thickStart=cds_start, thickEnd=cds_end, itemRgb='0', blocks=blocks).write(fh)
+    # the gene goes in a column of its own rather than into the name, which could only
+    # be split again with a heuristic that is wrong for a gene id containing '_'.  One
+    # extra column rather than a full FLAIR BED: bedtools rejects the empty fields of
+    # the columns a FLAIR BED would add
+    extra_cols = (prev_gene,) if include_gene else ()
+    Bed(prev_chrom, tstart, tend, name=prev_transcript, score=1000, strand=prev_strand,
+        thickStart=cds_start, thickEnd=cds_end, itemRgb='0', blocks=blocks,
+        extraCols=extra_cols).write(fh)
 
 
 def get_iso_info(gtf):
@@ -66,7 +69,7 @@ def get_iso_info(gtf):
             iso_to_exons[rec.transcript_id].append((rec.start, rec.end))
     return iso_to_info, iso_to_exons, iso_to_cds
 
-def gtf_to_bed(outputfile, gtf, include_gene=False, name_sep='_'):
+def gtf_to_bed(outputfile, gtf, include_gene=False):
 
     with open(outputfile, 'wt') as outfile:
         iso_to_info, iso_to_exons, iso_to_cds = get_iso_info(gtf)
@@ -77,7 +80,7 @@ def gtf_to_bed(outputfile, gtf, include_gene=False, name_sep='_'):
             blockstarts = [x[0] for x in exons]
             blocksizes = [x[1] - x[0] for x in exons]
 
-            write_bed_row(include_gene, name_sep, iso_to_cds, this_transcript, blockstarts, blocksizes, gene, chrom, strand, outfile)
+            write_bed_row(include_gene, iso_to_cds, this_transcript, blockstarts, blocksizes, gene, chrom, strand, outfile)
 
 
 if __name__ == "__main__":

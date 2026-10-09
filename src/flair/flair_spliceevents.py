@@ -19,6 +19,7 @@ from flair.read_processing import get_sequence_from_bed, generate_genomic_alignm
 from flair.read_correction import filter_correct_group_reads
 from flair.gtf_io import gtf_data_parser, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
 from flair.annotation_data import annot_data_from_gtf
+from flair.gtf_to_bed import GENE_ID_EXTRA_COL
 from flair.pycbio.hgdata.bed import Bed, BedReader
 from flair.count_sam_transcripts import run_count_sam_transcripts
 
@@ -1127,7 +1128,7 @@ def get_juncs_single_sample(args, region, temp_prefix, sample, bamfile_name, reg
 
 def process_bed_line(bed_rec):
     transcript = bed_rec.name
-    gene = bed_rec.name.split('_')[-1]
+    gene = bed_rec.extraCols[GENE_ID_EXTRA_COL]
     exons = [(blk.start, blk.end) for blk in bed_rec.blocks]
     junctions = [(exons[i][1], exons[i + 1][0]) for i in range(len(exons) - 1)]
     strand = bed_rec.strand
@@ -1163,7 +1164,7 @@ def _run_region(*, partition, gtf_data, junction_corrector, args, allsamples):  
 
         annot_afe_ss, annot_ale_ss = {}, {}
         if args.annot_basic:
-            for bed_rec in BedReader(region_annot_basic, fixScores=True):
+            for bed_rec in BedReader(region_annot_basic, numStdCols=12, fixScores=True):
                 gene, transcript, exons, junctions, strand = process_bed_line(bed_rec)
                 if gene not in annot_afe_ss:
                     annot_afe_ss[gene] = set()

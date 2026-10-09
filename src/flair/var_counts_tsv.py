@@ -14,13 +14,24 @@ some sample carries it, or always with --output_all.
 """
 from contextlib import contextmanager
 from flair.pycbio.sys import fileOps
-from flair.pycbio.tsv import TsvWriter
-from flair.tsv_column_types import semicolonIntListType
+from flair.pycbio.tsv import TsvReader, TsvWriter
+from flair.tsv_column_types import read_header_columns, semicolonIntListType
 
 ID_COLUMNS = ('varpos', 'gene', 'transcript')
 
 def columns(sample_columns):
     return list(ID_COLUMNS) + list(sample_columns)
+
+class VarCountsReader(TsvReader):
+    "every sample column holds the unmodified and modified counts as a pair"
+    def __init__(self, var_counts_tsv):
+        sample_columns = read_header_columns(var_counts_tsv)[len(ID_COLUMNS):]
+        super().__init__(var_counts_tsv, defaultColType=str,
+                         typeMap={col: semicolonIntListType for col in sample_columns})
+
+    @property
+    def sample_columns(self):
+        return self.columns[len(ID_COLUMNS):]
 
 class VarCountsWriter(TsvWriter):
     def __init__(self, var_counts_tsv, sample_columns, *, outFh=None):

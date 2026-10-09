@@ -11,10 +11,15 @@ Columns, in order, with no header line:
                on the row
   name         the variant name from the VCF
 """
-from flair.pycbio.tsv import TsvWriter
+from flair.pycbio.tsv import TsvReader, TsvWriter
 from flair.tsv_column_types import commaListType
 
 COLUMNS = ('chrom', 'region', 'pos', 'ref', 'alts', 'name')
+
+class RegionVarsReader(TsvReader):
+    def __init__(self, region_vars_tsv):
+        super().__init__(region_vars_tsv, columns=COLUMNS, defaultColType=str,
+                         typeMap={'alts': commaListType})
 
 class RegionVarsWriter(TsvWriter):
     def __init__(self, region_vars_tsv, *, outFh=None):

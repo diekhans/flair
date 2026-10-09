@@ -12,11 +12,21 @@ p-value, since the test is of the event's two by two table.
 from contextlib import contextmanager
 from flair.event_quant_tsv import ISOFORM_IDS_COLUMN
 from flair.pycbio.sys import fileOps
-from flair.pycbio.tsv import TsvWriter
+from flair.pycbio.tsv import TsvReader, TsvWriter
 from flair.tsv_column_types import commaListType
 
 def pval_column(colname1, colname2):
     return f'{colname1}-{colname2}_pval'
+
+class DiffspliceFishersReader(TsvReader):
+    def __init__(self, fishers_tsv):
+        super().__init__(fishers_tsv, defaultColType=str,
+                         typeMap={ISOFORM_IDS_COLUMN: commaListType})
+
+    @property
+    def pval_column(self):
+        "the last column, named for the two samples compared"
+        return self.columns[-1]
 
 class DiffspliceFishersWriter(TsvWriter):
     def __init__(self, fishers_tsv, event_quant_columns, colname1, colname2):

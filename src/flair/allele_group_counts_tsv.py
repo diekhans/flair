@@ -14,13 +14,22 @@ there is nothing to call somatic against.
 """
 from contextlib import contextmanager
 from flair.pycbio.sys import fileOps
-from flair.pycbio.tsv import TsvWriter
+from flair.pycbio.tsv import TsvReader, TsvWriter
 
 COLUMNS = ('phase_set', 'allele_group', 'tumor_counts')
 NORMAL_COLUMNS = ('normal_counts', 'somatic')
 
 def columns(with_normal):
     return list(COLUMNS) + (list(NORMAL_COLUMNS) if with_normal else [])
+
+class AlleleGroupCountsReader(TsvReader):
+    "the normal columns are there only when the run had a normal BAM"
+    def __init__(self, allele_group_counts_tsv):
+        super().__init__(allele_group_counts_tsv, defaultColType=str)
+
+    @property
+    def with_normal(self):
+        return NORMAL_COLUMNS[0] in self.columns
 
 class AlleleGroupCountsWriter(TsvWriter):
     def __init__(self, allele_group_counts_tsv, *, with_normal):

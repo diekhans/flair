@@ -16,12 +16,16 @@ here are the documentation.
 """
 from contextlib import contextmanager
 from flair.pycbio.sys import fileOps
-from flair.pycbio.tsv import TsvWriter
-from flair.tsv_column_types import commaListType
+from flair.pycbio.tsv import TsvReader, TsvWriter
+from flair.tsv_column_types import commaIntListType, commaListType
 
 COLUMNS = ('chrom', 'gene', 'num_reads', 'num_positions', 'mods_per_read', 'varpos')
 TYPE_MAP = {'chrom': str, 'gene': str, 'num_reads': int, 'num_positions': int,
-            'mods_per_read': commaListType, 'varpos': commaListType}
+            'mods_per_read': commaIntListType, 'varpos': commaListType}
+
+class VarGroupCountsReader(TsvReader):
+    def __init__(self, vargroup_counts_tsv):
+        super().__init__(vargroup_counts_tsv, columns=COLUMNS, typeMap=TYPE_MAP)
 
 class VarGroupCountsWriter(TsvWriter):
     def __init__(self, vargroup_counts_tsv, *, outFh=None):

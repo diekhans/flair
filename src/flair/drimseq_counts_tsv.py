@@ -14,9 +14,18 @@ directly.
 """
 from contextlib import contextmanager
 from flair.pycbio.sys import fileOps
-from flair.pycbio.tsv import TsvWriter
+from flair.pycbio.tsv import TsvReader, TsvWriter
 
 ID_COLUMNS = ('irow', 'gene_id', 'feature_id')
+
+class DrimSeqCountsReader(TsvReader):
+    def __init__(self, drimseq_counts_tsv):
+        super().__init__(drimseq_counts_tsv, defaultColType=int,
+                         typeMap={'gene_id': str, 'feature_id': str})
+
+    @property
+    def sample_columns(self):
+        return self.columns[len(ID_COLUMNS):]
 
 class DrimSeqCountsWriter(TsvWriter):
     def __init__(self, drimseq_counts_tsv, sample_columns):

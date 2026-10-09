@@ -22,7 +22,7 @@ Written unfiltered as .diffsplice.outliers.tsv and, after the deviation cutoff,
 as .diffsplice.outliers.filtered.tsv.  As with the event files, each partition
 writes a headerless part and the header is written once when they are joined.
 """
-from flair.pycbio.tsv import TsvWriter
+from flair.pycbio.tsv import TsvReader, TsvWriter
 from flair.tsv_column_types import semicolonIntListType
 
 READ_COUNTS_COLUMN = 'event_reads;total_locus_reads'
@@ -30,6 +30,11 @@ READ_COUNTS_COLUMN = 'event_reads;total_locus_reads'
 COLUMNS = ('eventname', 'eventtype', 'gene', 'sample', 'medianPSI', 'dev(IQR/2)',
            'sample_val', 'tot_not_NA_samples', READ_COUNTS_COLUMN,
            'delta_PSI_to_med', 'dev_from_med')
+
+class SplicingOutliersReader(TsvReader):
+    def __init__(self, splicing_outliers_tsv):
+        super().__init__(splicing_outliers_tsv, defaultColType=str,
+                         typeMap={READ_COUNTS_COLUMN: semicolonIntListType})
 
 class SplicingOutliersWriter(TsvWriter):
     def __init__(self, splicing_outliers_tsv, *, outFh=None, writeHeader=True):

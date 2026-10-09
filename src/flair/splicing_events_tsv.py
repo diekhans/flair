@@ -26,7 +26,7 @@ rather than 0, which would read as "never included".
 spliceevents writes one headerless file per partition and concatenates them, so
 the header is written once when the parts are joined.
 """
-from flair.pycbio.tsv import TsvWriter
+from flair.pycbio.tsv import TsvReader, TsvWriter
 from flair.tsv_column_types import commaListType
 
 EVENT_COLUMNS = ('eventname', 'eventtype', 'gene', 'junctions_included',
@@ -39,6 +39,16 @@ TYPE_MAP = {col: commaListType for col in COORDINATE_COLUMNS}
 
 def columns(sample_columns):
     return list(EVENT_COLUMNS) + list(sample_columns)
+
+class SplicingEventsReader(TsvReader):
+    """Reads one of the three files.  The sample columns stay strings, since the
+    counts file holds integers and the two PSI files hold fractions or nothing."""
+    def __init__(self, splicing_events_tsv):
+        super().__init__(splicing_events_tsv, defaultColType=str, typeMap=TYPE_MAP)
+
+    @property
+    def sample_columns(self):
+        return self.columns[len(EVENT_COLUMNS):]
 
 class SplicingEventsWriter(TsvWriter):
     def __init__(self, splicing_events_tsv, sample_columns, *, outFh=None, writeHeader=True):

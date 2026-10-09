@@ -12,11 +12,16 @@ Columns, in order, with no header line:
   filters      filter tags, dn marking a dense cluster of variants around this
                one; comma separated in the file and a list on the row
 """
-from flair.pycbio.tsv import TsvWriter
+from flair.pycbio.tsv import TsvReader, TsvWriter
 from flair.tsv_column_types import commaListType
 
 COLUMNS = ('chrom', 'pos', 'indel_type', 'ref_seq', 'var_seq', 'indel_reads',
            'tot_cov', 'filters')
+
+class IndelVarsReader(TsvReader):
+    def __init__(self, indel_vars_tsv):
+        super().__init__(indel_vars_tsv, columns=COLUMNS, defaultColType=str,
+                         typeMap={'filters': commaListType})
 
 class IndelVarsWriter(TsvWriter):
     def __init__(self, indel_vars_tsv, *, outFh=None):

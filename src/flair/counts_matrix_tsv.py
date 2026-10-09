@@ -45,12 +45,13 @@ class _CountsMatrixTsvRow(TsvRow):
 
 class CountsMatrixReader(TsvReader):
     """Reads a counts matrix, checking the id columns and converting every sample
-    column to int.  Iterating yields CountsRow."""
+    column with countType, int for counts and float for a TPM matrix.  Iterating
+    yields CountsRow."""
 
-    def __init__(self, counts_matrix_tsv):
+    def __init__(self, counts_matrix_tsv, *, countType=int):
         super().__init__(counts_matrix_tsv, rowClass=_CountsMatrixTsvRow,
                          typeMap={col: str for col in ID_COLUMNS},
-                         defaultColType=int)
+                         defaultColType=countType)
         self._check_id_columns(counts_matrix_tsv)
 
     def _check_id_columns(self, counts_matrix_tsv):
@@ -96,9 +97,9 @@ def counts_matrix_writer(counts_matrix_tsv, sample_columns, *, countType=int):
         with CountsMatrixWriter(tmp_tsv, sample_columns, countType=countType) as writer:
             yield writer
 
-def read_counts_rows(counts_matrix_tsv):
+def read_counts_rows(counts_matrix_tsv, *, countType=int):
     "every row of the matrix, in file order"
-    with CountsMatrixReader(counts_matrix_tsv) as reader:
+    with CountsMatrixReader(counts_matrix_tsv, countType=countType) as reader:
         return list(reader)
 
 def read_sample_columns(counts_matrix_tsv):

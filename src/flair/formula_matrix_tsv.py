@@ -19,7 +19,7 @@ comparison uses, and batch may be absent.
 from contextlib import contextmanager
 from collections import namedtuple
 from flair.pycbio.sys import fileOps
-from flair.pycbio.tsv import TsvWriter
+from flair.pycbio.tsv import TsvReader, TsvWriter
 
 COLUMNS = ('sample_id', 'condition')
 COLUMNS_WITH_BATCH = ('sample_id', 'condition', 'batch')
@@ -27,6 +27,20 @@ COLUMNS_WITH_BATCH = ('sample_id', 'condition', 'batch')
 class FormulaRow(namedtuple('FormulaRow', COLUMNS_WITH_BATCH)):
     "one sample of the comparison; batch is None when it is not modelled"
     __slots__ = ()
+
+class FormulaMatrixReader(TsvReader):
+    "batch is there only when it was modelled; the row then carries None for it"
+    def __init__(self, formula_matrix_tsv):
+        super().__init__(formula_matrix_tsv, defaultColType=str)
+
+    @property
+    def with_batch(self):
+        return 'batch' in self.columns
+
+    def __iter__(self):
+        for row in super().__iter__():
+            yield FormulaRow(row.sample_id, row.condition,
+                             row.batch if self.with_batch else None)
 
 class FormulaMatrixWriter(TsvWriter):
     def __init__(self, formula_matrix_tsv, *, with_batch):

@@ -18,7 +18,7 @@ See aaseq_tsv for the sequence behind aaseq_id.
 """
 from contextlib import contextmanager
 from flair.pycbio.sys import fileOps
-from flair.pycbio.tsv import TsvWriter
+from flair.pycbio.tsv import TsvReader, TsvWriter
 
 COLUMNS = ('gene', 'source_isoform', 'phase_set', 'allele_group',
            'allele_labeled_isoform', 'aaseq_id', 'tumor_counts')
@@ -26,6 +26,15 @@ NORMAL_COLUMN = 'normal_counts'
 
 def columns(with_normal):
     return list(COLUMNS) + ([NORMAL_COLUMN] if with_normal else [])
+
+class IsoAlleleCountsReader(TsvReader):
+    "the normal counts column is there only when the run had a normal BAM"
+    def __init__(self, iso_allele_counts_tsv):
+        super().__init__(iso_allele_counts_tsv, defaultColType=str)
+
+    @property
+    def with_normal(self):
+        return NORMAL_COLUMN in self.columns
 
 class IsoAlleleCountsWriter(TsvWriter):
     def __init__(self, iso_allele_counts_tsv, *, with_normal, outFh=None):

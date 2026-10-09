@@ -12,10 +12,23 @@ an output anyone reads directly.
 """
 from contextlib import contextmanager
 from flair.pycbio.sys import fileOps
-from flair.pycbio.tsv import TsvWriter
+from flair.pycbio.tsv import TsvReader, TsvWriter
 
 # R takes column one as row names, so it carries no name
 FEATURE_COLUMN = ''
+
+# the unnamed feature column cannot be a row attribute, so the reader names it
+FEATURE_ID = 'feature_id'
+
+class Deseq2CountsReader(TsvReader):
+    def __init__(self, deseq2_counts_tsv):
+        super().__init__(deseq2_counts_tsv, defaultColType=int,
+                         typeMap={FEATURE_ID: str},
+                         columnNameMapper=lambda col: FEATURE_ID if col == FEATURE_COLUMN else col)
+
+    @property
+    def sample_columns(self):
+        return self.columns[1:]
 
 class Deseq2CountsWriter(TsvWriter):
     def __init__(self, deseq2_counts_tsv, sample_columns):

@@ -15,6 +15,9 @@
     annotation fasta and isoform names, alignments without AS or MD tags, and the
     option and input problems in junctions_from_sam and identify_vars say what to
     do about them.
+  * `flair diffsplice` fails when a counts matrix isoform id has no record in
+    `--isoform_bed`, and `flair diffexp` fails when a counts matrix row id does
+    not name a gene.  Both combinations used to produce results silently.
   * `flair diffexp` gained `--condition_a` and `--condition_b`, matching
     `flair diffsplice`.  `condition_a` is the reference that fold changes are
     measured against.
@@ -25,6 +28,8 @@
 * Incompatibles
   * Removed flair correct and collapse modules, the functionality is replaced
     by flair transcriptome.
+  * Removed the identify_annotated_gene script.  It read and wrote PSL, which no
+    flair command produces or accepts any more.
   * Remove flair align options that are no longer need without flair correct.
   * Logging options (--log-level, --log-stderr, --log-conf, --log-debug) and
     --version must now precede the subcommand: `flair --log-debug align ...`.

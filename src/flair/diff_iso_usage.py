@@ -5,7 +5,7 @@ import csv
 import os
 import scipy.stats as sps
 from flair import FlairInputDataError
-from flair.iso_gene_id import split_iso_gene
+from flair.iso_gene_id import split_iso_gene, ISOFORM_GENE_ID_ADVICE
 from flair.pycbio.sys import cli
 
 
@@ -44,8 +44,8 @@ def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename):  # noqa:
         iso_gene, count1, count2 = line[0], float(line[col1]), float(line[col2])
         if '_' not in iso_gene:
             raise FlairInputDataError(
-                'Incorrect isoform names: Please run identify_annotated_gene first so that \n'
-                'isoforms can be grouped by their parent genes\n')
+                f"row id {iso_gene} in {counts_matrix_tsv} does not name a gene, so isoforms "
+                f"cannot be grouped by gene; {ISOFORM_GENE_ID_ADVICE}")
         iso, gene = split_iso_gene(iso_gene)
         if gene not in counts:
             counts[gene] = {}

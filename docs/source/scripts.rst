@@ -88,13 +88,6 @@ gtf_to_bed
 
 Convert a GTF to a BED12 file.
 
-identify_annotated_gene
-=======================
-
-.. include:: cli/identify_annotated_gene.rst
-
-Names isoforms after the annotated gene whose splice junctions they match.
-
 identify_gene_isoform
 =====================
 

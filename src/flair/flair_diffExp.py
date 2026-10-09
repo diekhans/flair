@@ -23,7 +23,7 @@ import pipettor
 from flair import FlairError, FlairInputDataError
 from flair.counts_matrix import (read_sample_info, condition_column_indexes,
                                  select_condition_pair, read_isoform_ids, describe_ids)
-from flair.iso_gene_id import split_iso_gene, parse_gene_id
+from flair.iso_gene_id import split_iso_gene, parse_gene_id, ISOFORM_GENE_ID_ADVICE
 
 os.environ['OPENBLAS_NUM_THREADS'] = '1'
 import numpy as np  # noqa: E402
@@ -32,9 +32,6 @@ import numpy as np  # noqa: E402
 pkgdir = osp.dirname(osp.realpath(__file__))
 diffExp_deseq2 = osp.join(pkgdir, "diffExp_deseq2.R")
 diffExp_drimseq = osp.join(pkgdir, "diffExp_drimseq.R")
-
-ISOFORM_GENE_ID_ADVICE = ("quantify an isoform BED whose names are isoform_gene, as flair "
-                          "collapse and flair transcriptome write them")
 
 
 ##

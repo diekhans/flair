@@ -4,6 +4,7 @@ retention events from an isoform BED."""
 import argparse
 from collections import namedtuple
 from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows
+from flair import PosRange
 from flair.isoform_data import Junc
 from flair.event_quant_tsv import event_quant_writer
 from flair.pycbio.hgdata.bed import BedReader
@@ -20,16 +21,30 @@ def parse_args():
     return parser.parse_args()
 
 
+class Isoform(namedtuple("Isoform", ("name", "span", "exons"))):
+    """One isoform of the BED: the span it covers and its exons, both PosRange."""
+    __slots__ = ()
+
 class FlankedJunc(namedtuple("FlankedJunc", ("junc", "prev_exon_start", "next_exon_end"))):
     """A junction with the outer bounds of the exons on either side, which is what
     tells an alternative splice site from a skipped exon."""
     __slots__ = ()
 
-def get_junctions_bed(starts, sizes):
-    "the junctions of one isoform, each with its flanking exon bounds"
-    return [FlankedJunc(Junc(starts[b] + sizes[b], starts[b + 1]),
-                        starts[b], starts[b + 1] + sizes[b + 1])
-            for b in range(len(starts) - 1)]
+def get_junctions_bed(exons):
+    "the junctions between an isoform's exons, each with its flanking exon bounds"
+    return [FlankedJunc(Junc(exons[b].end, exons[b + 1].start),
+                        exons[b].start, exons[b + 1].end)
+            for b in range(len(exons) - 1)]
+
+def isoform_retains_junction(isoform, junc):
+    "true when one exon of this isoform spans the junction, which is a retention"
+    if (isoform.span.start > junc.end) or (isoform.span.end < junc.start):
+        return False
+    # every exon, not exons[1:]: a junction retained inside the first exon of
+    # another isoform was not called, so this and mark_intron_retention disagreed
+    # about the same event
+    return any((exon.start < junc.start) and (exon.end > junc.end)
+               for exon in isoform.exons)
 
 
 def update_altsplice_dict(jdict, chrom, strand, fiveprime, threeprime, exon_start, exon_end,
@@ -113,8 +128,7 @@ def main():  # noqa: C901 - FIXME: reduce complexity
         if iso_counts and name not in iso_counts:
             continue
 
-        blockstarts = [blk.start for blk in bed.blocks]
-        blocksizes = [len(blk) for blk in bed.blocks]
+        exons = tuple(PosRange(blk.start, blk.end) for blk in bed.blocks)
 
         chrom = strand + chrom  # stranded comparisons
         if chrom not in isoforms:
@@ -123,12 +137,9 @@ def main():  # noqa: C901 - FIXME: reduce complexity
             a3_junctions[chrom] = {}
             a5_junctions[chrom] = {}
 
-        isoforms[chrom][name] = {}
-        isoforms[chrom][name]['sizes'] = blocksizes
-        isoforms[chrom][name]['starts'] = blockstarts
-        isoforms[chrom][name]['range'] = start, end
+        isoforms[chrom][name] = Isoform(name, PosRange(start, end), exons)
 
-        for flanked in get_junctions_bed(blockstarts, blocksizes):
+        for flanked in get_junctions_bed(exons):
             j = flanked.junc
             fiveprime, threeprime = j.start, j.end
             exon_end, exon_start = flanked.next_exon_end, flanked.prev_exon_start
@@ -165,22 +176,12 @@ def main():  # noqa: C901 - FIXME: reduce complexity
     with event_quant_writer(outfilenamebase + '.ir.events.quant.tsv', sample_names) as writer:
         for chrom in ir_junctions:  # noqa: C901 - FIXME: reduce complexity
             for j in ir_junctions[chrom]:
-                for iname in isoforms[chrom]:  # compare with all other isoforms to find IR
-                    if iname in ir_junctions[chrom][j]['exclusion']['isos']:  # is an exclusion isoform
-                        continue
-                    start, end = isoforms[chrom][iname]['range']
-                    if start > j.end or end < j.start:  # isoform boundaries do not overlap junction
-                        continue
-                    starts, sizes = isoforms[chrom][iname]['starts'], isoforms[chrom][iname]['sizes']
-                    # every block, not starts[1:]: a junction retained inside the first
-                    # exon of another isoform was not called, so this and
-                    # mark_intron_retention disagreed about the same event
-                    for start, size in zip(starts, sizes):
-                        estart, eend = start, start + size  # exon start, exon end
-                        if estart < j.start and eend > j.end:  # retention
-                            ir_junctions[chrom][j]['inclusion']['isos'] += [iname]
-                            for c in range(len(sample_names)):
-                                ir_junctions[chrom][j]['inclusion']['counts'][c] += iso_counts[iname][c]
+                for iname, isoform in isoforms[chrom].items():  # every other isoform, to find IR
+                    is_exclusion = iname in ir_junctions[chrom][j]['exclusion']['isos']
+                    if (not is_exclusion) and isoform_retains_junction(isoform, j):
+                        ir_junctions[chrom][j]['inclusion']['isos'] += [iname]
+                        for c in range(len(sample_names)):
+                            ir_junctions[chrom][j]['inclusion']['counts'][c] += iso_counts[iname][c]
 
             for j in ir_junctions[chrom]:
                 incounts = ir_junctions[chrom][j]['inclusion']['counts']

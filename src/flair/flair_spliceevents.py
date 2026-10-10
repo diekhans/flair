@@ -35,7 +35,20 @@ EVENT_SUFFIXES = ('.diffsplice.counts.tsv', '.diffsplice.PSIjunc.tsv',
                   '.diffsplice.PSItot.tsv')
 OUTLIER_SUFFIXES = ('.diffsplice.outliers.tsv', '.diffsplice.outliers.filtered.tsv')
 
-# bases of each flanking exon shown either side of a skipped exon
+# Bases of the flanking exons included either side of an event in the BED that
+# spliceevents writes for viewing, <output>.diffsplice.bed.
+#
+# An event is defined by its junctions, so its own extent is the intron: drawn
+# as it stands, the two sides of an event would be a bare gap with nothing to
+# anchor them, and the inclusion and exclusion rows would be hard to tell apart.
+# Each row therefore starts FLANK_STUB bases before the first junction and ends
+# FLANK_STUB after the last, and carries those two stubs as its outer blocks, so
+# inclusion shows as stub, exon, stub and exclusion as stub, stub with the
+# junction as the gap between them.
+#
+# It is display padding and nothing else: the value does not reach any count,
+# PSI or test, and the coordinates the event is named and reported by are the
+# junctions themselves, not these bounds.
 FLANK_STUB = 10
 
 def get_args():
@@ -436,8 +449,7 @@ def write_exon_skipping(exonjpairs, alljuncs, allsamples, thischrom, strand, gen
             ename = f'es-of-{thischrom}:{exon[0]}-{exon[1]}'
 
             for outerjunc in goodouterjuncs:
-                # the skipped exon with a 10 base stub of each flanking exon, so the
-                # event shows as three blocks in a browser
+                # the skipped exon between the two flanking stubs
                 bed_start, bed_end = outerjunc[0] - FLANK_STUB, outerjunc[1] + FLANK_STUB
                 blocks = [BedBlock(bed_start, outerjunc[0]),
                           BedBlock(exon[0], exon[1]),

@@ -339,7 +339,7 @@ def detectfusions(*, genome, gtf, genome_aligned_bam, sample_name, output, threa
         strand = bed.strand
         if readsup >= 2:
             if sjmotif in {"GT/AG", "GC/AG", "AT/AC"} and strand == '+':  # for synthetic alignment, all junctions should be '+'
-                good_sj.append(bed.toRow())
+                good_sj.append(bed)
                 # get: fusiontobp holds only the contigs named in the breakpoint BED,
                 # so a junction on any other contig used to raise KeyError
                 breakpoint = fusiontobp.get(fusion)
@@ -356,10 +356,9 @@ def detectfusions(*, genome, gtf, genome_aligned_bam, sample_name, output, threa
                 and start < breakpoint < end:  # no good breakpoint junctions yet
             good_sj.append(bed.toRow())
 
-    out = open(f'{output}.syntheticAligned.SJ.bed', 'w')
-    for line in good_sj:
-        out.write('\t'.join(line) + '\n')
-    out.close()
+    with open(f'{output}.syntheticAligned.SJ.bed', 'w') as out:
+        for bed in good_sj:
+            bed.write(out)
 
     transcriptome_command = ['flair', 'transcriptome',
                              '--genome_aligned_bam', output + '.syntheticAligned.bam',

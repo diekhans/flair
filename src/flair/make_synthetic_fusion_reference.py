@@ -4,6 +4,7 @@ from flair import FlairInputDataError
 from flair.isoform_data import get_reverse_complement
 from flair.gtf_io import gtf_record_parser, gtf_write_row, GtfAttrsSet
 from flair.pycbio.hgdata.bed import BedReader
+from flair.pycbio.hgdata.bed import Bed
 
 parser = argparse.ArgumentParser(description='make synthetic fusion reference')
 parser.add_argument('-c', '--chimbp', action='store', help='bed file of fusion breakpoints')
@@ -171,7 +172,8 @@ for fusion in allBP:  # noqa: C901 - FIXME: reduce complexity
     out.write('>' + fusionchrname + '\n')
     out.write(''.join(sequence) + '\n')
     for s in range(1, len(fusion)):
-        bpOut.write('\t'.join([fusionchrname, str(allstartloc[s]), str(allstartloc[s]), 'breakpoint-' + str(s) + '--' + fusionname]) + '\n')
+        Bed(fusionchrname, allstartloc[s], allstartloc[s],
+            name='breakpoint-' + str(s) + '--' + fusionname).write(bpOut)
     gtf_write_row(annoOut, fusionchrname, 'SYNTHFUSION', 'gene', 0, len(''.join(sequence)), None, '+', None,
                   gene_id=geneid)
 

@@ -14,13 +14,13 @@ from flair.junction_correct import junction_corrector_factory
 from flair.partition_runner import parallel_mode_parse, partition_runner_factory, combine_temp_files_by_suffix
 from flair.io_utils import make_temp_dir
 from flair.bed_to_gtf import bed_to_gtf
-from flair.isoform_data import (Exon, Gene, Isoform, ReadRec, get_bed_exons_from_exons,
+from flair.isoform_data import (Exon, Gene, Isoform, ReadRec,
                                 get_sequence_for_exons, binary_search, convert_to_bed12, convert_to_flair_bed, make_big_bed)
 from flair.read_processing import generate_genomic_alignment_read_to_clipping_file
 from flair.read_correction import filter_correct_group_reads
 from flair.count_sam_transcripts import TRUST_ENDS_WINDOW, run_count_sam_transcripts
 from flair.annotation_data import annot_data_from_gtf
-from flair.pycbio.hgdata.bed import BedReader
+from flair.pycbio.hgdata.bed import Bed, BedBlock, BedReader
 from flair.predictProductivity import predict_prod_temp
 from flair.aaseq_tsv import write_aaseqs
 from flair.read_ends_tsv import ReadEndsReader, ReadEndsWriter
@@ -554,13 +554,10 @@ def generate_transcriptome_reference_transcript(strand, transcript_to_strand, tr
     exons = tuple(exons)
     start, end = exons[0].start, exons[-1].end
 
-    # FIXME: duplicated code
-    exon_starts, exon_sizes = get_bed_exons_from_exons(exons, start)
-    # FIXME: duplicated use BED class,
-    bed_line = [chrom, start, end, transcript_id, '.', strand, start, end, '0', len(exons),
-                ','.join([str(x) for x in exon_sizes]), ','.join([str(x) for x in exon_starts])]
+    blocks = [BedBlock(exon.start, exon.end) for exon in exons]
     trans_seq = get_sequence_for_exons(genome, chrom, strand, exons)
-    annot_bed_fh.write('\t'.join([str(x) for x in bed_line]) + '\n')
+    Bed(chrom, start, end, name=transcript_id, score=0, strand=strand,
+        thickStart=start, thickEnd=end, itemRgb='0', blocks=blocks).write(annot_bed_fh)
     annot_fa_fh.write('>' + transcript_id + '\n')
     annot_fa_fh.write(''.join(trans_seq) + '\n')
 

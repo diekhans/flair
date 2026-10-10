@@ -2,7 +2,9 @@
 """Call alternative 3' splice site, alternative 5' splice site and intron
 retention events from an isoform BED."""
 import argparse
+from collections import namedtuple
 from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows
+from flair.isoform_data import Junc
 from flair.event_quant_tsv import event_quant_writer
 from flair.pycbio.hgdata.bed import BedReader
 
@@ -18,11 +20,16 @@ def parse_args():
     return parser.parse_args()
 
 
+class FlankedJunc(namedtuple("FlankedJunc", ("junc", "prev_exon_start", "next_exon_end"))):
+    """A junction with the outer bounds of the exons on either side, which is what
+    tells an alternative splice site from a skipped exon."""
+    __slots__ = ()
+
 def get_junctions_bed(starts, sizes):
-    junctions = []
-    for b in range(len(starts) - 1):
-        junctions += [(starts[b] + sizes[b], starts[b + 1], starts[b], starts[b + 1] + sizes[b + 1])]
-    return junctions
+    "the junctions of one isoform, each with its flanking exon bounds"
+    return [FlankedJunc(Junc(starts[b] + sizes[b], starts[b + 1]),
+                        starts[b], starts[b + 1] + sizes[b + 1])
+            for b in range(len(starts) - 1)]
 
 
 def update_altsplice_dict(jdict, chrom, strand, fiveprime, threeprime, exon_start, exon_end,
@@ -121,11 +128,10 @@ def main():  # noqa: C901 - FIXME: reduce complexity
         isoforms[chrom][name]['starts'] = blockstarts
         isoforms[chrom][name]['range'] = start, end
 
-        these_jcns = get_junctions_bed(blockstarts, blocksizes)
-        for j_index in range(len(these_jcns)):
-            j = these_jcns[j_index]
-            fiveprime, threeprime = j[0], j[1]
-            exon_end, exon_start = j[3], j[2]
+        for flanked in get_junctions_bed(blockstarts, blocksizes):
+            j = flanked.junc
+            fiveprime, threeprime = j.start, j.end
+            exon_end, exon_start = flanked.next_exon_end, flanked.prev_exon_start
 
             if strand == '-':
                 fiveprime, threeprime = threeprime, fiveprime
@@ -137,7 +143,7 @@ def main():  # noqa: C901 - FIXME: reduce complexity
                                                  exon_end, exon_start, sample_names, iso_counts, name,
                                                  search_threeprime=False)
 
-            j = (j[0], j[1])  # IR junctions do not need the flanking exon info from get_junctions_bed
+            # IR detection needs the junction alone, without the flanking exons
             if j not in ir_junctions[chrom]:  # ir detection
                 ir_junctions[chrom][j] = {}
                 ir_junctions[chrom][j]['exclusion'] = {}
@@ -163,7 +169,7 @@ def main():  # noqa: C901 - FIXME: reduce complexity
                     if iname in ir_junctions[chrom][j]['exclusion']['isos']:  # is an exclusion isoform
                         continue
                     start, end = isoforms[chrom][iname]['range']
-                    if start > j[1] or end < j[0]:  # isoform boundaries do not overlap junction
+                    if start > j.end or end < j.start:  # isoform boundaries do not overlap junction
                         continue
                     starts, sizes = isoforms[chrom][iname]['starts'], isoforms[chrom][iname]['sizes']
                     # every block, not starts[1:]: a junction retained inside the first
@@ -171,7 +177,7 @@ def main():  # noqa: C901 - FIXME: reduce complexity
                     # mark_intron_retention disagreed about the same event
                     for start, size in zip(starts, sizes):
                         estart, eend = start, start + size  # exon start, exon end
-                        if estart < j[0] and eend > j[1]:  # retention
+                        if estart < j.start and eend > j.end:  # retention
                             ir_junctions[chrom][j]['inclusion']['isos'] += [iname]
                             for c in range(len(sample_names)):
                                 ir_junctions[chrom][j]['inclusion']['counts'][c] += iso_counts[iname][c]
@@ -184,7 +190,7 @@ def main():  # noqa: C901 - FIXME: reduce complexity
                     ir_junctions[chrom][j]['exclusion']['counts'] = ir_junctions[chrom][j]['inclusion']['counts'] = []
 
                 chrom_clean = chrom[1:]
-                event = chrom_clean + ':' + str(j[0]) + '-' + str(j[1])
+                event = chrom_clean + ':' + str(j.start) + '-' + str(j.end)
                 writer.writeSide('inclusion', event, event,
                                  ir_junctions[chrom][j]['inclusion']['counts'],
                                  sorted(ir_junctions[chrom][j]['inclusion']['isos']))

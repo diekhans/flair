@@ -15,6 +15,7 @@ from flair.es_events_tsv import EsEventsReader, EsEventsWriter
 from flair.event_quant_tsv import EventQuantReader, columns as event_quant_columns, event_quant_writer
 from flair.formula_matrix_tsv import FormulaMatrixReader, FormulaRow, write_formula_matrix
 from flair.gene_juncs_tsv import GeneJuncsReader, GeneJuncsWriter
+from flair.isoform_data import Junc
 from flair.indel_vars_tsv import IndelVarsReader, IndelVarsWriter
 from flair.iso_allele_counts_tsv import IsoAlleleCountsReader, iso_allele_counts_writer
 from flair.iso_usage_change_tsv import IsoUsageChangeReader, iso_usage_change_writer
@@ -169,9 +170,11 @@ def test_diffsplice_fishers_round_trip(tmp_path):
 
 def test_gene_juncs_round_trip(tmp_path):
     path = written(GeneJuncsWriter, tsv_path(tmp_path, 'gj.txt'),
-                   [('gene1', [(100, 200), (300, 400)], 50, 500, '+', 'readA')])
+                   [('gene1', (Junc(100, 200), Junc(300, 400)), 50, 500, '+', 'readA')])
     rows = list(GeneJuncsReader(path))
-    assert rows[0].juncs == [(100, 200), (300, 400)]
+    assert rows[0].juncs == (Junc(100, 200), Junc(300, 400))
+    assert rows[0].juncs[0].start == 100
+    assert len(rows[0].juncs[0]) == 100
 
 def test_gene_juncs_bad_junction(tmp_path):
     path = tsv_path(tmp_path, 'gj.txt')

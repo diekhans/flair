@@ -144,8 +144,9 @@ def get_juncs_to_gene(juncs, isoinfo, sjc_to_gene, junc_to_gene, gene_to_exons, 
             # read cluster into one isoform, and neither extreme is outlier proof
             mystart = int(median(isoinfo.starts))
             myend = int(median(isoinfo.ends))
-            exons = [(mystart, juncs[0][0])] + [(juncs[i][1], juncs[i + 1][0]) for i in range(len(juncs) - 1)] + [
-                (juncs[-1][1], myend)]
+            exons = ([(mystart, juncs[0].start)]
+                     + [(juncs[i].end, juncs[i + 1].start) for i in range(len(juncs) - 1)]
+                     + [(juncs[-1].end, myend)])
             # strand = isoinfo[0][2]  # not a super robust strand picking, assumes well stranded reads
             gene_hits = get_annot_gene_hits(gene_to_exons, exons)
             if len(gene_hits) > 0:
@@ -176,9 +177,9 @@ def group_juncs_by_annot_gene(sjtoends, sjc_to_gene, junc_to_gene, gene_to_exons
 def extract_35ss_info(juncs, strand, allsamples, sample, numreads, ss5to3, ss3to5, alljuncs):
     for j in juncs:
         if strand == '+':
-            ss5, ss3 = j[0], j[1]
+            ss5, ss3 = j.start, j.end
         else:
-            ss5, ss3 = j[1], j[0]
+            ss5, ss3 = j.end, j.start
         if ss5 not in ss5to3:
             ss5to3[ss5] = {}
         if ss3 not in ss3to5:
@@ -212,8 +213,8 @@ def extract_exon_usage_info(juncs, allsamples, sample, numreads, allblocks, exon
 def extract_end_coverage_info(juncs, readinfo, allsamples, sample, thischrom, gene, strand, allblocks, outends):
     for r in readinfo:
         # getting all block coverage to measure intron retention
-        firstexon = (r.start, juncs[0][0])
-        lastexon = (juncs[-1][1], r.end)
+        firstexon = (r.start, juncs[0].start)
+        lastexon = (juncs[-1].end, r.end)
         if firstexon not in allblocks:
             allblocks[firstexon] = {s: 0 for s in allsamples}
         if lastexon not in allblocks:
@@ -232,11 +233,11 @@ def determine_juncs_are_subset(juncs, alljuncs):
         if juncs != otherjuncs and len(juncs) < len(otherjuncs):
             if str(juncs)[1:-1].rstrip(',') in str(otherjuncs):
                 is_subset = True
-                other_internal_exons = [(otherjuncs[x][1], otherjuncs[x + 1][0]) for x in range(len(otherjuncs) - 1)]
+                other_internal_exons = [(otherjuncs[x].end, otherjuncs[x + 1].start) for x in range(len(otherjuncs) - 1)]
                 for other_exon in other_internal_exons:
-                    if juncs[0][0] == other_exon[1]:
+                    if juncs[0].start == other_exon[1]:
                         unique_seq_bound[0].append(other_exon[1] - other_exon[0])
-                    if juncs[-1][1] == other_exon[0]:
+                    if juncs[-1].end == other_exon[0]:
                         unique_seq_bound[1].append(other_exon[1] - other_exon[0])
     if is_subset:
         unique_seq_bound[0] = max(unique_seq_bound[0]) if len(unique_seq_bound[0]) > 0 else None
@@ -1130,10 +1131,9 @@ def get_juncs_single_sample(args, region, temp_prefix, sample, bamfile_name, reg
     with GeneJuncsWriter(temp_prefix + '_gene_to_juncs.txt') as out:
         for gene in genetojuncs:
             for juncs in genetojuncs[gene]:
-                junc_chain = [(junc[0], junc[1]) for junc in juncs]
                 for read_info in genetojuncs[gene][juncs].reads:
                     c += 1
-                    out.writeRow((gene, junc_chain, read_info.start, read_info.end,
+                    out.writeRow((gene, juncs, read_info.start, read_info.end,
                                   genetojuncs[gene][juncs].strand, read_info.name))
     remove_region_temp_files(temp_prefix, good_annot_aligns is not None)
 
@@ -1201,7 +1201,7 @@ def _run_region(*, partition, gtf_data, junction_corrector, args, allsamples):  
         for sample, bamfile in allsamples:
             gene_to_juncs = {}
             for row in GeneJuncsReader(partition.file_prefix + '_' + sample + '_gene_to_juncs.txt'):
-                juncs = tuple(row.juncs)
+                juncs = row.juncs
                 if row.gene not in gene_to_juncs:
                     gene_to_juncs[row.gene] = {}
                 if juncs not in gene_to_juncs[row.gene]:

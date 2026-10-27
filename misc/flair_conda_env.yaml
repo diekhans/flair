@@ -4,8 +4,10 @@ channels:
   - bioconda
   - conda
 
+# python 3.12: the --help test expectations are in the pre-3.13 argparse
+# format, and pysam <0.24 has no wheel for 3.14
 dependencies:
-  - python >=3.12,<3.15
+  - python =3.12
   - minimap2 =2.30
   - bedtools =2.31.1
   - samtools =1.22.1

@@ -4,9 +4,9 @@
 
 .. code-block:: text
 
-   usage: flair transcriptome [-h] -b GENOME_ALIGNED_BAM -g GENOME --sample_name
-                              SAMPLE_NAME [-o OUTPUT] [-f ANNOT_GTF]
-                              [--junction_star JUNCTION_STAR]
+   usage: flair transcriptome [-h] -b GENOME_ALIGNED_BAM -g GENOME
+                              --sample_name SAMPLE_NAME [-o OUTPUT]
+                              [-f ANNOT_GTF] [--junction_star JUNCTION_STAR]
                               [--junction_tab JUNCTION_TAB]
                               [--junction_bed JUNCTION_BED]
                               [--junction_support JUNCTION_SUPPORT]
@@ -27,11 +27,11 @@
 
 .. rubric:: options
 
-.. option:: -o OUTPUT, --output OUTPUT
+.. option:: -o, --output OUTPUT
 
    prefix for the output file names; defaults to the required --sample_name
 
-.. option:: -f ANNOT_GTF, --gtf ANNOT_GTF
+.. option:: -f, --gtf ANNOT_GTF
 
    GTF annotation file, used for identifying annotated isoforms
 
@@ -119,7 +119,7 @@
 
    minimum mapping quality threshold to consider genomic alignments for defining transcripts (default: 1)
 
-.. option:: -t THREADS, --threads THREADS
+.. option:: -t, --threads THREADS
 
    number of threads to run with, related to --parallel_mode (default: 12)
 
@@ -149,11 +149,11 @@
 
 .. rubric:: required named arguments
 
-.. option:: -b GENOME_ALIGNED_BAM, --genome_aligned_bam GENOME_ALIGNED_BAM
+.. option:: -b, --genome_aligned_bam GENOME_ALIGNED_BAM
 
    Sorted and indexed bam file aligned to the genome
 
-.. option:: -g GENOME, --genome GENOME
+.. option:: -g, --genome GENOME
 
    FASTA of reference genome, can be minimap2 indexed; a compressed genome must be bgzip and indexed with samtools faidx
 

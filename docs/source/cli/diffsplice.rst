@@ -4,9 +4,9 @@
 
 .. code-block:: text
 
-   usage: flair diffsplice [-h] --isoform_bed ISOFORM_BED --counts_matrix
-                           COUNTS_MATRIX -o OUTPUT [-t THREADS] [--test]
-                           [--min_samps_gene_expr MIN_SAMPS_GENE_EXPR]
+   usage: flair diffsplice [-h] --isoform_bed ISOFORM_BED
+                           --counts_matrix COUNTS_MATRIX -o OUTPUT [-t THREADS]
+                           [--test] [--min_samps_gene_expr MIN_SAMPS_GENE_EXPR]
                            [--min_samps_feature_expr MIN_SAMPS_FEATURE_EXPR]
                            [--min_gene_expr MIN_GENE_EXPR]
                            [--min_feature_expr MIN_FEATURE_EXPR] [--batch]
@@ -15,7 +15,7 @@
 
 .. rubric:: options
 
-.. option:: -t THREADS, --threads THREADS
+.. option:: -t, --threads THREADS
 
    number of threads for parallel DRIMSeq (default: 4)
 
@@ -65,7 +65,7 @@
 
    tab-delimited isoform count matrix from flair quantify
 
-.. option:: -o OUTPUT, --output OUTPUT
+.. option:: -o, --output OUTPUT
 
    output directory for tables and plots
 

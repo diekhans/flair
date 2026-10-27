@@ -29,7 +29,7 @@
 
    either this, --pos_ref or --manifest: path to reference vcf file of sites to check for variants
 
-.. option:: -o OUTPUT, --output OUTPUT
+.. option:: -o, --output OUTPUT
 
    prefix for output files (default: flair)
 

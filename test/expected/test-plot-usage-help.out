@@ -19,7 +19,7 @@ options:
   --min_reads MIN_READS
                         minimum number of total supporting reads for an
                         isoform to be visualized (default=6)
-  -v VCF, --vcf VCF     VCF containing the isoform names that include each
+  -v, --vcf VCF         VCF containing the isoform names that include each
                         variant in the last sample column
   --palette PALETTE     provide a palette file if you would like to visualize
                         more than 7 isoforms at once or change the palette

@@ -10,7 +10,7 @@
 
 .. rubric:: options
 
-.. option:: -s SAM_FILE, --sam SAM_FILE
+.. option:: -s, --sam SAM_FILE
 
    SAM/BAM file of read alignments to junctions and the genome. More than one file can be listed, comma-delimited, e.g file_1.bam,file_2.bam
 
@@ -18,19 +18,19 @@
 
    only keep uniquely aligned reads; the NH tag must be 1
 
-.. option:: -n NAME, --name NAME
+.. option:: -n, --name NAME
 
    name prefix used for the output BED file (default: junctions_from_sam)
 
-.. option:: -l READ_LENGTH, --read_length READ_LENGTH
+.. option:: -l, --read_length READ_LENGTH
 
    expected read length, if all reads are of the same length
 
-.. option:: -c CONFIDENCE_SCORE, --confidence_score CONFIDENCE_SCORE
+.. option:: -c, --confidence_score CONFIDENCE_SCORE
 
    the minimum entropy score a junction has to have to be considered confident. The entropy score = -Shannon Entropy (default: 1.0)
 
-.. option:: -j FORCED_JUNCTIONS, --forced_junctions FORCED_JUNCTIONS
+.. option:: -j, --forced_junctions FORCED_JUNCTIONS
 
    file of intron coordinates for junctions that are kept regardless of the confidence score
 

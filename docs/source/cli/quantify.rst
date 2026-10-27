@@ -4,17 +4,18 @@
 
 .. code-block:: text
 
-   usage: flair quantify [-h] --manifest MANIFEST -g GENOME --isoform_bed
-                         ISOFORM_BED [-o OUTPUT] [-t THREADS] [--tpm]
-                         [--trust_ends] [--generate_map] [--normalize_ends]
+   usage: flair quantify [-h] --manifest MANIFEST -g GENOME
+                         --isoform_bed ISOFORM_BED [-o OUTPUT] [-t THREADS]
+                         [--tpm] [--trust_ends] [--generate_map]
+                         [--normalize_ends]
 
 .. rubric:: options
 
-.. option:: -o OUTPUT, --output OUTPUT
+.. option:: -o, --output OUTPUT
 
    output file name base for FLAIR quantify (default: flair.quantify)
 
-.. option:: -t THREADS, --threads THREADS
+.. option:: -t, --threads THREADS
 
    minimap2 number of threads (default: 4)
 
@@ -40,7 +41,7 @@
 
    Tab delimited file containing sample id, condition, batch, and the path to that sample's reads aligned to the genome as a sorted, indexed BAM
 
-.. option:: -g GENOME, --genome GENOME
+.. option:: -g, --genome GENOME
 
    FASTA of genome; a compressed genome must be bgzip and indexed with samtools faidx
 

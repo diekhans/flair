@@ -29,15 +29,15 @@
 
    normal vcf file, optional even when providing a normal bam
 
-.. option:: -g GENOME, --genome GENOME
+.. option:: -g, --genome GENOME
 
    FASTA of reference genome
 
-.. option:: -o OUTPUT, --output OUTPUT
+.. option:: -o, --output OUTPUT
 
    prefix for output files (default: flair)
 
-.. option:: -f GTF, --gtf GTF
+.. option:: -f, --gtf GTF
 
    GTF annotation file; either this or --isoform_bed must be provided
 

@@ -7,7 +7,7 @@ Differential expression and differential usage analysis
 
 options:
   -h, --help            show this help message and exit
-  -t THREADS, --threads THREADS
+  -t, --threads THREADS
                         number of threads for parallel DRIMSeq (default: 4)
   --min_expression MIN_EXPRESSION
                         read count expression threshold; isoforms in which
@@ -25,5 +25,4 @@ options:
 required named arguments:
   --counts_matrix COUNTS_MATRIX
                         tab-delimited isoform count matrix from flair quantify
-  -o OUTPUT, --output OUTPUT
-                        output directory for tables and plots
+  -o, --output OUTPUT   output directory for tables and plots

@@ -1,15 +1,15 @@
-usage: flair quantify [-h] --manifest MANIFEST -g GENOME --isoform_bed
-                      ISOFORM_BED [-o OUTPUT] [-t THREADS] [--tpm]
-                      [--trust_ends] [--generate_map] [--normalize_ends]
+usage: flair quantify [-h] --manifest MANIFEST -g GENOME
+                      --isoform_bed ISOFORM_BED [-o OUTPUT] [-t THREADS]
+                      [--tpm] [--trust_ends] [--generate_map]
+                      [--normalize_ends]
 
 Quantify the expression level of isoforms across samples
 
 options:
   -h, --help            show this help message and exit
-  -o OUTPUT, --output OUTPUT
-                        output file name base for FLAIR quantify (default:
+  -o, --output OUTPUT   output file name base for FLAIR quantify (default:
                         flair.quantify)
-  -t THREADS, --threads THREADS
+  -t, --threads THREADS
                         minimap2 number of threads (default: 4)
   --tpm                 convert counts matrix to transcripts per million and
                         output as a separate file named <output>.tpm.tsv
@@ -25,8 +25,7 @@ required named arguments:
   --manifest MANIFEST   Tab delimited file containing sample id, condition,
                         batch, and the path to that sample's reads aligned to
                         the genome as a sorted, indexed BAM
-  -g GENOME, --genome GENOME
-                        FASTA of genome; a compressed genome must be bgzip and
+  -g, --genome GENOME   FASTA of genome; a compressed genome must be bgzip and
                         indexed with samtools faidx
   --isoform_bed ISOFORM_BED
                         isoform .bed file

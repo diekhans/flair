@@ -4,9 +4,8 @@ channels:
   - bioconda
   - conda
 
-# not yet tested with 3.13
 dependencies:
-  - python =3.12
+  - python >=3.12,<3.15
   - minimap2 =2.30
   - bedtools =2.31.1
   - samtools =1.22.1
@@ -25,4 +24,4 @@ dependencies:
   - bioconductor-apeglm
   - pip:
       - flair-brookslab==v3.0.0+dev
-      - matplotlib>=3.10.0,<4.0.0
+      - matplotlib>=3.11.2,<4.0.0

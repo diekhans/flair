@@ -32,7 +32,7 @@
 
    minimum number of total supporting reads for an isoform to be visualized (default=6)
 
-.. option:: -v VCF, --vcf VCF
+.. option:: -v, --vcf VCF
 
    VCF containing the isoform names that include each variant in the last sample column
 

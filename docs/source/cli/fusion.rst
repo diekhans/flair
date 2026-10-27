@@ -4,8 +4,8 @@
 
 .. code-block:: text
 
-   usage: flair fusion [-h] -g GENOME -f GTF -b GENOME_ALIGNED_BAM --sample_name
-                       SAMPLE_NAME [-o OUTPUT] [-t THREADS]
+   usage: flair fusion [-h] -g GENOME -f GTF -b GENOME_ALIGNED_BAM
+                       --sample_name SAMPLE_NAME [-o OUTPUT] [-t THREADS]
                        [--min_fragment_size MIN_FRAGMENT_SIZE]
                        [--min_support MIN_SUPPORT] [--max_loci MAX_LOCI]
                        [--max_dist_to_tss MAX_DIST_TO_TSS]
@@ -16,11 +16,11 @@
 
 .. rubric:: options
 
-.. option:: -o OUTPUT, --output OUTPUT
+.. option:: -o, --output OUTPUT
 
    output file name base for FLAIR isoforms, defaults to --sample_name. The chimeric reads bams OUTPUT.genomealigned.chim.bam and OUTPUT.transcriptomealigned.chim.bam from an earlier run with this -o are reused, whatever -b and --min_fragment_size are
 
-.. option:: -t THREADS, --threads THREADS
+.. option:: -t, --threads THREADS
 
    number of threads for minimap2 and for flair transcriptome on the synthetic fusion genome (default: 4)
 
@@ -66,15 +66,15 @@
 
 .. rubric:: required named arguments
 
-.. option:: -g GENOME, --genome GENOME
+.. option:: -g, --genome GENOME
 
    FASTA of reference genome
 
-.. option:: -f GTF, --gtf GTF
+.. option:: -f, --gtf GTF
 
    GTF annotation file, used for renaming FLAIR isoforms to annotated isoforms and adjusting TSS/TESs
 
-.. option:: -b GENOME_ALIGNED_BAM, --genome_aligned_bam GENOME_ALIGNED_BAM
+.. option:: -b, --genome_aligned_bam GENOME_ALIGNED_BAM
 
    bam file of reads aligned to the genome with minimap2 -ax splice. All reads, not only the chimeric ones: reads are also aligned to annotated transcripts, which finds partner pieces the genome alignment leaves clipped. The chimeric reads taken from it are kept as OUTPUT.genomealigned.chim.bam and OUTPUT.transcriptomealigned.chim.bam, and reused if they exist: with a different bam, use a new -o or remove them first
 

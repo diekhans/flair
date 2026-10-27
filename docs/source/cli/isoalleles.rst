@@ -4,10 +4,10 @@
 
 .. code-block:: text
 
-   usage: flair isoalleles [-h] --allele_vcf ALLELE_VCF --allele_read_map
-                           ALLELE_READ_MAP
-                           [--allele_read_map_normal ALLELE_READ_MAP_NORMAL] -g
-                           GENOME [-o OUTPUT] --isoform_bed ISOFORM_BED
+   usage: flair isoalleles [-h] --allele_vcf ALLELE_VCF
+                           --allele_read_map ALLELE_READ_MAP
+                           [--allele_read_map_normal ALLELE_READ_MAP_NORMAL]
+                           -g GENOME [-o OUTPUT] --isoform_bed ISOFORM_BED
                            --iso_read_map ISO_READ_MAP
                            [--iso_read_map_normal ISO_READ_MAP_NORMAL]
                            [--tumor_bam TUMOR_BAM] [--normal_bam NORMAL_BAM]
@@ -27,11 +27,11 @@
 
    optional normal read map file from flair alleles
 
-.. option:: -g GENOME, --genome GENOME
+.. option:: -g, --genome GENOME
 
    genome FASTA file (used for making bigBed)
 
-.. option:: -o OUTPUT, --output OUTPUT
+.. option:: -o, --output OUTPUT
 
    prefix for output files (default: flair)
 

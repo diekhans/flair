@@ -1,6 +1,6 @@
-usage: flair transcriptome [-h] -b GENOME_ALIGNED_BAM -g GENOME --sample_name
-                           SAMPLE_NAME [-o OUTPUT] [-f ANNOT_GTF]
-                           [--junction_star JUNCTION_STAR]
+usage: flair transcriptome [-h] -b GENOME_ALIGNED_BAM -g GENOME
+                           --sample_name SAMPLE_NAME [-o OUTPUT]
+                           [-f ANNOT_GTF] [--junction_star JUNCTION_STAR]
                            [--junction_tab JUNCTION_TAB]
                            [--junction_bed JUNCTION_BED]
                            [--junction_support JUNCTION_SUPPORT]
@@ -24,11 +24,9 @@ rna-seq reads
 
 options:
   -h, --help            show this help message and exit
-  -o OUTPUT, --output OUTPUT
-                        prefix for the output file names; defaults to the
+  -o, --output OUTPUT   prefix for the output file names; defaults to the
                         required --sample_name
-  -f ANNOT_GTF, --gtf ANNOT_GTF
-                        GTF annotation file, used for identifying annotated
+  -f, --gtf ANNOT_GTF   GTF annotation file, used for identifying annotated
                         isoforms
   --junction_star JUNCTION_STAR
                         splice junctions in STAR SJ.out.tab format, as STAR
@@ -110,7 +108,7 @@ options:
   --keep_supplementary  keep supplementary alignments when defining isoforms
   --quality QUALITY     minimum mapping quality threshold to consider genomic
                         alignments for defining transcripts (default: 1)
-  -t THREADS, --threads THREADS
+  -t, --threads THREADS
                         number of threads to run with, related to
                         --parallel_mode (default: 12)
   --parallel_mode PARALLEL_MODE
@@ -144,10 +142,9 @@ options:
   --generate_map        generate a txt file of read-isoform assignments
 
 required named arguments:
-  -b GENOME_ALIGNED_BAM, --genome_aligned_bam GENOME_ALIGNED_BAM
+  -b, --genome_aligned_bam GENOME_ALIGNED_BAM
                         Sorted and indexed bam file aligned to the genome
-  -g GENOME, --genome GENOME
-                        FASTA of reference genome, can be minimap2 indexed; a
+  -g, --genome GENOME   FASTA of reference genome, can be minimap2 indexed; a
                         compressed genome must be bgzip and indexed with
                         samtools faidx
   --sample_name SAMPLE_NAME

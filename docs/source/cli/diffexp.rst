@@ -11,7 +11,7 @@
 
 .. rubric:: options
 
-.. option:: -t THREADS, --threads THREADS
+.. option:: -t, --threads THREADS
 
    number of threads for parallel DRIMSeq (default: 4)
 
@@ -37,7 +37,7 @@
 
    tab-delimited isoform count matrix from flair quantify
 
-.. option:: -o OUTPUT, --output OUTPUT
+.. option:: -o, --output OUTPUT
 
    output directory for tables and plots
 

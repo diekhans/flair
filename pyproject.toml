@@ -12,26 +12,27 @@ authors = [
 ]
 license = {text = "BSD 3-clause"}
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.15"
 
 dependencies = [
-    "pysam (>=0.23.0,<0.24.0)",
-    "pipettor (>=1.1.0,<2.0.0)",
-    "numpy (>=2.2,<3.0)",
-    "scipy (>=1.15.1,<2.0.0)",
+    "pysam (>=0.24.1,<0.25.0)",
+    "pipettor (>=1.2.1,<2.0.0)",
+    "numpy (>=2.5,<3.0)",
+    "scipy (>=1.18.1,<2.0.0)",
     "vcfpy (>=0.14.2,<0.15.0)",
+    # networkx 3.7 excludes python 3.14.1, which this range supports
     "networkx (>=3.6,<4.0)",
-    "matplotlib (>=3.10.0,<4.0.0)",
+    "matplotlib (>=3.11.2,<4.0.0)",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "flake8 (>=7.1.1)",
-    "pytest (>=9.0.2,<10.0.0)",
+    "flake8 (>=7.4.1)",
+    "pytest (>=9.1.1,<10.0.0)",
     "pytest-xdist (>=3.8.0, <4.0)",
-    "sphinx (>=8.2.3,<9.0.0)",
-    "sphinx-rtd-theme (>=3.0.2)",
-    "bump-my-version (>=1.1.1)",
+    "sphinx (>=8.2.3,<10.0.0)",
+    "sphinx-rtd-theme (>=3.1.0)",
+    "bump-my-version (>=1.6.3)",
 ]
 
 [project.urls]

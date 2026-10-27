@@ -106,13 +106,13 @@ test-help:
 		test-quantify-help test-diffexp-help test-diffsplice-help \
 		test-diff-iso-usage-help \
 		test-plot-usage-help test-transcriptome-help test-fusion-help \
-		test-doc-cli)
+		test-doc-cli
 
 # the committed option pages must match what the parsers currently define
 test-doc-cli: mkdirs
 	rm -rf $O/cli
 	${root}/dev/bin/flair-gen-cli-doc $O/cli >/dev/null
-	diff -r ${root}/docs/source/cli $O/cli
+	$(if ${HELP_FORMAT_313},diff -r ${root}/docs/source/cli $O/cli,$(call skip_help_cmp))
 
 test-fast:
 	$(call run_tests, test-combine-bed-only \
@@ -325,6 +325,23 @@ define cmp_expect
 	diff $E/$(1) $O/$(1)
 endef
 
+##
+# compare --help output.  argparse writes "-o, --output OUTPUT" from python 3.13
+# on, where 3.12 wrote "-o OUTPUT, --output OUTPUT", and wraps usage lines at
+# different points.  The expected files are in the 3.13 form, so an older python
+# skips the comparison rather than reporting a difference that is not a defect.
+##
+HELP_FORMAT_313 := $(shell python3 -c 'import sys; sys.stdout.write("yes" if sys.version_info >= (3, 13) else "")')
+PYTHON_VERSION := $(shell python3 -c 'import platform; print(platform.python_version())')
+
+define skip_help_cmp
+	@echo "Warning: $@ not compared: python ${PYTHON_VERSION} writes argparse help in the pre-3.13 format, the expected output is in the 3.13 format" >&2
+endef
+
+define cmp_expect_help
+	$(if ${HELP_FORMAT_313},diff $E/$(1) $O/$(1),$(call skip_help_cmp))
+endef
+
 define cmp_expect_bed_simple
 	diff <(cut -f 1,2,3,6,10,11,12 $E/$(1)) <(cut -f 1,2,3,6,10,11,12 $O/$(1))
 endef
@@ -418,7 +435,7 @@ endef
 
 test-main-help: mkdirs
 	flair --help | fgrep -v Version> $O/$@.out
-	$(call cmp_expect,$@.out)
+	$(call cmp_expect_help,$@.out)
 
 ###
 # reads aligned to the genome, the input of the tests
@@ -639,7 +656,7 @@ test-quantify-bgzip-genome: mkdirs ${TOME_OUT_FAI} ${QUANTIFY_INPUT_BAMS} ${BGZI
 
 test-quantify-help: mkdirs
 	flair quantify --help > $O/$@.out
-	$(call cmp_expect,$@.out)
+	$(call cmp_expect_help,$@.out)
 
 ###
 # FLAIR DIFFEXP
@@ -674,7 +691,7 @@ test-diffexp-colorder : mkdirs test-diffexp
 
 test-diffexp-help: mkdirs
 	flair diffexp --help > $O/$@.out
-	$(call cmp_expect,$@.out)
+	$(call cmp_expect_help,$@.out)
 
 ###
 # FLAIR DIFFSPLICE
@@ -726,7 +743,7 @@ test-diffsplice-strands: mkdirs
 
 test-diffsplice-help: mkdirs
 	flair diffsplice --help > $O/$@.out
-	$(call cmp_expect,$@.out)
+	$(call cmp_expect_help,$@.out)
 
 
 bed-to-gtf-tests: test-bed-to-gtf test-bed-to-gtf-compress test-bed-to-gtf-extracols
@@ -759,7 +776,7 @@ test-diff-iso-usage-compress: mkdirs ${TI}/basic.counts_matrix_diffexp.tsv.gz
 
 test-diff-iso-usage-help: mkdirs
 	diff_iso_usage --help > $O/$@.out
-	$(call cmp_expect,$@.out)
+	$(call cmp_expect_help,$@.out)
 
 # ##
 # # plot isoform usage
@@ -779,7 +796,7 @@ test-plot-usage-compress: mkdirs ${TI}/test-transcriptome.isoforms.bed.gz ${TI}/
 
 test-plot-usage-help: mkdirs
 	plot_isoform_usage --help > $O/$@.out
-	$(call cmp_expect,$@.out)
+	$(call cmp_expect_help,$@.out)
 
 ###
 # flair transcriptome
@@ -1053,7 +1070,7 @@ test-transcriptome-trust-ends-removed: mkdirs ${BASIC_ALIGN_BAM}
 
 test-transcriptome-help: mkdirs
 	flair transcriptome --help > $O/$@.out
-	$(call cmp_expect,$@.out)
+	$(call cmp_expect_help,$@.out)
 
 
 ###
@@ -1224,7 +1241,7 @@ ${FUSION_TEST_BAM}: ${ERGIC3_KRAS_SIM_FA_GZ} ${GENOME_FA}
 
 test-fusion-help: mkdirs
 	flair fusion  --help > $O/$@.out
-	$(call cmp_expect,$@.out)
+	$(call cmp_expect_help,$@.out)
 
 ${ERGIC3_KRAS_SIM_FA_GZ}: $I/ERGIC3_KRAS_sim_fusion.badread20x.stranded.fastq
 	@mkdir -p $(dir $@)

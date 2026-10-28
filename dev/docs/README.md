@@ -75,7 +75,7 @@ lock file servers only serves as a reference due to Conda issues.
 
 The `poetry update` to install to update the dependencies list.  Conda has
 problems with incorrectly creating `direct_url.json` files for dependencies
-`flair-dev/lib/python3.12/site-packages/* dist-info/direct_url.json`.
+`flair-dev/lib/python3.*/site-packages/* dist-info/direct_url.json`.
 Remove these files and `poetry update` will work
 
 ## Testing:
@@ -90,15 +90,20 @@ To run the tests using the version of FLAIR found on PATH:
 make -O -j 64 test use_installed_flair=yes
 ```
 
-To run the diffExp and diffSplice tests:
+`make test` runs everything, the diffExp and diffSplice tests included.
+To skip those and their R dependencies:
 ```
-make -O -j 64 test-expdiff
+make -O -j 64 test-base
 ```
 
-To run all tests:
+To run with only the conda environment and system directories on PATH, as a
+release is tested:
 ```
-make -O -j 64 test-all
+make -O -j 64 test-env-only
 ```
+
+Individual test suites are targets of `test/Makefile`, such as
+`make -C test transcriptome-tests`; `make -C test help` lists them.
 
 # Releasing flair
 

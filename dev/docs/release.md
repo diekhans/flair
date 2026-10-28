@@ -365,8 +365,6 @@ docker push brookslab/flair:<version>
 docker push brookslab/flair:latest
 ```
 
-The reason that the build takes long is that pysam doesn't have a fast installation method.
-
 ## 17. Check the release is the latest in PyPi
 This happens automatically bases on version numbers.
 An alpha or beta release will not be made the latest.

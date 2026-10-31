@@ -98,6 +98,17 @@ misc/flair_dev_conda_env.yaml.
 
 Repeat this on Apple ARM (M1, M2, ...) processor systems.
 
+Then run the suite under every python version the package claims to support:
+```
+make test-pyversions
+```
+This builds a conda environment per version in `requires-python`, installs
+FLAIR into each and runs the same `test-env-only` tests there, all versions at
+once, each in `test/output-py<version>`; see `dev/docs/README.md` for running
+one version at a time.  A version that fails must either be fixed or dropped
+from `requires-python` in `pyproject.toml` and from the `python` line in
+`misc/*_conda_env.yaml`.
+
 ## 6. Check documentation
 
 ```

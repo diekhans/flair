@@ -67,7 +67,7 @@ where = ["src"]
 # walking them makes lib-tests collection fail at random when make builds targets
 # in parallel.  The rest of the list is the pytest default, which this replaces.
 norecursedirs = ["*.egg", ".*", "_darcs", "build", "CVS", "dist", "node_modules",
-                 "venv", "{arch}", "output", "tmp-input"]
+                 "venv", "{arch}", "output*", "tmp-input*"]
 
 ## 
 # poetry specific

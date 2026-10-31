@@ -105,6 +105,32 @@ make -O -j 64 test-env-only
 Individual test suites are targets of `test/Makefile`, such as
 `make -C test transcriptome-tests`; `make -C test help` lists them.
 
+To run the suite under every python version `requires-python` in
+`pyproject.toml` claims:
+```
+make test-pyversions
+```
+Each version gets a conda environment built from `misc/flair_dev_conda_env.yaml`
+with python repinned, FLAIR installed into it with `pip install -e .[dev]`, and
+`test-env-only` run with its output in `test/output-py<version>`.  The versions
+run at the same time; the generated inputs under `test/tmp-input` are the same
+for every version, so `make test-inputs` builds them first.  The per-version
+logs are left in `pyver-test-logs/`.
+
+One version at a time:
+```
+make test-pyversion-3.15
+./dev/bin/flair-test-python-versions --reuse-env 3.15
+```
+`--reuse-env` installs into the existing environment rather than recreating it,
+which is what to use when iterating on a failure.
+
+Any test target can write to its own directory, which is how the versions keep
+out of each other's way:
+```
+make test outsuffix=-py3.15
+```
+
 # Releasing flair
 
 The following documents cover releasing FLAIR:

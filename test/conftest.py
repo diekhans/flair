@@ -1,5 +1,11 @@
+import os
 import pytest
 from flair.gtf_io import gtf_data_parser, GtfAttrsSet
+
+@pytest.fixture(scope="session")
+def make_output_dir():
+    "where the Makefile put the files these tests read, set by test/Makefile"
+    return os.environ.get('FLAIR_TEST_OUTPUT_DIR', 'output')
 
 @pytest.fixture(scope="session")
 def basic_gtf_data():

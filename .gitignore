@@ -3,7 +3,7 @@ build/
 __pycache__/
 src/flair_brookslab.egg-info/
 test/tmp-input/
-test/output/
+test/output*/
 .DS_Store
 ._*
 
@@ -16,3 +16,6 @@ test/output/
 
 # directory for taking random notes while working, never checked in
 /notes/
+
+# logs from dev/bin/flair-test-python-versions
+/pyver-test-logs/

@@ -67,6 +67,11 @@ help:
 	@echo "   " make transcriptome-tests use_installed_flair=yes >&2
 	@echo "Run only library tests" >&2
 	@echo "   " make lib-tests >&2
+	@echo "Write to an output directory of this run's own, so that runs for" >&2
+	@echo "different python versions can go at the same time:" >&2
+	@echo "   " make test outsuffix=-py3.15 >&2
+	@echo "Build the generated inputs such runs share, before starting them:" >&2
+	@echo "   " make test-inputs >&2
 	@echo "Remove output files:" >&2
 	@echo "   " make clean >&2
 	@echo Remove output and downloaded genomes files: >&2
@@ -176,10 +181,28 @@ PYTEST_CMD = ${PYTEST} --capture=no ${traceback} --log-cli-level=${loglevel} ${p
 # Note: expected and output are sorted in cases where the order is not stable
 ##
 
+##
+# Output directory.  A run that must not disturb another one sets outsuffix, as
+# the python version tests do with `outsuffix=-py3.15', giving each version its
+# own output/ and letting the versions run at the same time.  ${TI} holds
+# generated inputs that do not vary by python version, so it stays shared; `make
+# test-inputs' builds them before parallel runs start.
+##
+outsuffix =
+
 I = input
 E = expected
-O = output
+O = output${outsuffix}
 TI = tmp-input
+
+# pytest tests that read a file make built get the directory from here
+export FLAIR_TEST_OUTPUT_DIR = $O
+
+# .pytest_cache is in the test directory, which a suffixed run shares with the
+# runs going on beside it, so it keeps no cache
+ifneq (${outsuffix},)
+    pytest_extra += -p no:cacheprovider
+endif
 
 # reference data
 GENOME_FA = ${TI}/genome.fa
@@ -301,7 +324,7 @@ export COLUMNS = 80
 ##
 ${TI}/%.gz: $I/%
 	@mkdir -p ${TI}
-	gzip -c $< > $@
+	gzip -c $< > $@.$$$$.tmp && mv -f $@.$$$$.tmp $@
 
 ##
 # A bgzip genome, indexed.  The genome is the one input that cannot be plain gzip:
@@ -310,13 +333,12 @@ ${TI}/%.gz: $I/%
 BGZIP_GENOME_FA = ${TI}/genome.bgz.fa.gz
 
 ${BGZIP_GENOME_FA}: ${GENOME_FA}
-	bgzip -c $< > $@.tmp
-	mv -f $@.tmp $@
+	bgzip -c $< > $@.$$$$.tmp && mv -f $@.$$$$.tmp $@
 	samtools faidx $@
 
 ${TI}/%.gz: $E/%
 	@mkdir -p ${TI}
-	gzip -c $< > $@
+	gzip -c $< > $@.$$$$.tmp && mv -f $@.$$$$.tmp $@
 
 ##
 # compare output, expected with result
@@ -1078,9 +1100,9 @@ test-transcriptome-help: mkdirs
 # FIXME need to add better checks for AAseq results, however the inconsistent sorting of the variants leads to inconsistent AAseq IDs which are hard to check
 ###
 
-B1_GENOME_ALIGNED_BAM = output/B1_1.genomealigned.bam
-B1_LONGSHOT = output/B1_1.genomealigned.longshot.vcf
-BASIC_LONGSHOT = output/basic-reads.longshot.vcf
+B1_GENOME_ALIGNED_BAM = $O/B1_1.genomealigned.bam
+B1_LONGSHOT = $O/B1_1.genomealigned.longshot.vcf
+BASIC_LONGSHOT = $O/basic-reads.longshot.vcf
 
 ${B1_GENOME_ALIGNED_BAM}: ${GENOME_FA} ${TEST_QUANTIFY_B1_BAM}
 	@mkdir -p $O
@@ -1267,57 +1289,79 @@ partition-tests: test-partition-basic test-partition-adjacent test-partition-min
 	test-partition-sam
 
 test-partition-basic: mkdirs
-	flair_partition --threads=2 --log-level=info --bed=input/partition-test.bed output/$@.ranges.bed >& output/$@.out
+	flair_partition --threads=2 --log-level=info --bed=input/partition-test.bed $O/$@.ranges.bed >& $O/$@.out
 	$(call cmp_expect,$@.ranges.bed)
 	$(call cmp_expect,$@.out)
 
 # merge adjacent partitions
 test-partition-adjacent: mkdirs
-	flair_partition --threads=2 --part_merge_dist=10000 --log-level=info --bed=input/partition-test.bed output/$@.ranges.bed >& output/$@.out
+	flair_partition --threads=2 --part_merge_dist=10000 --log-level=info --bed=input/partition-test.bed $O/$@.ranges.bed >& $O/$@.out
 	$(call cmp_expect,$@.ranges.bed)
 	$(call cmp_expect,$@.out)
 
 # minimum reads per partition
 test-partition-min-reads: mkdirs
-	flair_partition --threads=2 --min_partition_items=3  --log-level=info --bed=input/partition-test.bed output/$@.ranges.bed >& output/$@.out
+	flair_partition --threads=2 --min_partition_items=3  --log-level=info --bed=input/partition-test.bed $O/$@.ranges.bed >& $O/$@.out
 	$(call cmp_expect,$@.ranges.bed)
 	$(call cmp_expect,$@.out)
 
 # with bed, sam, and gtf
 test-partition-sam: mkdirs
 	flair_partition --threads=2 --log-level=info --bed=input/partition-test.bed --bam=input/tiny.sam --gtf=input/seg1.gencodeV47.gtf \
-	    output/$@.ranges.bed >& output/$@.out
+	    $O/$@.ranges.bed >& $O/$@.out
 	$(call cmp_expect,$@.ranges.bed)
 	$(call cmp_expect,$@.out)
 
 ##
-# library tests with pytest
+# library tests with pytest.  test_flair_partition.py reads the basic alignment
+# BAM, so a parallel run after `make clean' must not start pytest before
+# test-alignments has built it.
 ##
-lib-tests:
+lib-tests: mkdirs ${BASIC_ALIGN_BAM}
 	${PYTEST_CMD} .
 
 ##
 # build test input files
 ##
+
+##
+# The generated inputs under ${TI}.  They do not vary by python version, so runs
+# in separate output directories share them and must build them first with `make
+# test-inputs': two runs creating the same genome at once would corrupt it.  A
+# new ${TI} file belongs in this list.
+##
+TEST_INPUT_FILES = ${GENOME_FA} ${REFSEQ_GENOME_FA} ${ONECHROM_GENOME_FA} ${BGZIP_GENOME_FA} \
+	${COMBINE_BEDS_GZ} \
+	${TI}/basic.annotation.gtf.gz ${TI}/basic.counts_matrix_diffexp.tsv.gz \
+	${TI}/basic.counts_matrix_diffsplice.tsv.gz ${TI}/basic.isoforms_diffsplice.bed.gz \
+	${TI}/basic.reads_manifest_bam.txt.gz ${TI}/basic.shortread_junctions.tab.gz \
+	${TI}/spliceevents.manifest.tsv.gz ${TI}/test-collapse-annot.isoforms.bed.gz \
+	${TI}/test-quantify.counts.tsv.gz
+
+test-inputs: ${TEST_INPUT_FILES}
+
+CHROM_URL = https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes
+
+# The chromosomes are downloaded and joined in a directory of their own, and the
+# genome and its index are moved into place complete, so that two runs that both
+# find the genome missing cannot write over each other's partial files.
 ${GENOME_FA}:
-	mkdir -p $(dir $@)
-	rm -f $@.fai
-	wget -nv https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr12.fa.gz
-	wget -nv https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr17.fa.gz
-	wget -nv https://hgdownload.soe.ucsc.edu/goldenPath/hg38/chromosomes/chr20.fa.gz
-	zcat chr12.fa.gz chr17.fa.gz chr20.fa.gz > $@
-	rm chr12.fa.gz chr17.fa.gz chr20.fa.gz
-	samtools faidx $@
+	@mkdir -p $(dir $@)
+	tmpdir=$$(mktemp -d $(dir $@)/genome.XXXXXX) \
+	    && (cd $$tmpdir && wget -nv ${CHROM_URL}/chr12.fa.gz ${CHROM_URL}/chr17.fa.gz ${CHROM_URL}/chr20.fa.gz) \
+	    && zcat $$tmpdir/chr12.fa.gz $$tmpdir/chr17.fa.gz $$tmpdir/chr20.fa.gz > $$tmpdir/genome.fa \
+	    && samtools faidx $$tmpdir/genome.fa \
+	    && mv -f $$tmpdir/genome.fa.fai $@.fai \
+	    && mv -f $$tmpdir/genome.fa $@ \
+	    && rm -rf $$tmpdir
 
 # one sequence, re-wrapped at 50 bases so it can be indexed
 ${REFSEQ_GENOME_FA}: ${GENOME_FA}
-	sed -e 's/^>chr12$$/>NC_000012.12/' -e 's/^>chr17$$/>NC_000017.11/' -e 's/^>chr20$$/>NC_000020.11/' ${GENOME_FA} > $@.tmp
-	mv -f $@.tmp $@
+	sed -e 's/^>chr12$$/>NC_000012.12/' -e 's/^>chr17$$/>NC_000017.11/' -e 's/^>chr20$$/>NC_000020.11/' ${GENOME_FA} > $@.$$$$.tmp && mv -f $@.$$$$.tmp $@
 	samtools faidx $@
 
 ${ONECHROM_GENOME_FA}: ${GENOME_FA}
-	awk 'BEGIN {print ">chr12_17_20"} /^>/ {next} {buf = buf $$0; while (length(buf) >= 50) {print substr(buf, 1, 50); buf = substr(buf, 51)}} END {if (buf != "") print buf}' ${GENOME_FA} > $@.tmp
-	mv -f $@.tmp $@
+	awk 'BEGIN {print ">chr12_17_20"} /^>/ {next} {buf = buf $$0; while (length(buf) >= 50) {print substr(buf, 1, 50); buf = substr(buf, 51)}} END {if (buf != "") print buf}' ${GENOME_FA} > $@.$$$$.tmp && mv -f $@.$$$$.tmp $@
 	samtools faidx $@
 
 ${TOME_OUT_FA}: | mkdirs
@@ -1340,8 +1384,8 @@ HUB_OUT_DIR = $O/hg38
 
 HG38_CHROMS = https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.chromAlias.bb
 
-TEST_TRANSCRIPTOME_MUTANT_SPLICE_BB = output/test-transcriptome-mutant-splice.isoforms.bb
-TEST_TRANSCRIPTOME_SEG1_BB =  output/test-transcriptome-seg1.isoforms.bb
+TEST_TRANSCRIPTOME_MUTANT_SPLICE_BB = $O/test-transcriptome-mutant-splice.isoforms.bb
+TEST_TRANSCRIPTOME_SEG1_BB =  $O/test-transcriptome-seg1.isoforms.bb
 
 test-hub:  ${KRAS_MUT_SPLICE_BB} ${KRAS_MUT_SPLICE_SJ_BB} ${TEST_TRANSCRIPTOME_MUTANT_SPLICE_BB} \
 	${TEST_TRANSCRIPTOME_SEG1_BB}
@@ -1394,15 +1438,15 @@ test-isoalleles-compress: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM} ${BASIC_LONGSHO
 
 test-variantquant-compress: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM} ${BASIC_LONGSHOT} \
 		${TI}/test-transcriptome.isoforms.bed.gz
-	gzip -c ${BASIC_LONGSHOT} > ${TI}/align.longshot.vcf.gz
-	flair -z variantquant --transcriptome_bam ${BASIC_ALIGN_BAM} --vcf ${TI}/align.longshot.vcf.gz \
+	gzip -c ${BASIC_LONGSHOT} > $O/align.longshot.vcf.gz
+	flair -z variantquant --transcriptome_bam ${BASIC_ALIGN_BAM} --vcf $O/align.longshot.vcf.gz \
 	   --isoform_bed ${TI}/test-transcriptome.isoforms.bed.gz -o $O/$@
 	$(call cmp_expect_sort_gz,$@.var.counts.tsv,test-variantquant.var.counts.tsv)
 
 test-alleles-compress: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM} ${BASIC_LONGSHOT} ${TI}/basic.annotation.gtf.gz \
 		${TI}/test-transcriptome.isoforms.bed.gz
-	gzip -c ${BASIC_LONGSHOT} > ${TI}/align.longshot.vcf.gz
-	flair -z alleles --tumor_bam ${BASIC_ALIGN_BAM} --vcf ${TI}/align.longshot.vcf.gz -g ${GENOME_FA} \
+	gzip -c ${BASIC_LONGSHOT} > $O/align.longshot.vcf.gz
+	flair -z alleles --tumor_bam ${BASIC_ALIGN_BAM} --vcf $O/align.longshot.vcf.gz -g ${GENOME_FA} \
 	   --isoform_bed ${TI}/test-transcriptome.isoforms.bed.gz -f ${TI}/basic.annotation.gtf.gz \
 	   -o $O/$@ --generate_map --annotate_bams
 	$(call cmp_expect_gz,$@.allelegroups.counts.tsv,test-alleles-withbed.allelegroups.counts.tsv)

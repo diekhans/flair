@@ -1,4 +1,5 @@
 import io
+import os
 from flair.flair_partition import gtf_to_file, read_ranges, convert_inputs, bam_chroms, bam_to_file
 from flair.gtf_to_bed import gtf_to_bed
 
@@ -21,9 +22,9 @@ def test_read_ranges_only_needs_three_columns():
     assert [(r.chrom, r.chromStart, r.chromEnd) for r in read_ranges(fh)] == [('chr1', 10, 20), ('chr2', 5, 8)]
 
 
-def test_indexed_bam_split_by_chrom(tmp_path):
+def test_indexed_bam_split_by_chrom(tmp_path, make_output_dir):
     # converting by chrom gives the same alignments as converting the whole BAM
-    bam = 'output/basic-reads.bam'
+    bam = os.path.join(make_output_dir, 'basic-reads.bam')
     assert sorted(bam_chroms(bam)) == ['chr12', 'chr17', 'chr20']
     split = convert_inputs([], [bam], [], 3, str(tmp_path))
     assert len(split) == 3
@@ -37,9 +38,10 @@ def test_unindexed_sam_converted_whole(tmp_path):
     assert len(convert_inputs([], ['input/tiny.sam'], [], 3, str(tmp_path))) == 1
 
 
-def test_single_thread_converts_bam_whole(tmp_path):
+def test_single_thread_converts_bam_whole(tmp_path, make_output_dir):
     # one bamtobed process, rather than samtools view and bamtobed per chrom
-    assert len(convert_inputs([], ['output/basic-reads.bam'], [], 1, str(tmp_path))) == 1
+    bam = os.path.join(make_output_dir, 'basic-reads.bam')
+    assert len(convert_inputs([], [bam], [], 1, str(tmp_path))) == 1
 
 
 def test_thread_slots_limit_concurrency():

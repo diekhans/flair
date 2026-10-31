@@ -53,6 +53,32 @@ test-base-installed:
 test-env-only:
 	${MAKE} -C test test-env-only use_installed_flair=${use_installed_flair}
 
+##
+# Python version testing.  Each version gets a conda environment of its own and
+# writes its tests to test/output-py<version>, so the versions run at the same
+# time.  The generated inputs under test/tmp-input do not vary by version and are
+# shared, so they are built before any version starts.
+#
+#   make test-pyversions            every version requires-python spans
+#   make test-pyversion-3.15        one version
+#
+# To run the tests of the active environment in a directory of its own, without
+# building an environment, pass the suffix to the ordinary targets:
+#
+#   make test outsuffix=-py3.15
+##
+PYVERSIONS = $(shell ./dev/bin/flair-test-python-versions --list)
+
+test-inputs:
+	${MAKE} -C test test-inputs
+
+test-pyversion-%:
+	./dev/bin/flair-test-python-versions $*
+
+test-pyversions: test-inputs
+	@[ -n "${PYVERSIONS}" ] || { echo "Error: no python versions to test; check requires-python in pyproject.toml" >&2 ; exit 1 ; }
+	${MAKE} -j $(words ${PYVERSIONS}) ${PYVERSIONS:%=test-pyversion-%}
+
 
 ##
 # lint check with flake8

@@ -1,0 +1,184 @@
+#! /usr/bin/env python3
+"""Run the FLAIR test suite under one python version.
+
+A conda environment is built from misc/flair_dev_conda_env.yaml with python
+pinned to the version given, FLAIR is installed into it with `pip install
+-e .[dev]', and `make test-env-only' is run with the tests writing to
+test/output-py<version>.  The exit status is non-zero if anything failed.
+
+The separate output directory lets versions run at the same time, which is what
+`make test-pyversions' does.  The generated inputs under test/tmp-input do not
+vary by version and are shared, so they must be built first with `make
+test-inputs'; the parallel target does that before it starts any version.
+
+With --list, the python versions that requires-python in pyproject.toml spans
+are printed instead.  A version that fails is either code that needs fixing or a
+version to drop from requires-python and the conda environment files.
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import tomllib
+
+ROOT_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../.."))
+PYPROJECT = os.path.join(ROOT_DIR, "pyproject.toml")
+DEV_ENV_YAML = os.path.join(ROOT_DIR, "misc/flair_dev_conda_env.yaml")
+
+# the python dependency line in the conda environment file, which is repinned per version
+PYTHON_DEP_RE = re.compile(r"^(\s*-\s*)python\s.*$", re.MULTILINE)
+
+# >=3.12,<3.16 and nothing fancier; the bounds are both needed to enumerate the versions
+REQUIRES_PYTHON_RE = re.compile(r"^>=(\d+)\.(\d+),<(\d+)\.(\d+)$")
+
+def parse_args():
+    desc = "run the FLAIR tests under one python version, in a conda environment of its own"
+    parser = argparse.ArgumentParser(description=desc)
+    parser.add_argument('--list', action="store_true", dest="list_versions",
+                        help="print the python versions requires-python spans, one per line, "
+                        "and exit; `make test-pyversions' uses this to know what to run")
+    parser.add_argument('--env-prefix', default="flair-dev-py",
+                        help="the conda environment name is this plus the version digits")
+    parser.add_argument('--reuse-env', action="store_true",
+                        help="install and test in an existing environment rather than "
+                        "recreating it; for iterating on a failure, not for release testing")
+    parser.add_argument('--jobs', type=int, default=16,
+                        help="parallel make jobs within this version")
+    parser.add_argument('--log-dir', default=os.path.join(ROOT_DIR, "pyver-test-logs"),
+                        help="directory for the log of this run")
+    parser.add_argument('--conda', default="conda",
+                        help="conda command to build the environment with")
+    parser.add_argument('version', nargs='?',
+                        help="the python version to test, such as 3.15")
+    args = parser.parse_args()
+    if args.list_versions == (args.version is not None):
+        parser.error("specify one python version to test, or --list to print the supported ones")
+    return args
+
+def get_requires_python():
+    with open(PYPROJECT, 'rb') as fh:
+        return tomllib.load(fh)['project']['requires-python']
+
+def parse_version_bounds(requires_python):
+    "the (major, minor) lower and upper bounds, the upper one exclusive"
+    match = REQUIRES_PYTHON_RE.match(requires_python.replace(' ', ''))
+    if match is None:
+        raise Exception(f"requires-python in {PYPROJECT} is `{requires_python}', which this "
+                        f"program can't enumerate; name the version to test on the command "
+                        f"line, or write requires-python as `>=3.12,<3.16'")
+    lower, upper = (int(match[1]), int(match[2])), (int(match[3]), int(match[4]))
+    return lower, upper
+
+def supported_versions():
+    "the python versions requires-python spans, oldest first"
+    (major, lower), (upper_major, upper) = parse_version_bounds(get_requires_python())
+    if major != upper_major:
+        raise Exception(f"requires-python spans python {major} to {upper_major}; this program "
+                        f"enumerates minor versions of one major version only")
+    return [f"{major}.{minor}" for minor in range(lower, upper)]
+
+def env_name(args):
+    return args.env_prefix + args.version.replace('.', '')
+
+def out_suffix(args):
+    "make variable putting this version's test output in a directory of its own"
+    return f"outsuffix=-py{args.version}"
+
+def write_env_yaml(args, yaml_path):
+    "the dev environment file with python repinned to this version"
+    with open(DEV_ENV_YAML) as fh:
+        yaml = fh.read()
+    repinned, count = PYTHON_DEP_RE.subn(rf"\g<1>python ={args.version}", yaml)
+    if count != 1:
+        raise Exception(f"expected one python dependency line in {DEV_ENV_YAML}, found {count}; "
+                        f"this program repins that line to the version under test")
+    with open(yaml_path, 'w') as fh:
+        fh.write(repinned)
+
+def run_stage(cmd, log_fh):
+    "run a command with its output in the log, raising on failure"
+    log_fh.write(f"\n===== {' '.join(cmd)}\n")
+    log_fh.flush()
+    subprocess.run(cmd, cwd=ROOT_DIR, stdout=log_fh, stderr=subprocess.STDOUT, check=True)
+
+def in_env(args, *cmd):
+    "the command run in this version's conda environment"
+    return [args.conda, "run", "--name", env_name(args), "--no-capture-output", *cmd]
+
+def env_exists(args):
+    "conda env remove fails on an environment that was never created, so it is checked for"
+    listing = subprocess.run([args.conda, "env", "list", "--json"], cwd=ROOT_DIR,
+                             stdout=subprocess.PIPE, text=True, check=True).stdout
+    names = [os.path.basename(prefix) for prefix in json.loads(listing)['envs']]
+    return env_name(args) in names
+
+def remove_env(args, log_fh):
+    run_stage([args.conda, "env", "remove", "--yes", "--name", env_name(args)], log_fh)
+
+def create_env(args, log_fh):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        yaml_path = os.path.join(tmp_dir, f"flair_dev_py{args.version}.yaml")
+        write_env_yaml(args, yaml_path)
+        run_stage([args.conda, "env", "create", "--yes", "--name", env_name(args),
+                   "--file", yaml_path], log_fh)
+
+def reuse_env(args, log_fh):
+    if not env_exists(args):
+        raise Exception(f"--reuse-env was given, but there is no environment "
+                        f"`{env_name(args)}'; drop --reuse-env to create it")
+    log_fh.write(f"\n===== reusing environment {env_name(args)}\n")
+
+def build_env(args, log_fh):
+    "a fresh environment, unless an existing one is being reused"
+    if args.reuse_env:
+        reuse_env(args, log_fh)
+    else:
+        if env_exists(args):
+            remove_env(args, log_fh)
+        create_env(args, log_fh)
+    run_stage(in_env(args, "pip", "install", "-e", ".[dev]"), log_fh)
+
+def run_tests(args, log_fh):
+    "the full suite, with only the environment and the system directories in PATH"
+    run_stage(in_env(args, "make", "-C", "test", "clean", out_suffix(args)), log_fh)
+    run_stage(in_env(args, "make", "-C", "test", "-k", "-O", f"-j{args.jobs}", "test-env-only",
+                     out_suffix(args), "use_installed_flair=yes"), log_fh)
+
+def test_version(args, log_path):
+    "the stage that failed, or None when the tests passed"
+    with open(log_path, 'w') as log_fh:
+        stage = "environment"
+        try:
+            build_env(args, log_fh)
+            stage = "tests"
+            run_tests(args, log_fh)
+        except subprocess.CalledProcessError:
+            return stage
+    return None
+
+def report(args, log_path, failed_stage):
+    outcome = "passed" if failed_stage is None else f"FAILED in the {failed_stage} stage"
+    print(f"python {args.version} in {env_name(args)}: {outcome}, log in {log_path}",
+          file=sys.stderr, flush=True)
+
+def run_version(args):
+    os.makedirs(args.log_dir, exist_ok=True)
+    log_path = os.path.join(args.log_dir, f"py{args.version}.log")
+    print(f"python {args.version}: testing, log in {log_path}", file=sys.stderr, flush=True)
+    failed_stage = test_version(args, log_path)
+    report(args, log_path, failed_stage)
+    if failed_stage is not None:
+        sys.exit(1)
+
+def main():
+    args = parse_args()
+    if args.list_versions:
+        print('\n'.join(supported_versions()))
+    else:
+        run_version(args)
+
+
+main()

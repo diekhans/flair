@@ -5,7 +5,7 @@ channels:
   - conda
 
 dependencies:
-  - python >=3.12,<3.15
+  - python >=3.12,<3.16
   - minimap2 =2.30
   - bedtools =2.31.1
   - samtools =1.22.1

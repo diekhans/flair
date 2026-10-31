@@ -7,7 +7,7 @@ channels:
 # python 3.13 and later needed for the --help test comparisons, which are
 # skipped on 3.12: argparse changed its help layout in 3.13
 dependencies:
-  - python >=3.12,<3.15
+  - python >=3.12,<3.16
   - minimap2 =2.30
   - bedtools =2.31.1
   - samtools =1.22.1

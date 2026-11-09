@@ -9,7 +9,7 @@ from bisect import bisect_right
 from flair import FlairInputDataError
 from flair.pycbio import PycbioDataError
 from flair.counts_matrix_tsv import CountsRow, write_counts_matrix
-from flair.read_map_tsv import ReadMapReader, ReadMapWriter
+from flair.read_map_tsv import ReadMapReader, ReadMapWriter, check_read_ids_unique
 from flair.transcript_counts_tsv import TranscriptCountsReader
 from flair.sample_info_tsv import SampleInfo, sample_info_path, write_sample_info
 from flair.io_utils import check_genome_fasta, make_run_temp_dir, read_manifest_rows
@@ -585,6 +585,10 @@ def write_outputs(results_iter, batch_isoforms, sample_data, gene_data, fusions,
         for writer, fh in zip(map_writers, map_fhs):
             writer.close()
             fh.close()
+    # every id of a sample passes through its map, so this is the one check that sees
+    # the whole sample rather than a batch of loci
+    for path in map_paths:
+        check_read_ids_unique(compressed_path(path))
     rows = [CountsRow(gene_id, bed.name, counts.get(bed.name, [0] * len(sample_data)))
             for gene_id, gene_info in gene_data.items() for bed in gene_info.isoform_beds]
     rows += [CountsRow(pieces[0].gene_id, name, counts.get(name, [0] * len(sample_data)))

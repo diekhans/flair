@@ -172,6 +172,23 @@ def _process_batch(packed):
     return out, label_bams
 
 
+def _write_labelled_read(read, label, written, fh, bam_path):
+    """Write a read with its allele label, once.  The genes of a batch overlap, so a
+    read is fetched again for each gene it covers; the same id at another position is
+    two reads sharing a name, which would both be given the first one's label."""
+    where = (read.reference_start, read.reference_end)
+    seen = written.get(read.query_name)
+    if seen is None:
+        read.set_tag(LABEL_TAG, label)
+        fh.write(read)
+        written[read.query_name] = where
+    elif seen != where:
+        raise FlairInputDataError(
+            f"read id {read.query_name} names more than one read of {bam_path}: aligned at "
+            f"{read.reference_name}:{seen[0]}-{seen[1]} and {where[0]}-{where[1]}. Read ids "
+            "must be unique: label each read with its sample or run, as reads of one PacBio "
+            "movie are not unique across movies, then align and quantify again")
+
 def _write_batch_labels(ctx, batch_genes, out, batch_dir):
     """each sample's reads of the batch's genes, with LABEL_TAG, in a sorted bam of
     the batch in batch_dir"""
@@ -181,16 +198,14 @@ def _write_batch_labels(ctx, batch_genes, out, batch_dir):
         if not labels:
             continue
         unsorted = os.path.join(batch_dir, f'{sample}.unsorted.bam')
-        written = set()
+        written = {}
         with pysam.AlignmentFile(unsorted, 'wb', template=ctx.bams[sample]) as fh:
             for _, isos in batch_genes:
                 chrom, start, end = isos[0].chrom, min(i.chromStart for i in isos), max(i.chromEnd for i in isos)
                 for read in ctx.bams[sample].fetch(chrom, start, end):
                     label = labels.get(read.query_name)
-                    if label and read.query_name not in written and not (read.is_secondary or read.is_supplementary):
-                        read.set_tag(LABEL_TAG, label)
-                        fh.write(read)
-                        written.add(read.query_name)
+                    if label and not (read.is_secondary or read.is_supplementary):
+                        _write_labelled_read(read, label, written, fh, ctx.bam_paths[sample])
         paths[sample] = os.path.join(batch_dir, f'{sample}.bam')
         pysam.sort('-o', paths[sample], unsorted)
         os.remove(unsorted)

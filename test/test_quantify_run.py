@@ -3,6 +3,7 @@ made from the genome: each read counted once, for the isoform it is full-length 
 import random
 import pysam
 import pytest
+from flair import FlairInputDataError
 from flair.flair_bed import FlairBed
 from flair.pycbio.hgdata.bed import BedBlock
 from flair.flair_quantify import quantify
@@ -147,3 +148,33 @@ def test_read_map_per_sample_matches_its_counts_column(tmp_path):
     for _, isoform_id, s1_count, s2_count in counts[1:]:
         assert int(s1_count) == len(maps['s1'].get(isoform_id, []))
         assert int(s2_count) == len(maps['s2'].get(isoform_id, []))
+
+
+def _bam_with_repeated_id(src_bam, out_bam, copied_read, repeated_id):
+    "a BAM with one read's alignment also present under another read's id"
+    unsorted = out_bam + '.unsorted.bam'
+    with pysam.AlignmentFile(src_bam, 'rb') as inp, \
+         pysam.AlignmentFile(unsorted, 'wb', template=inp) as out:
+        for seg in inp:
+            out.write(seg)
+            if seg.query_name == copied_read:
+                repeat = pysam.AlignedSegment.fromstring(seg.to_string(), inp.header)
+                repeat.query_name = repeated_id
+                out.write(repeat)
+    pysam.sort('-o', out_bam, unsorted)
+    pysam.index(out_bam)
+
+
+def test_repeated_read_id_is_an_error(tmp_path):
+    """Two reads of one id at unrelated loci, as a BAM merged from runs gives.  Both
+    are assigned without realignment, so the sample's read map is what catches it."""
+    manifest, genome, bed = _inputs(tmp_path)
+    dup_bam = str(tmp_path / 'reads.dup.bam')
+    _bam_with_repeated_id(str(tmp_path / 'reads.bam'), dup_bam, 's1_read', 'a_full')
+    with open(manifest, 'w') as fh:
+        fh.write(f's1\tA\tb0\t{dup_bam}\n')
+
+    with pytest.raises(FlairInputDataError, match=r'1 read ids name more than one read .*a_full'):
+        quantify(manifest=manifest, genome=genome, isoform_bed=bed, output=str(tmp_path / 'out'),
+                 threads=1, tpm=False, trust_ends=False, generate_map=True, normalize_ends=False,
+                 temp_dir=str(tmp_path / 'tmp'))

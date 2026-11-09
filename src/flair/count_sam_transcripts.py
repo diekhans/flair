@@ -627,14 +627,40 @@ class IsoAln(object):
         self.md = md
 
 
+def repeated_read_id_error(read_id):
+    "the error for an id that names two reads, wherever the repeat is found"
+    return FlairInputDataError(
+        f"read id {read_id} names more than one read of the alignments being counted. "
+        "Read ids must be unique: label each read with its sample or run, as reads of one "
+        "PacBio movie are not unique across movies, then align again")
+
+def read_clipping(trimmedreads):
+    """Each read's clipping at the ends of its genome alignment, by read id.  An id
+    twice is two reads sharing a name, which would be judged by each other's clipping,
+    so it is an error rather than the last line winning."""
+    readstoclipping = {}
+    with open(trimmedreads) as fh:
+        for line in fh:
+            rname, left_clipping, right_clipping = line.rstrip().split('\t')
+            if rname in readstoclipping:
+                raise repeated_read_id_error(rname)
+            readstoclipping[rname] = [int(left_clipping), int(right_clipping)]
+    return readstoclipping
+
 def parse_sam(sam, info, readstoclipping,  # noqa: C901 - FIXME: reduce complexity
               *, stringent, check_splice, fusion_breakpoints, allow_UTR_indels,
               trimmedreads, soft_clipping_buffer, output_endpos,
               trust_ends, stranded=False, no_extra_clipping=False):
     """Iterate the SAM stream, group alignments per read, call get_best_transcript,
     and accumulate {transcript: [(read, gt_start, gt_end), ...]}.  With stranded,
-    alignments to the reverse complement of a transcript are dropped."""
+    alignments to the reverse complement of a transcript are dropped.
+
+    A read's alignments are taken to be together in the stream, as an aligner writes
+    them, and that is checked: a name coming back after another read's alignments is
+    two reads sharing an id.  The check holds the names of this stream, which is the
+    reads of one batch of loci, not of a sample."""
     lastread = None
+    finished = set()
     curr_transcripts = {}
     transcript_to_reads = {}
     samfile = pysam.AlignmentFile(sam, 'r')
@@ -677,6 +703,9 @@ def parse_sam(sam, info, readstoclipping,  # noqa: C901 - FIXME: reduce complexi
                         transcript_to_reads[assignedt].append((lastread, gtstart, gtend))
 
                 curr_transcripts = {}
+                finished.add(lastread)
+                if readname in finished:
+                    raise repeated_read_id_error(readname)
             curr_transcripts[transcript] = IsoAln(transcript, pos, cigar, tlen, alignscore, mdtag)
             lastread = readname
     if lastread:
@@ -796,11 +825,7 @@ if __name__ == '__main__':
     args = check_args(args)
     info = read_isoforms_bed(isoforms=args.isoforms, fusion_breakpoints=args.fusion_breakpoints,
                              unique_bound=args.unique_bound, transcript_fasta=args.transcript_fasta)
-    readstoclipping = {}
-    if args.trimmedreads:
-        for line in open(args.trimmedreads):
-            rname, left_clipping, right_clipping = line.rstrip().split('\t')
-            readstoclipping[rname] = [int(left_clipping), int(right_clipping)]
+    readstoclipping = read_clipping(args.trimmedreads) if args.trimmedreads else {}
     transcript_to_reads = parse_sam(args.sam, info, readstoclipping,
                                     stringent=args.stringent, check_splice=args.check_splice,
                                     fusion_breakpoints=args.fusion_breakpoints,

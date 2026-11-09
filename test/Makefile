@@ -577,7 +577,7 @@ define combine_diff
 endef
 
 
-combine-tests: test-combine test-combine-files test-combine-nose test-combine-10pct test-combine-multends test-combine-multends-10pct \
+combine-tests: test-combine test-combine-files test-combine-prefixes test-combine-nose test-combine-10pct test-combine-multends test-combine-multends-10pct \
 	test-combine-conflict test-combine-conflict-gtf test-combine-isoalleles test-combine-compress
 
 update-combine-tests:
@@ -612,6 +612,18 @@ test-combine-files: mkdirs ${GENOME_FA}
 	flair combine --genome ${GENOME_FA} -o $O/$@ --isoform_beds expected/test-transcriptome.isoforms.bed,expected/test-transcriptome-mult-ends.isoforms.bed,expected/test-transcriptome-mutant-splice.isoforms.bed,expected/test-transcriptome-readthrough.isoforms.bed,expected/test-fusion.fusions.isoforms.bed,expected/test-transcriptome-seg1-badannot.isoforms.bed,expected/test-transcriptome-seg1-badannot-multends.isoforms.bed,input/test-transcriptome-seg1-badannot-multends-chromshifted.isoforms.bed
 # 	$(call cmp_expect_bed_simple,$@.combined.isoforms.bed)
 	$(combine_diff)
+
+# the same eight transcriptomes as test-combine-files, named by prefix with their
+# directories, comma separated and by repeating the option
+test-combine-prefixes: mkdirs ${GENOME_FA}
+	flair combine --genome ${GENOME_FA} -o $O/$@ \
+		--prefixes expected/test-transcriptome,expected/test-transcriptome-mult-ends \
+		--prefixes expected/test-transcriptome-mutant-splice,expected/test-transcriptome-readthrough, \
+		--prefixes expected/test-fusion.fusions \
+		--prefixes expected/test-transcriptome-seg1-badannot,expected/test-transcriptome-seg1-badannot-multends \
+		--prefixes input/test-transcriptome-seg1-badannot-multends-chromshifted
+	diff $E/test-combine-files.combined.isoforms.bed $O/$@.combined.isoforms.bed
+	diff $E/test-combine-files.combined.isoforms.counts.tsv $O/$@.combined.isoforms.counts.tsv
 
 test-combine-nose: mkdirs ${GENOME_FA}
 	flair combine --manifest $(COMBINE_MANIFEST) --genome ${GENOME_FA} -o $O/$@ --remove_single_exon

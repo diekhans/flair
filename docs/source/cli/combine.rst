@@ -19,7 +19,7 @@
 
 .. option:: --prefixes PREFIXES
 
-   comma separated list of file prefixes to combine, assuming command is being run in folder that contains prefix.isoform.bed
+   prefixes of the FLAIR transcriptomes to combine, each naming PREFIX.isoforms.bed and including any directories; give several comma separated, or repeat the option, or both
 
 .. option:: --isoform_beds ISOFORM_BEDS
 

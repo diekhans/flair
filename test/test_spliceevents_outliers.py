@@ -93,6 +93,52 @@ def test_alternative_site_explained_by_one_of_its_events_is_filtered_whatever_th
     assert kept == [es, ces_line]
 
 
+# an alt3 of a site with a third choice: the other two junctions are both in exc, so
+# its junctions are not all among any one exon skip's flanking and skipping pair
+ALT3_THREE_WAY = (frozenset({'chr1:100-200'}), frozenset({'chr1:100-400', 'chr1:100-250'}), frozenset())
+
+
+def test_alternative_site_of_three_choices_explained_by_an_exon_skip_is_filtered():
+    es, alt3 = _line('es', 's6', 20), _line('alt3', 's6', 18)
+    kept = filter_outliers({'es': {ES: {'s6': es}}, 'alt3': {ALT3_THREE_WAY: {'s6': alt3}}})
+    assert kept == [es]
+
+
+def test_alternative_site_of_three_choices_excluding_none_of_the_skips_junctions_is_kept():
+    # its own junction is the exon skip's flanking one, but neither junction it
+    # excludes is the skipping one, so this is another site
+    alt3 = (frozenset({'chr1:100-200'}), frozenset({'chr1:100-250', 'chr1:100-260'}), frozenset())
+    es, line = _line('es', 's6', 20), _line('alt3', 's6', 18)
+    kept = filter_outliers({'es': {ES: {'s6': es}}, 'alt3': {alt3: {'s6': line}}})
+    assert kept == [es, line]
+
+
+# a first exon alternative splicing to the exon skip's first junction
+AFE = (frozenset({'chr1:100-200'}), frozenset(), frozenset())
+
+
+def test_alternative_site_explained_by_a_first_exon_is_filtered():
+    # the same choice of first exon, seen as a choice of splice site
+    afe, alt5 = _line('afe', 's6', 20), _line('alt5', 's6', 18)
+    alt5_juncs = (frozenset({'chr1:100-200'}), frozenset({'chr1:120-200'}), frozenset())
+    kept = filter_outliers({'afe': {AFE: {'s6': afe}}, 'alt5': {alt5_juncs: {'s6': alt5}}})
+    assert kept == [afe]
+
+
+def test_alternative_site_much_better_than_its_first_exon_is_kept():
+    afe, alt5 = _line('afe', 's6', 10), _line('alt5', 's6', 20)
+    alt5_juncs = (frozenset({'chr1:100-200'}), frozenset({'chr1:120-200'}), frozenset())
+    kept = filter_outliers({'afe': {AFE: {'s6': afe}}, 'alt5': {alt5_juncs: {'s6': alt5}}})
+    assert kept == [alt5, afe]
+
+
+def test_alternative_site_of_other_junctions_than_the_first_exons_is_kept():
+    afe, alt5 = _line('afe', 's6', 20), _line('alt5', 's6', 18)
+    alt5_juncs = (frozenset({'chr1:500-600'}), frozenset({'chr1:550-600'}), frozenset())
+    kept = filter_outliers({'afe': {AFE: {'s6': afe}}, 'alt5': {alt5_juncs: {'s6': alt5}}})
+    assert kept == [afe, alt5]
+
+
 def test_alternative_site_sharing_no_event_junctions_is_kept():
     # an alt5 of other junctions than the exon skip's
     alt5 = (frozenset({'chr1:500-600'}), frozenset({'chr1:550-600'}), frozenset())

@@ -168,36 +168,50 @@ COMPLEX_EVENTS = ('ces', 'alt5', 'alt3')
 LEFT_OUT_EVENTS = ('tss', 'tts')
 
 
-def _explaining(eventtype, juncs, es_juncs, site_juncs):
+def _explaining_site(inc, exc, site_juncs, end_juncs):
+    """The outliers of the events that may explain an alternative splice site: those of
+    site_juncs splicing the junctions it includes and at least one it excludes, which
+    is the same choice of site, and the first or last exon alternatives whose junctions
+    hold the ones it includes, which is the same choice of exon seen as a site.  A site
+    of three or more choices has the others' junctions in exc, so the excluded junctions
+    are tested one at a time rather than all together"""
+    return ([outliers for key, by_juncs in site_juncs.items() if inc <= key and exc & key
+             for outliers in by_juncs.values()]
+            + [outliers for key, by_juncs in end_juncs.items() if inc <= key
+               for outliers in by_juncs.values()])
+
+
+def _explaining(eventtype, juncs, es_juncs, site_juncs, end_juncs):
     """A complex exon skip's or alternative splice site's own junctions, and the
     outliers of the events that may explain it: for a complex exon skip, the exon
     skips holding its junctions, its exons' for its exclusion row, and for an
-    alternative splice site, the events in site_juncs holding both its junctions"""
+    alternative splice site, _explaining_site"""
     inc, exc, outer = juncs
     if eventtype == 'ces':
         own = (inc or exc) | outer
         return own, [outliers for skip_juncs, outliers in es_juncs.items() if own <= skip_juncs]
-    own = inc | exc
-    return own, [outliers for key, by_juncs in site_juncs.items() if own <= key for outliers in by_juncs.values()]
+    return inc | exc, _explaining_site(inc, exc, site_juncs, end_juncs)
 
 
 def filter_outliers(etype_to_sig):
     """The outliers, more than FILTERED_MIN_DEVIATIONS out, of events sharing
     junctions, given by event type, then junctions (included, excluded, outer), then
     sample.  An outlier of a complex exon skip or alternative splice site is kept
-    only when no simpler event of its junctions explains it as well, an exon skip,
-    or a complex event not explained itself: every such event has no outlier of the
-    sample, or one this outlier's deviation is enough beyond (_better_than).  Starts
+    only when no simpler event of its junctions explains it as well, an exon skip, a
+    first or last exon, or a complex event not explained itself: every such event has
+    no outlier of the sample, or one this outlier's deviation is enough beyond
+    (_better_than).  Starts
     and ends (LEFT_OUT_EVENTS) are left out, and an event type of none of the lists
     is an error"""
     unknown = set(etype_to_sig) - set(SIMPLE_EVENTS + COMPLEX_EVENTS + LEFT_OUT_EVENTS)
     if unknown:
         raise ValueError(f'event types {sorted(unknown)} not in SIMPLE_EVENTS, COMPLEX_EVENTS or LEFT_OUT_EVENTS')
-    # the exon skips' inclusion rows by their junctions, and the events by the
-    # junctions an alternative splice site they explain splices: an exon skip's
-    # flanking junction and its skipping one.  The inclusion row, of the exon's
-    # junctions, is the one a complex exon skip's row of the exon alone is
-    es_juncs, site_juncs, kept = {}, {}, []
+    # the exon skips' inclusion rows by their junctions, the events by the junctions an
+    # alternative splice site they explain splices, an exon skip's flanking junction and
+    # its skipping one, and the first and last exon alternatives by their junctions.  The
+    # inclusion row, of the exon's junctions, is the one a complex exon skip's row of the
+    # exon alone is
+    es_juncs, site_juncs, end_juncs, kept = {}, {}, {}, []
     for eventtype in SIMPLE_EVENTS:
         for juncs, outliers in etype_to_sig.get(eventtype, {}).items():
             inc, _, outer = juncs
@@ -205,10 +219,12 @@ def filter_outliers(etype_to_sig):
                 es_juncs[inc | outer] = outliers
                 for flanking, skipping in product(inc, outer):
                     site_juncs.setdefault(frozenset((flanking, skipping)), {})[juncs] = outliers
+            elif eventtype in ('afe', 'ale') and inc:
+                end_juncs.setdefault(inc, {})[juncs] = outliers
             kept.extend(outliers.values())
     for eventtype in COMPLEX_EVENTS:
         for juncs, outliers in etype_to_sig.get(eventtype, {}).items():
-            own, explaining = _explaining(eventtype, juncs, es_juncs, site_juncs)
+            own, explaining = _explaining(eventtype, juncs, es_juncs, site_juncs, end_juncs)
             if explaining:
                 kept.extend(line for s, line in outliers.items()
                             if all(s not in other or _better_than(line, other[s]) for other in explaining))

@@ -64,5 +64,5 @@ def check_read_ids_unique(read_map_tsv):
         named = ', '.join(duplicated[:MAX_REPORTED_IDS])
         raise FlairInputDataError(
             f"{len(duplicated)} read ids name more than one read of {read_map_tsv}: {named}. "
-            "Read ids must be unique: label each read with its sample or run, as reads of "
-            "one PacBio movie are not unique across movies, then align and quantify again")
+            "An id must name one read of a sample's BAM: label each read with its sample or "
+            "run before merging the runs, then align and quantify again")

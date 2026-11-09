@@ -62,6 +62,53 @@ If you're using human sequences, the best reference genome is
 `helpful blog post by Heng Li <https://lh3.github.io/2017/11/13/which-human-reference-genome-to-use>`__.
 If your input sequences are Oxford nanopore reads, please use `Pychopper <https://github.com/epi2me-labs/pychopper>`__ before aligning them.
 
+Which file to give FLAIR
+------------------------
+
+FLAIR reads the file of reads aligned to the genome, coordinate sorted, with its
+index beside it.  It is not the basecaller's reads file, which holds no alignments,
+and not a transcriptome aligned BAM, whose coordinates are a transcript's.
+
+- minimap2: the ``samtools sort`` output above, once ``samtools index`` has indexed it
+- `pbmm2 <https://github.com/PacificBiosciences/pbmm2>`__: the output of
+  ``pbmm2 align --preset ISOSEQ --sort genome.fa sample.hifi_reads.bam sample.genome_aligned.bam``,
+  which writes the index as well
+- `dorado <https://github.com/nanoporetech/dorado>`__: ``dorado aligner`` sorts and
+  indexes what it writes to ``--output-dir``; redirected to a file it writes an
+  unsorted BAM, which samtools then sorts and indexes
+
+``samtools view -H sample.genome_aligned.bam`` names the sort order in its ``@HD``
+line, as ``SO:coordinate``.
+
+Read ids
+--------
+
+An id must name one read of each BAM FLAIR reads.  Between samples ids may repeat:
+``flair quantify`` counts each sample's BAM on its own and writes that sample its own
+read map.
+
+- running ``flair transcriptome`` on each replicate and combining the transcriptomes
+  with ``flair combine`` asks nothing of the ids: a run reads one sample's BAM, and
+  combine works on the transcriptomes rather than on reads
+- merging replicates or runs into one BAM before ``flair transcriptome`` does: the ids
+  must be unique across everything merged
+
+Reads keep the names the instrument gave them, which differ between runs: an ONT
+basecaller names each read with a UUID, and a PacBio HiFi read is named
+``movie/zmw/ccs``, unique as long as the movie names are.  An id repeats when the same
+reads are merged in twice, or when a step between the instrument and FLAIR renames or
+renumbers reads.
+
+FLAIR stops with an error naming a repeated id rather than counting two reads as one.
+Labelling the reads of a BAM leaves its sort order alone, so only the index is
+remade::
+
+   samtools view -h sample.bam \
+     | awk 'BEGIN{OFS="\t"} /^@/{print} !/^@/{$1=$1"_rep1"; print}' \
+     | samtools view -b -o sample.rep1.bam -
+   samtools index sample.rep1.bam
+
+
 
 ----
 

@@ -39,3 +39,19 @@ What survives still has to clear two bars:
 ``--annotation_reliant`` is gone.  Reads are aligned to the annotation's transcripts
 by default when a GTF is given with ``-f``, and ``--no_align_to_annot`` turns that
 off; the annotation is what names a gene, not what restricts the output to one.
+
+4. Do my reads need unique ids?
+--------------------------------
+Within each BAM, yes: an id must name one read, and FLAIR stops with an error naming a
+repeated one.  Between samples ids may repeat, since each sample's BAM is counted on its
+own.  Running ``flair transcriptome`` on each replicate and combining the transcriptomes
+asks nothing of the ids; merging replicates into one BAM first means labelling each
+run's reads.  :ref:`alignment-label` has the rule and a command that labels them.
+
+5. Which file from pbmm2 or dorado do I give FLAIR?
+----------------------------------------------------
+The reads aligned to the genome, coordinate sorted, with its index beside it, which is
+``pbmm2 align --sort`` output or what ``dorado aligner`` writes to ``--output-dir``.  The
+basecaller's reads file holds no alignments, and a transcriptome aligned BAM has a
+transcript's coordinates rather than the genome's.  :ref:`alignment-label` names the
+files and the options.

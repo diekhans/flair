@@ -58,10 +58,10 @@ each sample's isoforms keep their own support.
 
 Your other option, for samples of few reads, is to merge replicates before
 running ``flair transcriptome``, as one BAM, so low-expression transcripts gain
-the reads to be assembled.  If using PacBio reads, be careful doing this, as the
-reads may not have unique IDs: you may need to label each read with its sample
-ID to keep the read IDs unique.  Either way, ``flair quantify`` then assigns the
-reads of each sample individually to the isoforms for downstream analyses.
+the reads to be assembled.  Merging asks that the read ids be unique across the
+runs merged, which :ref:`alignment-label` covers.  Either way, ``flair quantify``
+then assigns the reads of each sample individually to the isoforms for downstream
+analyses.
 
 .. toctree::
    :maxdepth: 2

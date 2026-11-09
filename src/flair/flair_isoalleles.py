@@ -185,9 +185,9 @@ def _write_labelled_read(read, label, written, fh, bam_path):
     elif seen != where:
         raise FlairInputDataError(
             f"read id {read.query_name} names more than one read of {bam_path}: aligned at "
-            f"{read.reference_name}:{seen[0]}-{seen[1]} and {where[0]}-{where[1]}. Read ids "
-            "must be unique: label each read with its sample or run, as reads of one PacBio "
-            "movie are not unique across movies, then align and quantify again")
+            f"{read.reference_name}:{seen[0]}-{seen[1]} and {where[0]}-{where[1]}. An id must "
+            "name one read of a BAM: label each read with its sample or run before merging the "
+            "runs, then align and quantify again")
 
 def _write_batch_labels(ctx, batch_genes, out, batch_dir):
     """each sample's reads of the batch's genes, with LABEL_TAG, in a sorted bam of

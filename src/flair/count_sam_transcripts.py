@@ -631,8 +631,8 @@ def repeated_read_id_error(read_id):
     "the error for an id that names two reads, wherever the repeat is found"
     return FlairInputDataError(
         f"read id {read_id} names more than one read of the alignments being counted. "
-        "Read ids must be unique: label each read with its sample or run, as reads of one "
-        "PacBio movie are not unique across movies, then align again")
+        "An id must name one read of a BAM: label each read with its sample or run before "
+        "merging the runs, then align again")
 
 def read_clipping(trimmedreads):
     """Each read's clipping at the ends of its genome alignment, by read id.  An id

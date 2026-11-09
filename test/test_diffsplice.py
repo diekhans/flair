@@ -44,3 +44,11 @@ def test_check_isoform_ids_missing_list_elided(tmp_path):
     bed, counts = write_inputs(tmp_path, ['iso0_gene1'], missing)
     with pytest.raises(FlairInputDataError, match=r"14 isoform ids .*, \.\.\.;"):
         check_isoform_ids(bed, counts)
+
+def test_check_isoform_ids_none_match(tmp_path):
+    "a counts matrix that was not quantified from this BED matches nothing at all"
+    bed, counts = write_inputs(tmp_path, ['iso1_gene1', 'iso2_gene1'],
+                               ['other1_gene9', 'other2_gene9'])
+    with pytest.raises(FlairInputDataError,
+                       match=r"2 isoform ids .* other1_gene9, other2_gene9;"):
+        check_isoform_ids(bed, counts)

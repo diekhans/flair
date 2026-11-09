@@ -1,0 +1,6 @@
+"""Options that take a list of values.  Each takes them comma separated, by repeating
+the option, or both, so a long list needn't be one argument of the command line."""
+
+def option_values(values):
+    "the values of a list option, however they were given; empty when it was not"
+    return [value for group in (values or ()) for value in group.rstrip(',').split(',') if value != '']

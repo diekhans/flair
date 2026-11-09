@@ -16,6 +16,7 @@ from collections import Counter, namedtuple
 import pysam
 from flair.pycbio.hgdata.bed import BedReader
 from flair.pycbio.sys import fileOps
+from flair.cli_options import option_values
 from flair.interval_index import IntervalIndex
 from flair.io_utils import make_run_temp_dir, read_manifest_rows
 from flair.output_compress import compressed_path
@@ -74,9 +75,10 @@ def add_subparser(subparsers):
                              'is checked to be the genome\'s base, and a site whose REF is not, as of a record of '
                              'the transcript\'s strand or another genome, is left out with a warning, rather than '
                              'every read of the genome\'s base counted as showing its alt')
-    parser.add_argument('--keep_flags', type=lambda flags: set(flags.split(',')), default=set(), metavar='FLAGS',
-                        help='comma-separated vcf FILTER flags whose records are counted too, as RefCall, or all, '
-                             'every record; a record of more than one flag is counted if all of them are given')
+    parser.add_argument('--keep_flags', action='append', metavar='FLAGS',
+                        help='vcf FILTER flags whose records are counted too, as RefCall, or all, every '
+                             'record; a record of more than one flag is counted if all of them are given.  '
+                             'Give several comma separated, or repeat the option, or both')
     parser.add_argument('--sample_name',
                         help="the sample's name, with --bam (default: the bam file's name, less .bam)")
     parser.add_argument('-o', '--output', default='flair',
@@ -130,7 +132,8 @@ def quantvarpos_cmd(args):
     if args.sample_name is not None and args.bam is None:
         raise FlairInputDataError("--sample_name names --bam's sample; a manifest names its samples")
     quantvarpos(manifest=args.manifest, bam=args.bam, sample_name=args.sample_name,
-                vcf=args.vcf, keep_flags=args.keep_flags, genome=args.genome, output=args.output,
+                vcf=args.vcf, keep_flags=frozenset(option_values(args.keep_flags)), genome=args.genome,
+                output=args.output,
                 isoform_bed=args.isoform_bed, gtf=args.gtf, min_coverage=args.min_coverage,
                 output_all=args.output_all, quality=args.quality, trust_strand=args.trust_strand,
                 haplotypes=args.haplotypes,

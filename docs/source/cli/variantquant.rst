@@ -33,7 +33,7 @@
 
 .. option:: --keep_flags FLAGS
 
-   comma-separated vcf FILTER flags whose records are counted too, as RefCall, or all, every record; a record of more than one flag is counted if all of them are given
+   vcf FILTER flags whose records are counted too, as RefCall, or all, every record; a record of more than one flag is counted if all of them are given. Give several comma separated, or repeat the option, or both
 
 .. option:: --sample_name SAMPLE_NAME
 

@@ -12,7 +12,7 @@
 
 .. option:: -s, --sam SAM_FILE
 
-   SAM/BAM file of read alignments to junctions and the genome. More than one file can be listed, comma-delimited, e.g file_1.bam,file_2.bam
+   SAM/BAM file of read alignments to junctions and the genome. Give several comma separated, e.g file_1.bam,file_2.bam, or repeat the option, or both
 
 .. option:: --unique
 

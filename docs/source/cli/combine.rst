@@ -23,7 +23,7 @@
 
 .. option:: --isoform_beds ISOFORM_BEDS
 
-   comma separated list of paths to flair bed files to combine
+   paths of the flair isoform BEDs to combine; give several comma separated, or repeat the option, or both
 
 .. option:: -g, --genome GENOME
 

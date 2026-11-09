@@ -4,6 +4,7 @@ import logging
 import pysam
 from flair import FlairError
 from flair.bed_to_gtf import bed_to_gtf
+from flair.cli_options import option_values
 from flair.combined_map_tsv import CombinedMapWriter
 from flair.counts_matrix_tsv import CountsRow, write_counts_matrix
 from flair.io_utils import check_genome_fasta, open_sorted_bed
@@ -30,8 +31,9 @@ def add_subparser(subparsers):
                         help="prefixes of the FLAIR transcriptomes to combine, each naming "
                         "PREFIX.isoforms.bed and including any directories; give several comma "
                         "separated, or repeat the option, or both")
-    mutexc.add_argument('--isoform_beds', type=str,
-                        help="comma separated list of paths to flair bed files to combine")
+    mutexc.add_argument('--isoform_beds', type=str, action='append',
+                        help="paths of the flair isoform BEDs to combine; give several comma "
+                        "separated, or repeat the option, or both")
     parser.add_argument('-g', '--genome', required=True,
                         help='genome FASTA, required to generate an isoform FASTA file and/or a bigBed file')
     parser.add_argument('-f', '--gtf', default=None,
@@ -109,14 +111,9 @@ def combineIsos(beds, endwindow):
     return isoendgroups
 
 
-def option_values(values):
-    "the values of an option given comma separated, repeated, or both"
-    return [value for group in values for value in group.rstrip(',').split(',') if value != '']
-
-
 def parse_input(manifest, prefixes, input_beds):
-    # assumes that only one input is not None; prefixes is the option's values, one per
-    # time it was given
+    # assumes that only one input is not None; prefixes and input_beds are their
+    # options' values, one per time the option was given
     sampledata = []
     if manifest is not None:
         for line in fileOps.iterLines(manifest):
@@ -125,8 +122,7 @@ def parse_input(manifest, prefixes, input_beds):
         for prefix in option_values(prefixes):
             sampledata.append(resolved_input_path(prefix + '.isoforms.bed'))
     elif input_beds is not None:
-        for bed_path in input_beds.rstrip(',').split(','):
-            sampledata.append(bed_path)
+        sampledata.extend(option_values(input_beds))
     return sampledata
 
 

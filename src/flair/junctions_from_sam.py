@@ -25,6 +25,7 @@ Modified for FLAIR-correct input - Alison Tang 2019
 
 import argparse
 from flair.cli_help import FlairHelpFormatter
+from flair.cli_options import option_values
 import math
 import re
 import pysam
@@ -164,10 +165,10 @@ class JcnInfo:
 def build_parser():
     desc = "Call splice junctions from read alignments and write them as a bed file"
     parser = argparse.ArgumentParser(prog='junctions_from_sam', formatter_class=FlairHelpFormatter, description=desc)
-    parser.add_argument("-s", "--sam", dest="sam_file", required=True,
-                        help="SAM/BAM file of read alignments to junctions and the genome. "
-                             "More than one file can be listed, comma-delimited, "
-                             "e.g file_1.bam,file_2.bam")
+    parser.add_argument("-s", "--sam", dest="sam_file", required=True, action='append',
+                        help="SAM/BAM file of read alignments to junctions and the genome.  "
+                             "Give several comma separated, e.g file_1.bam,file_2.bam, or repeat "
+                             "the option, or both")
     parser.add_argument("--unique", dest="unique_only", action="store_true",
                         help="only keep uniquely aligned reads; the NH tag must be 1")
     parser.add_argument("-n", "--name", dest="name", default=DEF_NAME,
@@ -192,10 +193,10 @@ def build_parser():
     return parser
 
 def open_sam_files(sam_file_arg):
-    """each entry is (handle, is_bam); --sam takes a comma-separated list, so the
-    format has to be remembered per file rather than tested on the option string"""
+    """each entry is (handle, is_bam); --sam takes a list of files, so the format has
+    to be remembered per file rather than tested on the option string"""
     sam_files = []
-    for sam_file in sam_file_arg.split(","):
+    for sam_file in option_values(sam_file_arg):
         if sam_file.endswith(".sam"):
             sam_files.append((fileOps.opengz(sam_file), False))
         elif sam_file.endswith(".bam"):

@@ -106,3 +106,44 @@ def test_each_read_counted_once_for_its_full_length_isoform(tmp_path, threads):
 def test_trust_ends_needs_ends_near_the_isoforms(tmp_path):
     _, read_map = _run(tmp_path, 1, trust_ends=True)
     assert read_map['A1'] == ['a_full', 'a_realigned']
+
+
+def _subset_bam(src_bam, out_bam, read_names):
+    "a BAM of just the named reads of another, standing in for a second sample"
+    with pysam.AlignmentFile(src_bam, 'rb') as inp, \
+         pysam.AlignmentFile(out_bam, 'wb', template=inp) as out:
+        for seg in [seg for seg in inp if seg.query_name in read_names]:
+            out.write(seg)
+    pysam.index(out_bam)
+
+
+def _read_map(output, sample):
+    lines = open(f'{output}.isoforms.{sample}.read.map.tsv').read().splitlines()
+    assert lines[0] == 'name\treads'
+    return {name: sorted(reads.split(','))
+            for name, reads in (line.split('\t') for line in lines[1:])}
+
+
+def test_read_map_per_sample_matches_its_counts_column(tmp_path):
+    """Each sample gets its own read map, holding that sample's reads and no other's,
+    and the counts column is the number of reads the map names."""
+    manifest, genome, bed = _inputs(tmp_path)
+    s1_bam = str(tmp_path / 'reads.bam')
+    s2_bam = str(tmp_path / 'reads.s2.bam')
+    _subset_bam(s1_bam, s2_bam, {'a_full', 's1_read'})
+    with open(manifest, 'w') as fh:
+        fh.write(f's1\tA\tb0\t{s1_bam}\ns2\tB\tb0\t{s2_bam}\n')
+
+    output = str(tmp_path / 'out')
+    quantify(manifest=manifest, genome=genome, isoform_bed=bed, output=output, threads=1, tpm=False,
+             trust_ends=False, generate_map=True, normalize_ends=False, temp_dir=str(tmp_path / 'tmp'))
+
+    counts = [line.split('\t') for line in open(output + '.isoforms.counts.tsv').read().splitlines()]
+    assert counts[0] == ['gene_id', 'isoform_id', 's1', 's2']
+    maps = {'s1': _read_map(output, 's1'), 's2': _read_map(output, 's2')}
+    assert maps['s1'] == {'A1': ['a_full', 'a_realigned', 'a_short_start'], 'B1': ['b_full'],
+                          'S1': ['s1_read'], 'S2': ['s2_read']}
+    assert maps['s2'] == {'A1': ['a_full'], 'S1': ['s1_read']}
+    for _, isoform_id, s1_count, s2_count in counts[1:]:
+        assert int(s1_count) == len(maps['s1'].get(isoform_id, []))
+        assert int(s2_count) == len(maps['s2'].get(isoform_id, []))

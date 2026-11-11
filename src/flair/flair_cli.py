@@ -8,21 +8,19 @@ from flair.cli_help import FlairHelpFormatter
 from flair.output_compress import set_output_compression
 from flair.pycbio.sys import cli, loggingOps
 from flair import (flair_combine, flair_diffExp, flair_diffSplice, flair_fusion,
-                   flair_isoalleles, flair_quantify, flair_spliceevents, flair_transcriptome,
-                   flair_variantquant)
+                   flair_isoalleles, flair_quantify, flair_spliceevents, flair_transcriptome)
 
 # Modules in pipeline order.  Each one adds and then owns its own subparser and
 # records its entry point with set_defaults(entry=), so no parser is filled in by
 # one module and parsed by another.
 #
-# These are imported eagerly.  Importing all nine costs about 0.4 seconds, most of
+# These are imported eagerly.  Importing all eight costs about 0.4 seconds, most of
 # it numpy in flair_diffExp, which is not worth the pre-parsing needed to load
 # them one at a time.
 SUBCOMMAND_MODULES = (
     flair_transcriptome,
     flair_quantify,
     flair_combine,
-    flair_variantquant,
     flair_isoalleles,
     flair_fusion,
     flair_diffExp,

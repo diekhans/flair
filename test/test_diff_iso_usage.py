@@ -1,8 +1,8 @@
 """
-diff_iso_usage of the counts of flair spliceevents and variantquant, besides a
-quantify counts matrix (test-diff-iso-usage)
+diff_iso_usage of the counts of flair spliceevents, besides a quantify counts
+matrix (test-diff-iso-usage)
 """
-from flair import splicing_events_tsv, var_counts_tsv
+from flair import splicing_events_tsv
 from flair.counts_matrix_tsv import CountsRow, write_counts_matrix
 from flair.diff_iso_usage import add_adjusted_pvalues, diff_iso_usage
 from flair.iso_usage_tsv import IsoUsageReader
@@ -26,16 +26,6 @@ def test_an_events_other_row_counts_toward_its_alternatives_but_is_not_tested(tm
     diff_iso_usage(counts, 's1', 's2', out)
     assert _usage(out) == [(EVENT, EVENT + '|inc', '6', '4', '0.6'),
                            (EVENT, EVENT + '|exc', '2', '8', '0.2')]
-
-
-def test_an_alleles_share_of_its_sites_reads(tmp_path):
-    counts = str(tmp_path / 'x.variants.counts.tsv')
-    with var_counts_tsv.var_counts_writer(counts, ['s1', 's2']) as writer:
-        writer.writeAllele('chr1:5', 'A', 'G', ('.', '.', '.'), 'G1', [(9, 1), (2, 8)])
-    out = str(tmp_path / 'usage.tsv')
-    diff_iso_usage(counts, 's1', 's2', out)
-    assert _usage(out) == [('chr1:5:A>G', 'chr1:5:A>G|yes', '1', '9', '0.1'),
-                           ('chr1:5:A>G', 'chr1:5:A>G|no', '9', '1', '0.9')]
 
 
 def _gene_matrix(tmp_path):

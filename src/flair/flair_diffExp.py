@@ -402,8 +402,8 @@ def calculate_sig(*, counts_matrix, output, condition_a, condition_b, min_expres
     gene_matrix_file = workdir + "/filtered_gene_counts_ds2.tsv"
     drim_matrix_file = workdir + "/filtered_iso_counts_drim.tsv"
 
-    # DESeq2 genes & isoforms.  An event's or a site's reads are not the expression of
-    # a gene, so of flair spliceevents and variantquant counts only usage is tested
+    # DESeq2 genes & isoforms.  An event's reads are not the expression of a gene, so
+    # of flair spliceevents counts only usage is tested
     if grouped.format is QUANTIFY_COUNTS:
         run_deseq2("genes_deseq2", workdir, condition_a, condition_b, gene_matrix_file, out_dir, formula_matrix_file)
         run_deseq2("isoforms_deseq2", workdir, condition_a, condition_b, iso_matrix_file, out_dir, formula_matrix_file)
@@ -424,9 +424,8 @@ def add_subparser(subparsers):
     required = parser.add_argument_group('required named arguments')
     required.add_argument('--counts_matrix', type=str, required=True,
                           help='tab-delimited isoform count matrix from flair quantify, or the counts of flair '
-                          'spliceevents (OUTPUT.spliceevents.counts.tsv) or flair variantquant (OUTPUT.variants.counts.tsv), '
-                          'whose usage only is tested.  Conditions and batches are read from the sample info TSV '
-                          'beside it')
+                          'spliceevents (OUTPUT.spliceevents.counts.tsv), whose usage only is tested.  Conditions '
+                          'and batches are read from the sample info TSV beside it')
     required.add_argument('-o', '--output', type=str, required=True,
                           help='output directory for tables and plots')
     parser.add_argument('-t', '--threads', type=int, default=4,

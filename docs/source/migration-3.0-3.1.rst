@@ -32,7 +32,7 @@ Commands that moved
 - ``flair variants`` is gone.  Its allele calling from reads is replaced by haplotyping
   with an upstream tool, such as WhatsHap, whose haplotagged reads the new ``flair
   isoalleles`` takes; see :ref:`isoalleles-label`.
-- ``flair isoalleles`` and ``flair variantquant`` are new.
+- ``flair isoalleles`` is new.
 
 flair align
 -----------
@@ -266,12 +266,6 @@ flair diffsplice
 - All four ``drimseq_<event>_A_v_B.tsv`` are always written. An event type that called
   nothing, or whose events DRIMSeq found nothing significant in, leaves a file of only
   its header.
-
-flair variantquant
-------------------
-
-New: ``flair variantquant`` counts the reads carrying each variant, per sample; see
-:ref:`variantquant-label`.
 
 Standalone programs
 -------------------

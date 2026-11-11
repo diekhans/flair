@@ -1,5 +1,6 @@
-# 24.04 LTS (Noble Numbat)
-FROM ubuntu:24.04 AS base
+# 26.04 LTS (Resolute Raccoon), whose python3 is 3.14, in the range
+# requires-python spans; 24.04 LTS had 3.12 alone
+FROM ubuntu:26.04 AS base
 ENV DEBIAN_FRONTEND=noninteractive
 LABEL maintainer="Mark Diekhans <markd@ucsc.edu>"
 
@@ -36,8 +37,9 @@ RUN apt-get update && apt-get install -y \
 	git pkg-config \
         libc-bin libc6-dev \
         file net-tools iproute2 iputils-ping dnsutils \
-	bedtools=2.31.1+dfsg-2 \
-        python3=3.12.3-0ubuntu2.1 \
+	bedtools=2.31.1+dfsg-3 \
+	samtools=1.22.1-1 \
+        python3=3.14.3-0ubuntu2 \
 	python3-pip \
         libtirpc-dev \
         libcurl4-openssl-dev \
@@ -51,18 +53,13 @@ RUN \
     cp  /tmp/${MM2_LINUX}/{minimap2,k8,paftools.js} /usr/local/bin/ && \
     rm -rf /tmp/${MM2_LINUX}
 
-#  24.04.2 Noble has an old samtool package, download newer from a subsequent release
-RUN \
-   DEB_URL=http://mirrors.kernel.org/ubuntu/pool/universe && \
-   wget -nv -O /tmp/samtools.deb ${DEB_URL}/s/samtools/samtools_1.22.1-1_amd64.deb && \
-   wget -nv -O /tmp/libhts3t64.deb ${DEB_URL}/h/htslib/libhts3t64_1.22.1%2Bds2-1_amd64.deb && \
-   apt-get install -y /tmp/libhts3t64.deb /tmp/samtools.deb
-
 # bedToBigBed, used by flair transcriptome, combine and fusion, intron-prospector,
-# used by flair fusion, and longshot and whatshap, which call and phase the variants
-# of the variantquant and isoalleles tests, as users phase reads for flair
-# isoalleles.  They come from bioconda, as they do in misc/flair_conda_env.yaml, so
-# the image and the documented conda install agree.
+# used by flair fusion, and longshot, which calls the variants the isoalleles test
+# inputs are phased from.  They come from bioconda, as they do in
+# misc/flair_conda_env.yaml, so the image and the documented conda install agree.
+# whatshap is not here: FLAIR does not run it, and docs/source/installing.rst says how
+# to install it for preparing the haplotagged reads and phased VCF that flair
+# isoalleles takes.
 # They go in their own environment and are linked into /usr/local/bin, which keeps
 # conda's python off PATH; the image uses the system python.
 RUN \
@@ -71,12 +68,11 @@ RUN \
     tar -xj -C /usr/local/bin --strip-components=1 -f /tmp/micromamba.tar.bz2 bin/micromamba && \
     rm -f /tmp/micromamba.tar.bz2 && \
     micromamba create -y -p /opt/bioconda-tools -c conda-forge -c bioconda \
-        ucsc-bedtobigbed 'intron-prospector>=1.5' 'longshot>=1.0' 'whatshap>=2.8' && \
+        ucsc-bedtobigbed 'intron-prospector>=1.5' 'longshot>=1.0' && \
     micromamba clean -ay && \
     ln -s /opt/bioconda-tools/bin/bedToBigBed /usr/local/bin/bedToBigBed && \
     ln -s /opt/bioconda-tools/bin/intron-prospector /usr/local/bin/intron-prospector && \
-    ln -s /opt/bioconda-tools/bin/longshot /usr/local/bin/longshot && \
-    ln -s /opt/bioconda-tools/bin/whatshap /usr/local/bin/whatshap
+    ln -s /opt/bioconda-tools/bin/longshot /usr/local/bin/longshot
 
 FROM base AS unix_base
 

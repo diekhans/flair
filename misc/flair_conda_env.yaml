@@ -5,7 +5,7 @@ channels:
   - conda
 
 dependencies:
-  - python >=3.12,<3.15
+  - python >=3.13,<3.15
   - minimap2 =2.30
   - bedtools =2.31.1
   - samtools =1.22.1
@@ -13,10 +13,11 @@ dependencies:
   - pysam >=0.24.1,<0.25.0
   - intron-prospector >=1.5
   - ucsc-bedtobigbed
-  # longshot calls the variants of the variantquant tests.  whatshap, which phases
-  # them and haplotags reads before flair isoalleles, is not here: bioconda builds
-  # it for python 3.12 alone, which would hold this whole environment at 3.12.
-  # Install it on its own when you need it, see docs/source/installing.rst
+  # longshot calls the variants the isoalleles test inputs are phased from.  whatshap,
+  # which phases them and haplotags reads before flair isoalleles, is not here: FLAIR
+  # does not run it, and bioconda builds it through python 3.13, which would hold this
+  # whole environment at that version.  Install it on its own when you need it, see
+  # docs/source/installing.rst
   - longshot >=1.0
   - pip
   # R dependencies of flair diffexp and diffsplice

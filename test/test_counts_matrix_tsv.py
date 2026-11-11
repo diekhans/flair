@@ -7,8 +7,8 @@ from flair.counts_matrix_tsv import (CountsRow, ID_COLUMNS, CountsMatrixReader,
                                      read_counts_rows, read_sample_columns,
                                      read_isoform_ids, write_counts_matrix,
                                      describe_ids, MAX_REPORTED_IDS, read_grouped_counts,
-                                     QUANTIFY_COUNTS, SPLICEEVENTS_COUNTS, VARIANTQUANT_COUNTS)
-from flair import splicing_events_tsv, var_counts_tsv
+                                     QUANTIFY_COUNTS, SPLICEEVENTS_COUNTS)
+from flair import splicing_events_tsv
 
 ROWS = (CountsRow('gene1', 'iso1', [1, 2]), CountsRow('gene1', 'iso2', [3, 4]))
 
@@ -69,7 +69,7 @@ def test_describe_ids_elides():
     assert describe_ids(ids[:2]) == 'id0, id1'
 
 
-# read_grouped_counts: a quantify matrix, or the counts of spliceevents or variantquant
+# read_grouped_counts: a quantify matrix, or the counts of spliceevents
 def _write_spliceevents_counts(path, rows):
     "rows (event, alternative, counts...) of a spliceevents counts table of samples s1, s2"
     with open(path, 'w') as fh:
@@ -96,16 +96,6 @@ def test_spliceevents_rows_are_grouped_by_event_and_other_is_unreported(tmp_path
     assert grouped.rows == [CountsRow(event, event + '|inc', [5, 1]), CountsRow(event, event + '|exc', [2, 6]),
                             CountsRow(event, event + '|other', [1, 0])]
     assert grouped.unreported == {event + '|other'}
-
-
-def test_variantquant_rows_are_grouped_by_var_name(tmp_path):
-    counts = str(tmp_path / 'x.variants.counts.tsv')
-    with var_counts_tsv.var_counts_writer(counts, ['s1', 's2']) as writer:
-        writer.writeAllele('chr1:5', 'A', 'G', ('.', '100', '2'), 'G1', [(7, 3), (4, 0)])
-    grouped = read_grouped_counts(counts)
-    assert grouped.format is VARIANTQUANT_COUNTS
-    assert grouped.rows == [CountsRow('chr1:5:A>G|100|2', 'chr1:5:A>G|100|2|yes', [3, 0]),
-                            CountsRow('chr1:5:A>G|100|2', 'chr1:5:A>G|100|2|no', [7, 4])]
 
 
 def test_a_table_of_psi_values_is_refused(tmp_path):

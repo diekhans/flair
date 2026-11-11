@@ -11,13 +11,12 @@ from flair.pycbio.sys import cli
 def build_parser():
     desc = """Calculates the usage of each isoform as a fraction of the total expression
     of the gene and compares this between samples.  It reads a flair quantify counts
-    matrix, or the counts of flair spliceevents (each alternative of an event) or flair
-    variantquant (the reads showing and not showing each allele)."""
+    matrix, or the counts of flair spliceevents (each alternative of an event)."""
 
     parser = argparse.ArgumentParser(prog='diff_iso_usage', formatter_class=FlairHelpFormatter, description=desc)
     parser.add_argument('counts_matrix_tsv',
-                        help='counts matrix TSV from flair quantify, OUTPUT.spliceevents.counts.tsv from '
-                        'flair spliceevents, or OUTPUT.variants.counts.tsv from flair variantquant')
+                        help='counts matrix TSV from flair quantify, or OUTPUT.spliceevents.counts.tsv '
+                        'from flair spliceevents')
     parser.add_argument('colname1',
                         help='the name of the column of the first sample')
     parser.add_argument('colname2',

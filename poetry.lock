@@ -617,7 +617,6 @@ httpcore2 = {version = "2.16.0", markers = "sys_platform != \"emscripten\""}
 httpx2-jsfetch = {version = "*", markers = "sys_platform == \"emscripten\" and python_version >= \"3.12\""}
 idna = ">=3.18"
 truststore = {version = ">=0.10", markers = "sys_platform != \"emscripten\""}
-typing-extensions = {version = ">=4.5.0", markers = "python_version < \"3.13\""}
 
 [package.extras]
 brotli = ["brotli (>=1.2.0) ; platform_python_implementation == \"CPython\"", "brotlicffi (>=1.2.0.2) ; platform_python_implementation != \"CPython\""]
@@ -2316,5 +2315,5 @@ dev = ["bump-my-version", "flake8", "pytest", "pytest-xdist", "sphinx", "sphinx-
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.12,<3.15"
-content-hash = "34eaaf02940a361effd8af15960b06cfb5fa7ab85ad5e7e81439444cdd91f75c"
+python-versions = ">=3.13,<3.15"
+content-hash = "48212dcc17f90d1aa65a411770e7202b0e4741734a8e3d921946338e5c186e52"

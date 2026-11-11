@@ -29,8 +29,6 @@
     | fusion | `OUT-syntheticBreakpointLoc.bed` | `OUT.synthetic_breakpoint_loc.bed` |
     | spliceevents | `OUT.spliceevents.PSIjunc.tsv` | `OUT.spliceevents.psi_junc.tsv` |
     | spliceevents | `OUT.spliceevents.PSItot.tsv` | `OUT.spliceevents.psi_tot.tsv` |
-    | variantquant | `OUT.var.counts.tsv` | `OUT.variants.counts.tsv` |
-    | variantquant | `OUT.var.sample_info.tsv` | `OUT.variants.sample_info.tsv` |
   * `--region` gives a region on the command line, wherever `--region_bed` takes a BED
     of them: flair transcriptome, flair spliceevents, flair_partition and
     identify_vars.  A region is written either one-based and closed, as a genome
@@ -87,14 +85,10 @@
     Each isoform's other isoforms' counts are its gene's total less its own, rather
     than summed again per isoform, so genes and events of many isoforms are fast.
   * `flair diffexp` and `diff_iso_usage` also read the counts of `flair
-    spliceevents` and `flair variantquant`, testing an event's alternatives or an
-    allele's reads as an isoform's usage within its gene.  diffexp runs DRIMSeq and
-    its t-test alone on them, not DESeq2, and an event's `other` row counts toward
-    the event but is not reported.  Conditions come from a sample info TSV beside
+    spliceevents`, testing an event's alternatives as an isoform's usage within its
+    gene.  diffexp runs DRIMSeq and its t-test alone on them, not DESeq2, and an
+    event's `other` row counts toward the event but is not reported.  Conditions come from a sample info TSV beside
     the counts, as quantify writes one.
-  * `flair variantquant`'s `variants.counts.tsv` has two rows per allele and group of
-    reads, `is_var` `yes` and `no`, named by a new `var_name` column, with one
-    integer per sample, in place of one row of `not_alt;alt` pairs.
   * Isoform and gene ids are never split at an underscore.  `flair transcriptome`
     failed with a KeyError on an annotation whose transcript and gene ids both
     hold one, such as a GTF of HLA alleles; it now names the annotated transcripts
@@ -107,17 +101,14 @@
   * flair now uses real subcommands, so `flair <subcommand> --help` and the
     subcommand list in `flair --help` describe what each one accepts.
   * Command line documentation is generated from the programs themselves, so it
-    can no longer drift from what they accept.  flair variantquant, alleles and
-    isoalleles are documented for the first time.
+    can no longer drift from what they accept.  flair alleles and isoalleles are
+    documented for the first time.
   * All subcommands now honor the logging options; previously only flair align did.
   * Bad input is reported as one line rather than a Python traceback: every
     installed command now reports errors this way, and the errors for mismatched
     annotation fasta and isoform names, alignments without AS or MD tags, and the
     option and input problems in junctions_from_sam and identify_vars say what to
     do about them.
-  * `flair variantquant` no longer multiplies its counts when rerun into an
-    output directory an earlier run left intermediates in, and its rows are
-    written in a fixed order rather than one that depended on the hash seed.
   * `flair diffsplice` fails when a counts matrix isoform id has no record in
     `--isoform_bed`.  That combination used to produce empty results silently.
   * `flair diffexp` gained `--condition_a` and `--condition_b`, matching
@@ -147,11 +138,8 @@
     `misc/flair_conda_env.yaml`, and `misc/flair_diffexp_conda_env.yaml` is gone.
     The BioConda package still does not carry them; `installing.rst` gives the
     `conda install` command to add them.
-  * WhatsHap is no longer in the conda environment files.  bioconda builds it
-    for python 3.12 alone, which held every environment built from them at that
-    version; `installing.rst` says how to install it for preparing the
-    haplotagged reads and phased VCF that `flair isoalleles` takes.  The conda
-    `pysam` is now 0.24, matching what FLAIR requires.
+  * FLAIR requires python 3.13 through 3.14, dropping 3.12.
+  * The conda `pysam` is now 0.24, matching what FLAIR requires.
   * Reverse complement takes every IUPAC nucleotide code, with U and the gap
     characters, so a genome carrying degenerate bases no longer stops FLAIR
     with `KeyError: 'R'` (#715).  A character that is not a nucleotide now
@@ -611,82 +599,6 @@
     without rerunning spliceevents.  `--check_outliers` is removed.  A sample's PSI
     is used when it has at least `--event_support` reads, as in the PSI tables,
     rather than more than that.
-* flair variantquant
-  * OUTPUT.var.counts.tsv has a row per allele of a site, with new `ref` and `alt`
-    columns, and without the `transcript` column, which was always empty.  Its
-    columns are the same in every run, `varpos ref alt strand phase_set haplotype
-    gene` and then the samples, `strand`, `phase_set` and `haplotype` `.` when the
-    reads aren't split by them (`--trust_strand`, `--haplotypes`): a sample's `unmodified;modified` counts are the reads covering the site
-    not showing the row's alt, and those showing it.  Multi-allelic vcf sites were
-    never counted, their ALT compared whole, as `G,T`, with one read base; each alt
-    is now its own row.
-  * Only SNVs are counted: indels and substitutions of more than one base, which a
-    read base can't show and so were never counted, are left out with a warning.
-  * A site's alts are merged across the vcfs whatever their IDs, and vcfs giving a
-    site different ref bases are an error, as they aren't of one genome.
-  * OUTPUT.vargroup.counts.tsv, an experiment, is removed.  It grouped the reads
-    covering the same sites, but kept only how many sites each read was modified at
-    and pooled the samples, so it couldn't tell which variants were on a read
-    together; `flair alleles` groups the reads carrying variants.
-  * A rerun to the same output no longer counts every read twice: the temporary
-    files were appended to, in OUTPUT.intermediate, kept by `--keep_intermediate`
-    or a failed run.  As flair transcriptome, each run has a directory of its own in
-    `--temp_dir`, by default $TMPDIR, removed also when the run fails, and
-    `--keep_intermediate` requires `--temp_dir`.
-  * `-t/--threads` reads that many samples at once (default 4).
-  * Reads are aligned to the genome: `--transcriptome_bam` is now `--bam`, and the
-    sample of `--bam` is named for its file, or by the new `--sample_name`, not
-    `sample`.  The transcriptome-aligned path was removed earlier.
-  * A manifest is either of sample names and bam files, with the sites from `--vcf`,
-    or of sample names, bam files and each sample's own vcf.  One vcf on the first line for all samples, as
-    before, is an error that says to give `--vcf`, as are duplicate sample names and
-    missing files.
-  * Only the records of a vcf whose FILTER is PASS or `.` are sites, so a
-    DeepVariant RefCall is not; a vcf of only its first five columns, as REDIportal's,
-    has all its records counted.  `--keep_flags` counts the records of the FILTER
-    flags given too, as `RefCall`, or `all` every record, as before.  Gzipped vcfs
-    are read.
-  * `--isoform_bed` is optional: without it the gene column is empty.
-  * The bases of the reads at the sites come from their cigars, not their MD tags,
-    which variantquant no longer needs, 6 times faster with the 15.6M sites of
-    REDIportal.  A read is modified where its base is one of the site's alts.
-  * Supplementary alignments are counted, but no longer secondary alignments, which
-    counted a read's bases again.
-  * A site's genes are those of the isoform exons over it.  The scan of each gene's
-    isoforms it replaces compared the 1-based site with the exons' 0-based starts, so a
-    site on an exon's last base wasn't of its gene and one just before an exon was:
-    of 1M REDIportal sites, 38.
-  * `-f/--gtf` names sites by the gene_ids of a GTF's exons.  With `--isoform_bed`,
-    an isoform whose gene, its 13th column, is empty or missing, as of a BED12, gets
-    the GTF gene its exons overlap most on its strand, so a site in a novel exon of a
-    known gene is named; a flair bed's genes are its own.  `--isoform_bed` reads any
-    bed, a BED12 alone naming no sites.
-  * Sites load several times faster and in a fifth of the memory: the 15.6M REDIportal
-    sites of a vcf in 37 seconds and 2.2 GB, with an isoform bed's genes in 43 seconds,
-    with GENCODE's in 57; it was 3 to 9 minutes and about 12 GB.  Genes are found in
-    one sweep of each chromosome's sorted sites and exons.
-  * `-g/--genome` checks that each site's REF is the genome's base, and leaves out
-    the sites whose REF isn't, with a warning: the vcf must be of the genome's
-    strand.  The match of the complements, replaced by the bases of the reads' cigars,
-    counted the 41,442 REDIportal records of the transcript's strand, as A>G of a
-    minus strand gene, now left out; its 247 records matching neither strand counted
-    every read of the genome's base as edited.
-  * `--quality` is the minimum mapping quality of the alignments counted (default 0,
-    every alignment, as before).
-  * `--trust_strand` trusts the stranding of the reads, as of oriented reads or
-    direct RNA: each read is of its alignment's strand, and the counts of each strand
-    of reads at a site are a row of their own, of its strand column, so an antisense
-    transcript's reads aren't counted with the sense transcript's.
-  * `--haplotypes` counts the reads of each haplotype of haplotagged bams apart, as
-    WhatsHap haplotag writes them: each phase set (PS) and haplotype (HP) of reads at
-    a site is a row of its own, of its phase_set and haplotype columns, the reads without
-    an HP tag a row of their own, so a somatic variant's reads on one germline
-    haplotype show against the other's.  Samples sharing no phase set, so not of one
-    phasing, are warned of.  With `--trust_strand` and `--haplotypes`, an allele any
-    of whose rows has a read showing it has every row written, of the haplotype or
-    strand without one too.
-  * `--pos_ref` is removed, and annotate_group_vcf_vars.py, which wrote its files:
-    a vcf with `--isoform_bed` or `--gtf` now loads nearly as fast as they did.
 * Incompatibles
   * `gtf_to_bed --include_gene` adds a column naming the gene instead of appending
     it to the isoform name.  The annotation BED and FASTA that flair transcriptome
@@ -711,8 +623,6 @@
     that ordering meant.
   * Removed flair correct and collapse modules, the functionality is replaced
     by flair transcriptome.
-  * flair variantquant: `--pos_ref` is removed, give the vcf with `--vcf` and the
-    genes with `--isoform_bed` or `--gtf`; `--transcriptome_bam` is now `--bam`.
   * Removed the identify_annotated_gene script.  It read and wrote PSL, which no
     flair command produces or accepts any more.
   * Remove flair align options that are no longer need without flair correct.
@@ -738,8 +648,6 @@
       --min_samps_feature_expr, --min_gene_expr, --min_feature_expr, after the
       DRIMSeq dmFilter arguments they are passed to; --conditionA and
       --conditionB to --condition_a and --condition_b
-    * variantquant: --input_bam to --transcriptome_bam; --threshold to
-      --min_coverage
     * alleles and isoalleles: --bam to --tumor_bam; --norm_bam to --normal_bam;
       --norm_vcf to --normal_vcf; --allele_read_map_norm and --iso_read_map_norm
       to --allele_read_map_normal and --iso_read_map_normal

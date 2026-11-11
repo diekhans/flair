@@ -453,23 +453,20 @@ by running these R packages:
 
 If you do not have replicates you can use the `diff_iso_usage <#diffisoscript>`__ standalone script.
 
-**Splicing events and variants**
+**Splicing events**
 
 ``--counts_matrix`` may also be the counts of :ref:`flair spliceevents <spliceevents-label>`,
-``OUTPUT.spliceevents.counts.tsv``, or of :ref:`flair variantquant <variantquant-label>`,
-``OUTPUT.variants.counts.tsv``.  Their rows are compared as an isoform's are within its gene:
-an event's alternatives (``event`` and ``alternative``), and the reads showing an allele
-and those not (``var_name`` and ``is_var``).  Only usage is tested, with DRIMSeq and the
-t-test normalized by gene, since an event's or a site's reads are not a gene's
+``OUTPUT.spliceevents.counts.tsv``.  Its rows are compared as an isoform's are within its
+gene: an event's alternatives (``event`` and ``alternative``).  Only usage is tested, with
+DRIMSeq and the t-test normalized by gene, since an event's reads are not a gene's
 expression, so there are no DESeq2 tables.  An event's ``other`` row counts toward its
-total, but is not tested.  In the outputs, the ``gene_id`` column holds the event or
-``var_name`` and the ``feature_id`` or ``isoform_id`` column ``event|alternative`` or
-``var_name|is_var``.
+total, but is not tested.  In the outputs, the ``gene_id`` column holds the event and
+the ``feature_id`` or ``isoform_id`` column ``event|alternative``.
 
-Neither module records conditions, so write the sample info file that ``flair
-quantify`` would beside the counts, named for them: ``OUTPUT.spliceevents.sample_info.tsv``
-or ``OUTPUT.variants.sample_info.tsv``, a header and then a line per sample column, in the
-order of the columns:
+flair spliceevents does not record conditions, so write the sample info file that
+``flair quantify`` would beside the counts, named for them:
+``OUTPUT.spliceevents.sample_info.tsv``, a header and then a line per sample column, in
+the order of the columns:
 
 .. code:: text
 
@@ -767,125 +764,6 @@ Options
 -------
 
 .. include:: cli/spliceevents.rst
-
-----
-
-.. _variantquant-label:
-
-flair variantquant
-==================
-
-Counts, in each sample, the reads showing each SNV allele at the sites of a vcf,
-from reads aligned to the genome.  It was built to quantify RNA editing at the sites
-of a database such as REDIportal, and counts the variants called in the samples as
-well, by haplotype too, for the allele bias of a somatic variant.
-
-**Samples**
-
-A sample is given by ``--bam``, named by ``--sample_name`` or else for its bam file,
-or several by ``--manifest``, a tab-separated file of a line per sample, either of a
-sample name and its bam file, with the sites from ``--vcf``::
-
-   tumor	tumor.genome_aligned.bam
-   normal	normal.genome_aligned.bam
-
-or of a sample name, its bam file and the vcf of its own variants, on every line::
-
-   tumor	tumor.genome_aligned.bam	tumor.vcf.gz
-   normal	normal.genome_aligned.bam	normal.vcf.gz
-
-whose sites are merged, every sample counted at all of them, so a site called in one
-sample has the reads of the others too.  Lines starting with ``#`` and blank lines are
-skipped; a vcf on some lines only, duplicate sample names and missing files are
-errors.  The bam files are read whole, so they needn't be sorted or indexed, and
-``-t`` of them are read at once, each in its own process.
-
-**Sites**
-
-The vcf may be plain or gzipped, and only its first five columns are needed, so a
-database's list of sites can be given as a vcf of them.  Only SNVs are counted: an
-indel or a substitution of more than one base, which a read's base can't show, is
-left out with a warning.  Each alt of a multi-allelic site is an allele of its own.
-Only records whose FILTER is ``PASS`` or ``.``, or that have no FILTER, are sites, so a
-DeepVariant ``RefCall`` isn't; ``--keep_flags`` counts the records of other flags too,
-as ``--keep_flags RefCall``, or ``all`` of them.  A site in more than one vcf has the
-alts of all of them, and two vcfs giving it different REFs are an error.
-
-The vcf must be of the genome's strand: a record's REF is the genome's base, so an
-A-to-I edit of a minus strand gene is T>C, not A>G.  A record of the transcript's
-strand is never counted, and one whose REF is neither the genome's base nor its
-complement counts every read of the genome's base as showing its alt.  Given the
-genome, ``-g``, variantquant checks each site's REF and leaves out those that aren't
-the genome's base, with a warning of how many, how many are the complement, and a few
-of them.  Of REDIportal's 15.6 million A-to-I sites, 41,442 are of the transcript's
-strand and 247 of neither, all left out by ``-g``.
-
-**Reads**
-
-A read's primary and supplementary alignments are counted, not its secondary ones,
-which would count its bases again, and only alignments of at least ``--quality``
-mapping quality (0, all, by default).  A read's base at a site is found from its
-cigar, so MD tags aren't needed; a site in a read's deletion or intron isn't covered by
-it.  A read showing one of a site's alts is counted as showing it, and any other base
-as not.
-
-With ``--trust_strand``, as for oriented reads or direct RNA, each read is of its
-alignment's strand, and each strand of reads at a site is counted in a row of its
-own, so the reads of an antisense transcript aren't counted with the sense
-transcript's.  With ``--haplotypes``, the reads of a haplotagged bam, as WhatsHap
-haplotag writes it, are counted by their phase set and haplotype, their ``PS`` and
-``HP`` tags, a row each, and the reads without an ``HP`` tag in a row of their own: at
-a somatic variant, the haplotype carrying it shows its alt reads against the other's,
-and the normal's haplotypes both show the reference.  A haplotype is comparable only
-within a phase set and one phasing, so a run's samples should be one patient's,
-haplotagged with its phased variants; samples sharing no phase set are warned of.
-
-**Genes**
-
-A site is named by the genes of the exons over it, of ``--isoform_bed``, ``--gtf`` or
-both, and is of no gene without them.  An isoform's gene is its bed's 13th column, as
-a flair isoform bed gives it.  An isoform without one, as of a BED12, given a GTF, is
-of the GTF gene its exons overlap most on its strand, so a site in a novel exon of a
-known gene is named by it; with no GTF it names no site.  Given a GTF alone, its
-exons name the sites by their ``gene_id``.  A site of more than one gene is named by
-the first, sorted.
-
-**Outputs**
-
- - ``OUTPUT.variants.counts.tsv``, two rows per allele of a site, of each group of its
-   reads: ``is_var`` ``yes``, the reads showing the alt, and ``no``, those covering the
-   site not showing it, so the two add up to the reads covering the site whatever its
-   other alts.  ``var_name`` names the pair, ``CHROM:POS:REF>ALT``, then ``(STRAND)``
-   with ``--trust_strand`` and ``|PHASE_SET|HAPLOTYPE`` for phased reads.  Then the
-   columns ``varpos``, the site, ``CHROM:POS`` 1-based, ``ref``, ``alt``, ``strand``,
-   ``phase_set`` and ``haplotype``, ``.`` when the reads aren't split by them, and
-   ``gene``, then a column per sample of the reads.  An allele's rows are written if
-   a read of some sample shows the alt, or with ``--output_all``, each pair if some
-   sample has ``--min_coverage`` reads of its group covering the site.  ``flair
-   diffexp`` and ``diff_iso_usage`` read it, testing the change in each allele's share
-   of its site's reads (see :ref:`diffexp-label`)
-
-
-**Speed**
-
-Each bam is read once, whatever the number of sites, about 3 minutes for 15 million
-reads with a few hundred sites and 36 with REDIportal's 15.6 million, and ``-t``
-samples at once.  For 100,000 REDIportal sites across the genome, in a bam of 15.5
-million reads, it takes 5 minutes, against 3.2 hours for ``samtools mpileup -l`` and
-about 9 hours for pysam's ``pileup``, their counts the same.  ``samtools mpileup`` is
-faster for sites packed in a small region, which it reads alone: 1 minute, against 3,
-for 100,000 sites in 10 Mb.  The sites are loaded once: REDIportal's in 37 seconds
-and about 2.2 GB from its vcf, 43 seconds with a flair isoform bed's genes, 57 with
-GENCODE's, and 7 seconds more to check them against the genome with ``-g``.
-Temporary files, a file per sample of its reads covering the sites, are written in a
-directory of each run's own in ``--temp_dir``, by default ``$TMPDIR``, and removed
-when it ends unless ``--keep_intermediate``.
-
-Options
--------
-
-.. include:: cli/variantquant.rst
-
 
 ----
 

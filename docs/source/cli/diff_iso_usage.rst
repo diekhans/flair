@@ -11,7 +11,7 @@
 
 .. option:: counts_matrix_tsv
 
-   counts matrix TSV from flair quantify, OUTPUT.spliceevents.counts.tsv from flair spliceevents, or OUTPUT.variants.counts.tsv from flair variantquant
+   counts matrix TSV from flair quantify, or OUTPUT.spliceevents.counts.tsv from flair spliceevents
 
 .. option:: colname1
 

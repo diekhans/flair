@@ -1187,37 +1187,21 @@ ${BASIC_LONGSHOT}: ${GENOME_FA} ${BASIC_ALIGN_BAM}
 	@mkdir -p $O
 	longshot --force_overwrite --bam ${BASIC_ALIGN_BAM} --ref ${GENOME_FA} --out ${BASIC_LONGSHOT} --min_cov 3 --min_alt_count 3 --strand_bias_pvalue_cutoff 0.000001
 
-
-# longshot is in the conda environments and the docker image; tests needing it are
-# skipped with a warning, rather than failing, in an environment without it
-have_longshot := $(shell which longshot >/dev/null 2>&1 && echo yes || echo no)
-longshot_tests = test-variantquant \
-	test-variantquant-gtf test-variantquant-bed12-gtf test-variantquant-nogenes test-variantquant-manifest \
-	test-variantquant-manifest-vcfs test-variantquant-filters test-variantquant-stranded \
-	test-variantquant-compress
-
-ifeq (${have_longshot},yes)
-variants-tests: ${longshot_tests}
-else
-variants-tests:
-	@echo "Note: skipping ${longshot_tests}: longshot is not in PATH, install it to run these tests" >&2
-endif
-variants-tests: test-identifyvars-snvs test-identifyvars-indels test-identifyvars-snvsindels
-
 isoalleles_tests = test-isoalleles test-isoalleles-pair test-isoalleles-compress test-isoalleles-help
-variants-tests: ${isoalleles_tests}
+variants-tests: test-identifyvars-snvs test-identifyvars-indels test-identifyvars-snvsindels ${isoalleles_tests}
 
 ##
 # flair isoalleles: the test reads' longshot variants phased by whatshap, which
 # haplotags the reads, and flair quantify's read map of them, as a user prepares
 # them.
 #
-# The whatshap output is committed, as bioconda builds whatshap for python 3.12
-# alone and these tests must run on every version `requires-python' spans.  Two
+# The whatshap output is committed, as bioconda builds whatshap through python 3.13
+# and these tests must run on every version `requires-python' spans.  Two
 # files are committed: the phased VCF, and whatshap's read-to-haplotype table,
 # which bin/bam-add-haplotags applies to the alignments in place of running
 # whatshap haplotag.  Regenerate both with `make regen-isoalleles-inputs' when
-# the reads, the aligner or longshot change; that needs whatshap.
+# the reads, the aligner or longshot change; that needs whatshap, installed as
+# docs/source/installing.rst describes.
 ##
 BASIC_PHASED_VCF_IN = $I/basic.reads.phased.vcf
 BASIC_HAPLOTAG_LIST = $I/basic.reads.haplotag_list.tsv
@@ -1328,55 +1312,6 @@ test-protocol-haplotype: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM} ${BASIC_LONGSHOT
 	test -s $O/$@/isoalleles/P2T.isoalleles.counts.tsv
 	test -s $O/$@/stats/P1.P1T.isoalleles.usage.tsv
 	head -1 $O/$@/isoalleles/P1T.isoalleles.counts.tsv | grep -q 'P1T	P1N'
-
-test-variantquant: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM} ${BASIC_LONGSHOT}
-	flair variantquant --bam ${BASIC_ALIGN_BAM} --vcf ${BASIC_LONGSHOT} --isoform_bed $(TOME_ISOFORM_BED) -o $O/$@
-	$(call cmp_expect_sort,$@.variants.counts.tsv)
-
-# genes of the GTF's exons
-test-variantquant-gtf: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM} ${BASIC_LONGSHOT}
-	flair variantquant --bam ${BASIC_ALIGN_BAM} --vcf ${BASIC_LONGSHOT} --gtf $(BASIC_ANNOTATION) -o $O/$@
-	$(call cmp_expect_sort,$@.variants.counts.tsv)
-
-# a BED12 of the isoforms, of no genes, given the GTF genes they overlap
-test-variantquant-bed12-gtf: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM} ${BASIC_LONGSHOT}
-	cut -f 1-12 $(TOME_ISOFORM_BED) > $O/$@.bed12
-	flair variantquant --bam ${BASIC_ALIGN_BAM} --vcf ${BASIC_LONGSHOT} --isoform_bed $O/$@.bed12 --gtf $(BASIC_ANNOTATION) -o $O/$@
-	$(call cmp_expect_sort,$@.variants.counts.tsv)
-
-# no genes, the sample named
-test-variantquant-nogenes: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM} ${BASIC_LONGSHOT}
-	flair variantquant --bam ${BASIC_ALIGN_BAM} --sample_name tumor --vcf ${BASIC_LONGSHOT} -o $O/$@
-	$(call cmp_expect_sort,$@.variants.counts.tsv)
-
-# a manifest of two samples, of one bam, read in parallel, the sites of --vcf
-test-variantquant-manifest: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM} ${BASIC_LONGSHOT}
-	printf 's1\t%s\n# a comment\n\ns2\t%s\n' ${BASIC_ALIGN_BAM} ${BASIC_ALIGN_BAM} > $O/$@.manifest.tsv
-	flair variantquant --manifest $O/$@.manifest.tsv -t 2 --vcf ${BASIC_LONGSHOT} --isoform_bed $(TOME_ISOFORM_BED) -o $O/$@
-	$(call cmp_expect_sort,$@.variants.counts.tsv)
-
-# a multi-allelic site, an indel, left out, a RefCall, left out but with --keep_flags, and two
-# sites whose REF is not the genome's, left out by --genome, one its complement, of the
-# transcript's strand, and one of every read counted as showing its alt; every allele
-# written, of reads showing it or not
-VARIANTQUANT_SITES = $I/variantquant.sites.vcf
-test-variantquant-filters: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM}
-	flair variantquant --bam ${BASIC_ALIGN_BAM} --vcf $(VARIANTQUANT_SITES) -g ${GENOME_FA} --output_all -o $O/$@
-	$(call cmp_expect_sort,$@.variants.counts.tsv)
-	flair variantquant --bam ${BASIC_ALIGN_BAM} --vcf $(VARIANTQUANT_SITES) -g ${GENOME_FA} --output_all --keep_flags RefCall -o $O/$@-keep
-	$(call cmp_expect_sort,$@-keep.variants.counts.tsv)
-
-# each strand of reads at a site a row of its own, of alignments of mapping quality at least 1
-test-variantquant-stranded: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM} ${BASIC_LONGSHOT}
-	flair variantquant --bam ${BASIC_ALIGN_BAM} --vcf ${BASIC_LONGSHOT} --trust_strand --quality 1 --isoform_bed $(TOME_ISOFORM_BED) -o $O/$@
-	$(call cmp_expect_sort,$@.variants.counts.tsv)
-
-# a manifest of each sample's vcf, one gzipped
-test-variantquant-manifest-vcfs: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM} ${BASIC_LONGSHOT}
-	gzip -c ${BASIC_LONGSHOT} > $O/$@.vcf.gz
-	printf 's1\t%s\t%s\ns2\t%s\t%s\n' ${BASIC_ALIGN_BAM} ${BASIC_LONGSHOT} ${BASIC_ALIGN_BAM} $O/$@.vcf.gz > $O/$@.manifest.tsv
-	flair variantquant --manifest $O/$@.manifest.tsv --isoform_bed $(TOME_ISOFORM_BED) -o $O/$@
-	$(call cmp_expect_sort,$@.variants.counts.tsv)
 
 test-identifyvars-snvs: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM}
 	python3 ../src/flair/identify_vars.py --genome ${GENOME_FA} --bam ${BASIC_ALIGN_BAM} --identify_snvs yes --identify_indels no --output $O/$@
@@ -1759,13 +1694,6 @@ test-transcriptome-compress: mkdirs ${BASIC_ALIGN_BAM} ${TI}/basic.annotation.gt
 	$(call cmp_expect_gz,$@.isoforms.read.map.tsv,test-transcriptome.isoforms.read.map.tsv)
 	$(call cmp_expect_gz,$@.regions.bed,test-transcriptome.regions.bed)
 	$(call check_fasta_indexable,$@.isoforms.fa)
-
-test-variantquant-compress: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM} ${BASIC_LONGSHOT} \
-		${TI}/test-transcriptome.isoforms.bed.gz
-	gzip -c ${BASIC_LONGSHOT} > $O/$@.vcf.gz
-	flair -z variantquant --bam ${BASIC_ALIGN_BAM} --vcf $O/$@.vcf.gz \
-	   --isoform_bed ${TI}/test-transcriptome.isoforms.bed.gz -o $O/$@
-	$(call cmp_expect_sort_gz,$@.variants.counts.tsv,test-variantquant.variants.counts.tsv)
 
 test-spliceevents-compress: mkdirs ${BASIC_ALIGN_BAM} test-spliceevents \
 		$O/spliceevents.manifest.tsv.gz ${TI}/basic.annotation.gtf.gz

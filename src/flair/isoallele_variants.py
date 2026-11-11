@@ -2,7 +2,7 @@
 haplotype at them.
 
 Variants are keys (chrom, pos, ref, alt), pos 1-based as in a VCF.  A VCF record
-passes with FILTER PASS or '.', as flair variantquant takes them.
+passes with FILTER PASS or '.'.
 
 Germline variants are the calls of the sample, or of the normal of a pair, phased
 by the VCF that haplotagged the reads (WhatsHap, DeepVariant, HiPhase and the like),

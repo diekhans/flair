@@ -123,10 +123,10 @@ WhatsHap
 the phased VCF and the haplotagged reads that ``flair isoalleles`` takes; see
 :ref:`isoalleles-label`.  FLAIR doesn't run it itself.
 
-It isn't in the conda environment, as bioconda builds it for python 3.12 alone,
-which would hold the whole environment at that version.  The docker image has it.
-Install it when you need it, into an environment of its own so that it doesn't
-constrain FLAIR's:
+It isn't in the conda environment files or the docker image, as FLAIR does not run
+it, and bioconda builds it through python 3.13, which would hold the whole
+environment at that version.  Install it when you need it, into an environment of
+its own so that it doesn't constrain FLAIR's:
 
 .. code:: sh
 

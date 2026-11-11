@@ -28,7 +28,6 @@ from flair.read_chains_tsv import ReadChainsReader, read_chains_writer
 from flair.splicing_outliers_tsv import SplicingOutliersReader, SplicingOutliersWriter
 from flair.tpm_tsv import CountsRow, TpmReader, tpm_writer
 from flair.transcript_counts_tsv import TranscriptCountsReader, TranscriptCountsWriter
-from flair.var_counts_tsv import VarCountsReader, var_counts_writer
 
 def chained_messages(ex):
     "every message on an exception chain, for checking why a row was refused"
@@ -244,16 +243,6 @@ def test_tpm_round_trip(tmp_path):
         writer.writeCountsRow(CountsRow('gene1', 'iso1', [1.5, 2.5]))
     with TpmReader(path) as reader:
         assert [r.counts for r in reader] == [[1.5, 2.5]]
-
-def test_var_counts_round_trip(tmp_path):
-    path = tsv_path(tmp_path, 'var.counts.tsv')
-    with var_counts_writer(path, ['s1', 's2']) as writer:
-        writer.writeAllele('chr1:100', 'A', 'G', ('+', '.', '.'), 'gene1', [(7, 3), (1, 0)])
-    with VarCountsReader(path) as reader:
-        assert reader.sample_columns == ['s1', 's2']
-        rows = list(reader)
-    assert [(r.var_name, r.is_var, r.alt, r.strand, r.s1, r.s2) for r in rows] == [
-        ('chr1:100:A>G(+)', 'yes', 'G', '+', 3, 0), ('chr1:100:A>G(+)', 'no', 'G', '+', 7, 1)]
 
 @pytest.mark.parametrize('table', sorted(ISOALLELES_TABLES))
 def test_isoalleles_tables_round_trip(tmp_path, table):

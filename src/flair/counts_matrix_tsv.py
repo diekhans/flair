@@ -11,10 +11,9 @@ and are arbitrary, so they are addressed as a list, CountsRow.counts, in column
 order, rather than by name.  flair quantify writes a sample info TSV beside this
 file naming the condition and batch of each column; see sample_info_tsv.
 
-flair diffexp and diff_iso_usage also read the counts of flair spliceevents and
-flair variantquant as a counts matrix (read_grouped_counts): a group of rows
-compared against each other, as an isoform's share of its gene, and a feature
-naming each row.  See COUNTS_FORMATS.
+flair diffexp and diff_iso_usage also read the counts of flair spliceevents as a
+counts matrix (read_grouped_counts): a group of rows compared against each other, as
+an isoform's share of its gene, and a feature naming each row.  See COUNTS_FORMATS.
 
 A matrix from an earlier FLAIR joined the gene and the isoform into one
 isoform_gene column.  That form is refused rather than split, since splitting it
@@ -29,7 +28,7 @@ from flair import FlairInputDataError
 from flair.pycbio.sys import fileOps
 from flair.pycbio.tsv import TsvError, TsvReader, TsvRow, TsvWriter
 from flair.tsv_column_types import read_header_columns
-from flair import splicing_events_tsv, var_counts_tsv
+from flair import splicing_events_tsv
 
 # the id columns every counts matrix starts with, in this order
 ID_COLUMNS = ('gene_id', 'isoform_id')
@@ -144,10 +143,7 @@ QUANTIFY_COUNTS = CountsFormat('flair quantify', 'gene_id', 'isoform_id', ID_COL
 # an event's other row holds its reads of none of its alternatives
 SPLICEEVENTS_COUNTS = CountsFormat('flair spliceevents', 'event', 'alternative',
                                    splicing_events_tsv.EVENT_COLUMNS, 'other')
-# an allele's two rows, the reads showing it and those not
-VARIANTQUANT_COUNTS = CountsFormat('flair variantquant', 'var_name', 'is_var',
-                                   var_counts_tsv.ID_COLUMNS, None)
-COUNTS_FORMATS = (QUANTIFY_COUNTS, SPLICEEVENTS_COUNTS, VARIANTQUANT_COUNTS)
+COUNTS_FORMATS = (QUANTIFY_COUNTS, SPLICEEVENTS_COUNTS)
 
 def counts_format(columns, counts_tsv):
     "the format of a table of these columns"
@@ -163,17 +159,17 @@ def counts_format(columns, counts_tsv):
 class GroupedCounts(namedtuple('GroupedCounts', ('format', 'sample_columns', 'rows', 'unreported'))):
     """The rows of a table of COUNTS_FORMATS as CountsRow: gene_id holds the row's
     group and isoform_id its feature id, unique over the table.  A quantify isoform
-    keeps its id, and a spliceevents or variantquant row is named group|feature, as
-    spliceevents names its BED records.  unreported is the set of feature ids of rows
-    of the format's unreported_feature."""
+    keeps its id, and a spliceevents row is named group|feature, as spliceevents names
+    its BED records.  unreported is the set of feature ids of rows of the format's
+    unreported_feature."""
     __slots__ = ()
 
 def _feature_id(fmt, group, feature):
     return feature if fmt is QUANTIFY_COUNTS else f'{group}|{feature}'
 
 def read_grouped_counts(counts_tsv):
-    """Every row of a counts matrix, a flair spliceevents counts table or a flair
-    variantquant counts table, in file order, as GroupedCounts"""
+    """Every row of a counts matrix or a flair spliceevents counts table, in file
+    order, as GroupedCounts"""
     columns = read_header_columns(counts_tsv)
     fmt = counts_format(columns, counts_tsv)
     sample_columns = columns[len(fmt.id_columns):]

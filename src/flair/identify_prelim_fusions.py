@@ -5,6 +5,7 @@ import pysam
 from collections import Counter, defaultdict
 from functools import partial
 from statistics import median
+from flair import FlairInputDataError
 from flair.convert_synthetic_to_genome_bed import identify_fusion_problems, fusion_role
 
 
@@ -38,8 +39,20 @@ def binarySearch(arr, t):
     return arr[i]
 
 
+def _transcript_intron_locs(intronLocs, tname):
+    "the splice sites of an annotated transcript a read is aligned to"
+    try:
+        return intronLocs[tname]
+    except KeyError as ex:
+        raise FlairInputDataError(
+            f"transcript {tname} is in the annotated transcript sequences but not in the "
+            "annotation's splice sites; parse_gtf keeps only the transcripts on the sequence "
+            "of their gene's first one, so give the transcript its own gene id or drop it "
+            "from the GTF") from ex
+
+
 def getGenomicPreciseLoc(tname, bpCoord, genedir, intronLocs, intronToGenome):
-    closestSS = binarySearch(intronLocs[tname], bpCoord)
+    closestSS = binarySearch(_transcript_intron_locs(intronLocs, tname), bpCoord)
     bpIntronEnds = intronToGenome[tname][closestSS]
     genomeSS = None
     diffFromSS = bpCoord - closestSS
@@ -663,7 +676,7 @@ def id_chimeras(genome_bam, annot, min_support, max_loci=10, max_dist_to_tss=Non
     for fusion_genes in supported:
         chroms = [annot.genetoinfo[g][0] if g in annot.genetoinfo else g.split(':')[0] for g in fusion_genes]
         if not identify_fusion_problems(fusion_genes, gene_to_partners, max_partners, annot.genetoname,
-                                        annot.gene_to_paralogs, chroms, len(genes_to_reads[fusion_genes])):
+                                        annot.gene_to_paralogs, chroms):
             continue
         info = call_fusion(fusion_genes, genes_to_reads[fusion_genes], read_to_pieces, annot.genetoinfo, chroms,
                            max_dist_to_tss)

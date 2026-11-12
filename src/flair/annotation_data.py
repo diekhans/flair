@@ -112,6 +112,16 @@ class AnnotData(object):
         return False
 
 
+def _check_transcript_strand(trans, gtf_file):
+    """flair keeps annotations per strand, so an unstranded transcript has nowhere
+    to go; gtf_io accepts '.' for the features that take it."""
+    if trans.strand not in ('+', '-'):
+        raise FlairInputDataError(
+            f"{gtf_file}: transcript {trans.transcript_id} has strand '{trans.strand}'; "
+            "flair needs + or - on every transcript of an annotation, so give the record "
+            "a strand or drop it from the GTF")
+
+
 def annot_data_from_gtf(gtf_data, region):
     """Build AnnotData for a region from a pre-partitioned GtfData object.  Every
     transcript of gtf_data is kept, whatever region says, so a caller that needs the
@@ -123,6 +133,7 @@ def annot_data_from_gtf(gtf_data, region):
     region_map = {region: annots}
     for trans in gtf_data.transcripts:
         if len(trans.exons) > 0:
+            _check_transcript_strand(trans, gtf_data.gtf_file)
             _process_transcript(annots, region, region_map, trans)
     # finalize gene_to_exons as sorted tuples
     for gene_id in annots.gene_to_exons:

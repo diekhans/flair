@@ -418,9 +418,10 @@ def junctions_from_sam(options):  # noqa: C901 - FIXME: reduce complexity
                                 truncation_warn = True
                                 print("Warning: Y0 tags truncated to %d characters." % MAX_CHAR)
 
-                    if tag.startswith("XS"):
-                        tag, almost_strand = tag.split("A")
-                        jcn_strand = almost_strand.lstrip(":")
+                    # XS:A: is the strand; BWA and HISAT2 also emit XS:i:, an
+                    # alignment score, which names no strand
+                    if tag.startswith("XS:A:"):
+                        jcn_strand = tag[len("XS:A:"):]
 
                         if jcn_strand != "+" and jcn_strand != "-" and jcn_strand != ".":
                             raise FlairInputDataError(

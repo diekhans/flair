@@ -31,6 +31,10 @@ from flair.tsv_column_types import commaListType
 ID_COLUMNS = ('feature_id', 'coordinate')
 ISOFORM_IDS_COLUMN = 'isoform_ids'
 
+# the column types, taken by both the reader and the writer, and by the Fisher's
+# table that adds a column to these; the sample columns stay strings
+TYPE_MAP = {ISOFORM_IDS_COLUMN: commaListType}
+
 def columns(sample_columns):
     return list(ID_COLUMNS) + list(sample_columns) + [ISOFORM_IDS_COLUMN]
 
@@ -40,7 +44,7 @@ class EventQuantReader(TsvReader):
 
     def __init__(self, event_quant_tsv):
         super().__init__(event_quant_tsv, defaultColType=str,
-                         typeMap={ISOFORM_IDS_COLUMN: commaListType})
+                         typeMap=TYPE_MAP)
         self._check_columns(event_quant_tsv)
 
     def _check_columns(self, event_quant_tsv):
@@ -60,7 +64,7 @@ class EventQuantWriter(TsvWriter):
     def __init__(self, event_quant_tsv, sample_columns, *, outFh=None):
         super().__init__(event_quant_tsv, columns=columns(sample_columns),
                          defaultColType=str, outFh=outFh,
-                         typeMap={ISOFORM_IDS_COLUMN: commaListType})
+                         typeMap=TYPE_MAP)
         self.sample_columns = list(sample_columns)
 
     def writeSide(self, side, feature, event, counts, isoform_ids):

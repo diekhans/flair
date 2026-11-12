@@ -6,7 +6,7 @@ import pysam
 import vcfpy
 import shutil
 import multiprocessing as mp
-from flair import FlairInputDataError
+from flair import FlairError, FlairInputDataError
 from flair.pycbio.sys import cli
 from flair.io_utils import check_genome_fasta, make_temp_dir, write_sorted_vcf
 from flair.indel_vars_tsv import IndelVarsReader, IndelVarsWriter
@@ -125,7 +125,9 @@ def add_indel_info(cigar, align_start, align_end, region, readseq, genome, intro
             quer_pos += block[1]
         elif block[0] in {1, 4}:  # consumes query ###1 is insertion
             if block[0] == 1:  # insertion
-                if r_start <= ref_pos <= r_end:
+                # an insertion is named by the read base before it, which an
+                # insertion at the start of the read does not have
+                if (quer_pos > 0) and (r_start <= ref_pos <= r_end):
                     flagged_bad = not (check_dist_from_ends(min_read_end_dist, ref_pos, ref_pos, align_start, align_end) and check_dist_from_sj(min_sj_dist, ref_pos, ref_pos, introns))
                     insertion_seq = readseq[quer_pos - 1:quer_pos + block[1]].upper()
                     add_var_to_dict(pos_to_var, ref_pos, ('INS', insertion_seq[0], insertion_seq), flagged_bad)
@@ -157,7 +159,8 @@ def check_homopoly(indel_type, indel_seq, indel_vaf, genome, chrom, pos):
         else:
             rightseq = genome.fetch(chrom, pos + 1, pos + 6).upper()
         rightlen = len_same_base(rightseq)
-        if rightseq[0] == indel_seq[0]:
+        # the fetch is clamped at the end of the contig, so it can come back empty
+        if (len(rightseq) > 0) and (rightseq[0] == indel_seq[0]):
             if rightlen >= 3:
                 return True
             elif rightlen >= 2 and indel_vaf < 0.2:
@@ -275,6 +278,10 @@ def get_indel_filter_labels(indel_type, indel_seq, tot_cov, indel_reads, indel_v
 def filter_output_indel(pos_to_var_filtered, pos, pos_var_info, indel_type, ref_seq, var_seq, tot_cov_nodel, tot_cov_withdel,
                         genome, chrom, donor_counts, acceptor_counts, min_var_reads, min_vaf, min_sj_dist, num_repeats_for_filtering):
     tot_cov = tot_cov_nodel if indel_type == 'SNV' else tot_cov_withdel
+    if tot_cov == 0:
+        # the guard in process_var_pos counts reads with a deletion, which an SNV at
+        # the position has none of, and --min_cov 0 admits a position with no reads
+        return
     indel_reads, flagged_bad_reads = pos_var_info[(indel_type, ref_seq, var_seq)]
     indel_good_reads = indel_reads - flagged_bad_reads
     indel_vaf = indel_reads / tot_cov
@@ -294,6 +301,15 @@ def process_var_pos(pos, pos_to_var_filtered, pos_to_var, pos_to_cov, genome, ch
         for indel_type, ref_seq, var_seq in pos_to_var[pos]:
             filter_output_indel(pos_to_var_filtered, pos, pos_to_var[pos], indel_type, ref_seq, var_seq, tot_cov_nodel, tot_cov_withdel,
                                 genome, chrom, donor_counts, acceptor_counts, min_var_reads, min_vaf, min_sj_dist, num_repeats_for_filtering)
+
+
+def _var_coverage(tot_cov, region, temp_dir):
+    "the read coverage of a variant, which every variant written has"
+    if tot_cov <= 0:
+        raise FlairError(
+            f"{region_vars_path(temp_dir, region)}: a variant is recorded with "
+            f"{tot_cov} reads of coverage; rerun flair, as the file is incomplete")
+    return tot_cov
 
 
 def region_vars_path(temp_dir, region):
@@ -366,7 +382,7 @@ def write_output_vcf(genome_file, output, regions, temp_dir):
                 if len(filters) == 0:
                     filters.append('PASS')
                 alt_desc = vcfpy.Substitution(indel_type, alt_seq)
-                indel_vaf = round(indel_reads / tot_cov, 3)
+                indel_vaf = round(indel_reads / _var_coverage(tot_cov, region, temp_dir), 3)
                 gt = '0/1' if indel_vaf < 0.95 else '1/1'
                 these_calls = [vcfpy.Call('SAMPLE', {'GT': gt, 'DP': tot_cov, 'AD': [tot_cov - indel_reads, indel_reads]})]
                 records.append(vcfpy.Record(chrom, int(start_pos), [], ref_seq, [alt_desc], 100, filters, {}, format_strings, these_calls))

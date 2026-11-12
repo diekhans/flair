@@ -17,10 +17,12 @@ from flair.pycbio.tsv import TsvReader, TsvWriter
 LENGTH_COLUMNS = ('name', 'length')
 HISTOGRAM_COLUMNS = ('length', 'count')
 
+# taken by both the reader and the writer, so the file is parsed as it was formatted
+LENGTH_TYPE_MAP = {'name': str, 'length': int}
+
 class SeqLengthsReader(TsvReader):
     def __init__(self, seq_lengths_tsv):
-        super().__init__(seq_lengths_tsv,
-                         typeMap={'name': str, 'length': int})
+        super().__init__(seq_lengths_tsv, typeMap=LENGTH_TYPE_MAP)
 
 class SeqLengthHistogramReader(TsvReader):
     def __init__(self, histogram_tsv):
@@ -29,7 +31,7 @@ class SeqLengthHistogramReader(TsvReader):
 class SeqLengthsWriter(TsvWriter):
     def __init__(self, seq_lengths_tsv):
         super().__init__(seq_lengths_tsv, columns=LENGTH_COLUMNS,
-                         typeMap={'name': str, 'length': int})
+                         typeMap=LENGTH_TYPE_MAP)
 
 class SeqLengthHistogramWriter(TsvWriter):
     def __init__(self, histogram_tsv):

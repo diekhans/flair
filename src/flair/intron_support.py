@@ -198,9 +198,13 @@ class IntronSupport:
             raise FlairInputDataError(f"annot BED must have 12 columns, found {bed.numStdCols}")
         if bed.strand not in _VALID_STRANDS:
             self._bed_strand_error(bed)
+        # the introns outside the size range are not stored, and a BED of only
+        # those must reach the no-introns-loaded error
+        loaded = False
         for i in range(len(bed.blocks) - 1):
-            self.add_support(bed.chrom, bed.blocks[i].end, bed.blocks[i + 1].start, bed.strand, None)
-        return True
+            if self.add_support(bed.chrom, bed.blocks[i].end, bed.blocks[i + 1].start, bed.strand, None):
+                loaded = True
+        return loaded
 
     def load_annot_bed(self, bed_file, *, chrom_filter=None):
         """load introns from a BED12, with score staying none to register as annot

@@ -54,8 +54,10 @@ def is_alternative(psis, junc_frac_of_event):
 
 
 def sample_psis(counts, totals, samples, min_total):
-    "the PSIs, counts over totals, of the samples with at least min_total reads in totals"
-    return [counts[s] / totals[s] for s in samples if totals[s] >= min_total]
+    """The PSIs, counts over totals, of the samples with at least min_total reads in
+    totals.  A sample with no reads has no PSI, which --event_support 0 would
+    otherwise ask for."""
+    return [counts[s] / totals[s] for s in samples if (totals[s] > 0) and (totals[s] >= min_total)]
 
 
 def junc_between(ss1, ss2):

@@ -133,7 +133,9 @@ def _place_unphased(ctx, key, iso_name, reads_by_sample):
                                     if info.isoform == iso_name and info.haplotype != UNTAGGED
                                     and info.alleles.get(key) == 'alt')
     tagged = sum(alt_reads.values())
-    if tagged >= ctx.min_tagged:
+    # the counter is empty when no tagged read carries the alt, which --min_tagged 0
+    # would otherwise take as enough, leaving min() nothing to pick from
+    if (len(alt_reads) > 0) and (tagged >= ctx.min_tagged):
         top, n = min(alt_reads.items(), key=lambda x: (-x[1], x[0]))
         if n / tagged >= ctx.carrier_min:
             return top

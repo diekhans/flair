@@ -33,6 +33,10 @@ from flair import splicing_events_tsv
 # the id columns every counts matrix starts with, in this order
 ID_COLUMNS = ('gene_id', 'isoform_id')
 
+# the id column types, taken by both the reader and the writer, so the matrix is
+# parsed as it was formatted; every other column is a count, of the caller's type
+ID_TYPE_MAP = {col: str for col in ID_COLUMNS}
+
 # ids named when an error reports a set of offending ids, the rest being redundant
 MAX_REPORTED_IDS = 10
 
@@ -69,7 +73,7 @@ class CountsMatrixReader(TsvReader):
 
     def __init__(self, counts_matrix_tsv, *, countType=int):
         super().__init__(counts_matrix_tsv, rowClass=_CountsMatrixTsvRow,
-                         typeMap={col: str for col in ID_COLUMNS},
+                         typeMap=ID_TYPE_MAP,
                          defaultColType=countType)
         self._check_id_columns(counts_matrix_tsv)
         check_sample_columns(counts_matrix_tsv, self.columns[len(ID_COLUMNS):])
@@ -99,7 +103,7 @@ class CountsMatrixWriter(TsvWriter):
         check_sample_columns(counts_matrix_tsv, sample_columns)
         super().__init__(counts_matrix_tsv,
                          columns=list(ID_COLUMNS) + list(sample_columns),
-                         typeMap={col: str for col in ID_COLUMNS},
+                         typeMap=ID_TYPE_MAP,
                          defaultColType=countType)
         self.sample_columns = list(sample_columns)
 

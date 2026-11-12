@@ -10,18 +10,16 @@ One row per side of each event, the two sides of an event carrying the same
 p-value, since the test is of the event's two by two table.
 """
 from contextlib import contextmanager
-from flair.event_quant_tsv import ISOFORM_IDS_COLUMN
+from flair.event_quant_tsv import TYPE_MAP
 from flair.pycbio.sys import fileOps
 from flair.pycbio.tsv import TsvReader, TsvWriter
-from flair.tsv_column_types import commaListType
 
 def pval_column(colname1, colname2):
     return f'{colname1}-{colname2}_pval'
 
 class DiffspliceFishersReader(TsvReader):
     def __init__(self, fishers_tsv):
-        super().__init__(fishers_tsv, defaultColType=str,
-                         typeMap={ISOFORM_IDS_COLUMN: commaListType})
+        super().__init__(fishers_tsv, defaultColType=str, typeMap=TYPE_MAP)
 
     @property
     def pval_column(self):
@@ -32,8 +30,7 @@ class DiffspliceFishersWriter(TsvWriter):
     def __init__(self, fishers_tsv, event_quant_columns, colname1, colname2):
         super().__init__(fishers_tsv,
                          columns=list(event_quant_columns) + [pval_column(colname1, colname2)],
-                         defaultColType=str,
-                         typeMap={ISOFORM_IDS_COLUMN: commaListType})
+                         defaultColType=str, typeMap=TYPE_MAP)
 
 @contextmanager
 def diffsplice_fishers_writer(fishers_tsv, event_quant_columns, colname1, colname2):

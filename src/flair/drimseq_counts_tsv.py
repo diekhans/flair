@@ -15,13 +15,18 @@ directly.
 from contextlib import contextmanager
 from flair.pycbio.sys import fileOps
 from flair.pycbio.tsv import TsvReader, TsvWriter
+from flair.tsv_column_types import countType
 
 ID_COLUMNS = ('irow', 'gene_id', 'feature_id')
 
+# the id column types, taken by both the reader and the writer, so the file is
+# parsed as it was formatted; every other column is a sample count
+TYPE_MAP = {'irow': int, 'gene_id': str, 'feature_id': str}
+
 class DrimSeqCountsReader(TsvReader):
     def __init__(self, drimseq_counts_tsv):
-        super().__init__(drimseq_counts_tsv, defaultColType=int,
-                         typeMap={'gene_id': str, 'feature_id': str})
+        super().__init__(drimseq_counts_tsv, defaultColType=countType,
+                         typeMap=TYPE_MAP)
 
     @property
     def sample_columns(self):
@@ -31,13 +36,13 @@ class DrimSeqCountsWriter(TsvWriter):
     def __init__(self, drimseq_counts_tsv, sample_columns):
         super().__init__(drimseq_counts_tsv,
                          columns=list(ID_COLUMNS) + list(sample_columns),
-                         defaultColType=str)
+                         typeMap=TYPE_MAP, defaultColType=countType)
         self.irow = 0
 
     def writeIsoform(self, gene_id, feature_id, counts):
-        """rows are numbered in the order they are written.  Counts are written as
-        integers, which DrimSeqCountsReader declares and diffexp's float sums are."""
-        self.writeRow([self.irow, gene_id, feature_id] + [round(count) for count in counts])
+        """rows are numbered in the order they are written.  countType writes
+        diffexp's float sums as the integers DrimSeqCountsReader reads back."""
+        self.writeRow([self.irow, gene_id, feature_id] + list(counts))
         self.irow += 1
 
 @contextmanager

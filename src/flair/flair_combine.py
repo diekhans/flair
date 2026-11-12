@@ -326,12 +326,24 @@ def _from_sample_genes(og_to_key, og_genes, default):
     return next((og_to_key[g] for g in og_genes if g in og_to_key), default)
 
 
+def _fused_gene_count(bed_list_group):
+    "the number of genes the group's fusion isoforms are of, which they share"
+    counts = {len(x[0].fused_genes) for x in bed_list_group}
+    if len(counts) != 1:
+        raise FlairInputDataError(
+            f"the fusion isoforms {', '.join(sorted(x[0].name for x in bed_list_group))} are "
+            f"grouped together but are of {', '.join(str(c) for c in sorted(counts))} genes; "
+            "isoforms of one fusion name the same number of genes, so give the BEDs of one "
+            "flair fusion run")
+    return counts.pop()
+
+
 def _partner_gene_keys(i, bed_list_group, og_to_key, key_to_og):
     """gene keys of the partners of fusion isoform i: its annotated gene, or the
     combined gene of its sample genes"""
     ref_genes = _ref_genes(bed_list_group)
     partner_keys = []
-    for p in range(len(bed_list_group[0][0].fused_genes)):
+    for p in range(_fused_gene_count(bed_list_group)):
         og_partner = sorted((x[0].samples, x[0].fused_genes[p]) for x in bed_list_group)
         if p < len(ref_genes) and ref_genes[p] is not None:
             partner_key = ('ref', (ref_genes[p],))

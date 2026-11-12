@@ -345,6 +345,16 @@ def _genomic_clipping(read):
     return (cigar[0][1] if cigar[0][0] in clipping_types else 0,
             cigar[-1][1] if cigar[-1][0] in clipping_types else 0)
 
+def _batch_alignments(bam_file, batch):
+    """The batch's alignments.  A sample's BAM holds some of the isoforms'
+    chromosomes, which check_bam_chromosomes allows, and fetch raises on one it
+    does not have, as fusion_candidate_reads also guards against."""
+    if batch['chrom'] in bam_file.references:
+        return bam_file.fetch(batch['chrom'], batch['start'], batch['end'])
+    else:
+        return ()
+
+
 def batch_reads(bam_file, batch, chains, genome, trust_ends, se_index, fasta, clipping, fusion_reads=frozenset()):
     """Assign the batch's primary reads (make_batches), returning isoform name -> read
     names for those assigned without the realignment, and the number of reads
@@ -356,7 +366,7 @@ def batch_reads(bam_file, batch, chains, genome, trust_ends, se_index, fasta, cl
     direct, num_realign = {}, 0
     loci, prev_end = batch['loci'], batch['prev_end']
     with open(fasta, 'w') as fa_fh, open(clipping, 'w') as clip_fh:
-        for read in bam_file.fetch(batch['chrom'], batch['start'], batch['end']):
+        for read in _batch_alignments(bam_file, batch):
             if ((prev_end is not None and read.reference_start < prev_end)
                     or not _overlaps_loci(loci, read.reference_start, read.reference_end)
                     or read.is_secondary or read.is_supplementary or read.query_sequence is None

@@ -443,11 +443,20 @@ def _gtf_record_class(feature):
 _ID_WHITESPACE_RE = re.compile(r'\s')
 
 
+def _check_id_value(key, val):
+    """An unquoted numeric value is parsed as an int, which has no place in an id
+    and cannot be searched for white space."""
+    if not isinstance(val, str):
+        raise GtfParseError(f"{key} must be quoted: {val!r}")
+    if _ID_WHITESPACE_RE.search(val):
+        raise GtfParseError(f"white space not allowed in {key}: {val!r}")
+
+
 def _check_id_whitespace(attrs):
     for key in ('gene_id', 'transcript_id'):
         val = attrs.get(key)
-        if val is not None and _ID_WHITESPACE_RE.search(val):
-            raise GtfParseError(f"white space not allowed in {key}: {val!r}")
+        if val is not None:
+            _check_id_value(key, val)
 
 
 def _parse_gtf_line(line: str, include_features: StrSetNone, attrs_parser=_parse_flair_attributes) -> GtfRecord:

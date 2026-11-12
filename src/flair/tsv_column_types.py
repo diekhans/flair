@@ -28,6 +28,15 @@ def separated_int_list_type(sep):
             lambda values: _joined(values, sep))
 
 
+def _format_count(value):
+    "a count is summed as a float, so 3.0 is written 3, the integer that is read back"
+    return str(round(value))
+
+
+# a read count: parsed as an integer and written as one
+countType = (int, _format_count)
+
+
 # comma separated, the usual case: read names, isoform ids, filter tags
 commaListType = separated_list_type(',')
 

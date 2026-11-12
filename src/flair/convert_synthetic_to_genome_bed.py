@@ -1,5 +1,6 @@
 import logging
 import re
+from flair import FlairInputDataError
 from flair.io_utils import open_sorted_bed
 from flair.pycbio.hgdata.bed import BedBlock, BedReader
 from flair.pycbio.sys import fileOps
@@ -14,14 +15,31 @@ def get_synth_info(breakpointfile):
         synthchrtoinfo[bed.chrom] = '--'.join(bed.name.split('--')[1:])
     return synthchrtoinfo
 
+
+# the paralog table's group is column 2 and its gene id column 7
+PARALOG_GROUP_COLUMN = 1
+PARALOG_GENE_COLUMN = 6
+
+
+def _paralog_fields(line, line_num, paralogfile):
+    "one row of the paralog table"
+    fields = line.split('\t')
+    if len(fields) <= PARALOG_GENE_COLUMN:
+        raise FlairInputDataError(
+            f"{paralogfile}:{line_num}: {len(fields)} columns, needing at least "
+            f"{PARALOG_GENE_COLUMN + 1}: the paralog group in column {PARALOG_GROUP_COLUMN + 1} "
+            f"and the gene id in column {PARALOG_GENE_COLUMN + 1}")
+    return fields
+
+
 def get_paralog_ref(paralogfile):
     grouptogenes = {}
     genetoparalogs = {}
     # 5  244     2       69321074        69338940        1       ENSG00000205572 SERF1B  small EDRK-rich factor 1B (centromeric) [Source:HGNC Symbol;Acc:10756]
-    for line in fileOps.iterLines(paralogfile):
-        line = line.split('\t')
-        group = line[1]
-        gname = line[6]
+    for line_num, line in enumerate(fileOps.iterLines(paralogfile), 1):
+        line = _paralog_fields(line, line_num, paralogfile)
+        group = line[PARALOG_GROUP_COLUMN]
+        gname = line[PARALOG_GENE_COLUMN]
         if group not in grouptogenes:
             grouptogenes[group] = set()
         grouptogenes[group].add(gname)
@@ -67,7 +85,7 @@ def fusion_role(i, numgenes):
     return '5p' if i == 0 else '3p' if i == numgenes - 1 else 'mid'
 
 
-def identify_fusion_problems(fgenes, locustopartners, maxpromiscuity, genetoname, genetoparalogs, genomic_chroms, isosup):
+def identify_fusion_problems(fgenes, locustopartners, maxpromiscuity, genetoname, genetoparalogs, genomic_chroms):
     """locustopartners is (gene, fusion_role) -> its partner sets: a gene is promiscuous
     with more than maxpromiscuity partners in the same role.  Counted over all roles, a
     gene of an amplicon was rejected as the 3' partner of a well supported fusion for
@@ -96,13 +114,13 @@ def identify_fusion_problems(fgenes, locustopartners, maxpromiscuity, genetoname
         if g in genetoparalogs:
             other = set(fgenes) - {g, }
             other = {genetoparalogs[g2] if g2 in genetoparalogs else g2 for g2 in other}
-            if genetoparalogs[g] in other or len(other) == 0:
+            if genetoparalogs[g] in other:
                 areparalogs.append(True)
             else:
                 areparalogs.append(False)
         else:
             areparalogs.append(False)
-    overall = (all([x == 1 for x in gcount]) and isosup >= 1 and not ispromiscuous
+    overall = (all([x == 1 for x in gcount]) and not ispromiscuous
                and any(x is False for x in areparalogs) and all(x is False for x in areig)
                and len(allnames) > 1 and all(is_reference_chromosome(x) for x in genomic_chroms))
     return overall
@@ -228,8 +246,6 @@ def piece_gene(chrom, strand, blocks, order, numloci, annots_by_chrom):
     annotation, so flair combine gives a combined fusion isoform its genes the same
     way, whatever the samples' preliminary fusions."""
     annots = annots_by_chrom.get(chrom)
-    if annots is None:  # no genes on the chromosome
-        return None
     juncs = tuple(Junc(blocks[i].end, blocks[i + 1].start) for i in range(len(blocks) - 1))
     sites = breakpoint_sites(blocks, strand, order, numloci)
     genes = get_genes_with_shared_juncs(juncs, strand, annots, extra_sites=sites)

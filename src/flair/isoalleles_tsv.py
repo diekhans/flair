@@ -54,6 +54,7 @@ genes: per gene and sample, how many of its spliced reads the read map assigns
   assigned_reads                every read assigned to one of its isoforms
 """
 from contextlib import contextmanager
+from flair import FlairInputDataError
 from flair.pycbio.sys import fileOps
 from flair.pycbio.tsv import TsvReader, TsvWriter
 
@@ -80,7 +81,10 @@ class IsoallelesTableReader(TsvReader):
     def __init__(self, path, table):
         super().__init__(path, defaultColType=str)
         if tuple(self.columns) != TABLES[table]:
-            raise ValueError(f'{path}: expected the columns of the isoalleles {table} table')
+            raise FlairInputDataError(
+                f"{path}: the isoalleles {table} table has the columns "
+                f"{', '.join(TABLES[table])}; found: {', '.join(self.columns)}.  Give the "
+                f"{table} table flair isoalleles wrote, not another of its tables")
 
 
 class IsoallelesTableWriter(TsvWriter):

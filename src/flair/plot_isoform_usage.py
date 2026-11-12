@@ -64,15 +64,14 @@ def parse_bed(bedfile, keepiso, *, names=False):  # noqa: C901 - FIXME: reduce c
     for i in range(len(info)):
         info[i][1] = [n - lowbound for n in info[i][1]]
 
-    try:
-        if names:
-            return info, usednames
-        else:
-            return info, lowbound, upbound, gene_strand, usednames
-    except NameError:
-        raise NameError('Check that the gene name is present in the bed file')
-    except Exception as e:
-        raise e
+    if len(info) == 0:
+        raise FlairInputDataError(
+            f"{bedfile}: none of the isoforms to plot are in it; name a gene the BED has, "
+            "and give the BED and the counts matrix of one flair run")
+    if names:
+        return info, usednames
+    else:
+        return info, lowbound, upbound, gene_strand, usednames
 
 
 def pack(data, rev=True, color=False, tosort=True):

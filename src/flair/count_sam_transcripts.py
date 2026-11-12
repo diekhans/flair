@@ -124,6 +124,17 @@ def read_transcript_fasta(path):
     return {name: ''.join(parts) for name, parts in seqs.items()}
 
 
+def _breakpoint_pos(chrtobp, chrom, name, fusion_breakpoints):
+    "the breakpoint of a fusion isoform's sequence"
+    try:
+        return chrtobp[chrom]
+    except KeyError as ex:
+        raise FlairInputDataError(
+            f"{fusion_breakpoints}: no breakpoint for {chrom}, the sequence isoform {name} is on; "
+            "it must name every sequence of the fusion isoforms BED, as the breakpoints "
+            "flair fusion writes beside those isoforms do") from ex
+
+
 def read_isoforms_bed(*, isoforms, fusion_breakpoints=None, unique_bound=None, transcript_fasta=None):  # noqa: C901 - FIXME: reduce complexity
     """Read the isoforms BED (and optional unique-bound TSV and transcript fasta) and
     build an IsoformInfo with exon block sizes, genomic ends, fusion-breakpoint
@@ -149,9 +160,10 @@ def read_isoforms_bed(*, isoforms, fusion_breakpoints=None, unique_bound=None, t
             # make_synthetic_fusion_reference always builds on the plus strand,
             # so the intron index needs no flipping for minus strand
             blockstarts = [blk.start - left for blk in bed.blocks]
+            breakpoint_pos = _breakpoint_pos(chrtobp, chrom, name, fusion_breakpoints)
             bpindex = -1
             for i in range(len(blocksizes) - 1):
-                if left + blockstarts[i] + blocksizes[i] <= chrtobp[chrom] <= left + blockstarts[i + 1]:
+                if left + blockstarts[i] + blocksizes[i] <= breakpoint_pos <= left + blockstarts[i + 1]:
                     bpindex = i
             info.transcript_to_bp_ss_index[name] = bpindex
     if unique_bound:

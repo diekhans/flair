@@ -18,6 +18,10 @@ from flair.pycbio.tsv import TsvReader, TsvWriter
 
 RETAINS_INTRON_COLUMN = 'retains_intron'
 
+# taken by both the reader and the writer, so the file is parsed as it was
+# formatted; the BED columns are passed through as strings
+TYPE_MAP = {RETAINS_INTRON_COLUMN: int}
+
 def bed_columns(num_bed_columns):
     "names for the pass-through BED columns, which are addressed by position"
     return [f'col{num}' for num in range(1, num_bed_columns + 1)]
@@ -35,13 +39,12 @@ class MarkedIsoformsReader(TsvReader):
     """The BED columns are passed through, so they are addressed by the col1, col2
     names the header gives them; only retains_intron is named for what it holds."""
     def __init__(self, marked_bed):
-        super().__init__(marked_bed, defaultColType=str,
-                         typeMap={RETAINS_INTRON_COLUMN: int})
+        super().__init__(marked_bed, defaultColType=str, typeMap=TYPE_MAP)
 
 class MarkedIsoformsWriter(TsvWriter):
     def __init__(self, marked_bed, num_bed_columns):
         super().__init__(marked_bed, columns=bed_columns(num_bed_columns) + [RETAINS_INTRON_COLUMN],
-                         defaultColType=str)
+                         defaultColType=str, typeMap=TYPE_MAP)
 
     def writeIsoform(self, bed_row, retains_intron):
         self.writeRow(list(bed_row) + [1 if retains_intron else 0])

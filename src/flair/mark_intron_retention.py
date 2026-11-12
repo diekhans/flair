@@ -2,17 +2,11 @@
 import argparse
 from flair.cli_help import FlairHelpFormatter
 from flair.marked_isoforms_bed import MarkedIsoformsWriter, bed_column_count
+from flair.interval_index import IntervalIndex
 from flair.io_utils import bed_row_sort_key
 from flair.pycbio.sys import cli
 from flair.retained_introns_tsv import RetainedIntronsWriter
 from flair.pycbio.hgdata.bed import BedReader
-
-def overlap(coords0, coords1):
-    """Do two closed ranges share any position.  The old test asked only whether an
-    end of coords1 fell inside coords0, so a coords1 containing coords0 came back
-    False, which is the very shape an intron retention pair has."""
-    return (coords1[0] <= coords0[1]) and (coords0[0] <= coords1[1])
-
 
 def build_parser():
     desc = "Mark isoforms that retain an intron of another isoform of the same locus"
@@ -52,12 +46,23 @@ def _mark_retained_introns(chrom, retaining, other, introncoords):
             introncoords.add((chrom, intron_start, intron_end, retaining['strand']))
 
 
+def _chrom_isoform_index(chrom_isoforms):
+    """The isoforms of one chromosome indexed by their span.  A scan of every pair
+    was quadratic in the isoforms of a chromosome, where only the overlapping ones
+    can retain each other's introns."""
+    index = IntervalIndex()
+    for name, iso in chrom_isoforms.items():
+        index.add(iso['range'][0], iso['range'][1], (name, iso))
+    index.build()
+    return index
+
+
 def _mark_chrom_intron_retention(chrom, chrom_isoforms, introncoords):
-    "every pair of isoforms of one chromosome, on the same strand and overlapping"
+    "the isoforms of one chromosome against those overlapping them on the same strand"
+    index = _chrom_isoform_index(chrom_isoforms)
     for name0, iso0 in chrom_isoforms.items():
-        for name1, iso1 in chrom_isoforms.items():
-            if ((name0 != name1) and (iso0['strand'] == iso1['strand'])
-                    and overlap(iso0['range'], iso1['range'])):
+        for name1, iso1 in index.overlap(iso0['range'][0], iso0['range'][1]):
+            if (name0 != name1) and (iso0['strand'] == iso1['strand']):
                 _mark_retained_introns(chrom, iso0, iso1, introncoords)
 
 

@@ -83,6 +83,16 @@ def test_splice_site_not_cleanly_aligned_is_realigned():
                                (pysam.CMATCH, 200)]), [MAIN]) is None
 
 
+def test_large_indel_is_realigned():
+    # whether the realignment tolerates a large indel depends on where it falls in
+    # the transcript, so the read goes to it rather than being assigned here
+    assert _direct(_read(600, [(pysam.CMATCH, 100), (pysam.CDEL, 100), (pysam.CMATCH, 200),
+                               (pysam.CREF_SKIP, 200), (pysam.CMATCH, 150)]), [MAIN]) is None
+    # a deletion within LARGE_INDEL_TOLERANCE is assigned
+    assert _direct(_read(600, [(pysam.CMATCH, 100), (pysam.CDEL, 20), (pysam.CMATCH, 280),
+                               (pysam.CREF_SKIP, 200), (pysam.CMATCH, 150)]), [MAIN]) == 'main'
+
+
 def test_chain_of_two_isoforms_is_realigned():
     other_ends = _iso('other_ends', (300, 1000), (1200, 1600))
     assert direct_assignment_chains([MAIN, other_ends]) == {}

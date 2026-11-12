@@ -18,7 +18,8 @@ from flair import thread_share
 from flair.pycbio.hgdata.bed import BedReader, BedBlock
 from flair.flair_bed import FlairBed
 from flair.terminal_exon_ends import GeneTerminalExonEnds, NORM_END_EXTRA_LEN
-from flair.count_sam_transcripts import run_count_sam_transcripts, TRUST_ENDS_WINDOW, MINIMAP2_SECONDARY_ALIGNMENTS
+from flair.count_sam_transcripts import (run_count_sam_transcripts, TRUST_ENDS_WINDOW, MINIMAP2_SECONDARY_ALIGNMENTS,
+                                         LARGE_INDEL_TOLERANCE, covers_single_exon, covers_terminal_exon)
 from flair.annotation_precheck import read_introns, splice_sites_cleanly_aligned
 from flair.interval_index import IntervalIndex
 from flair.identify_prelim_fusions import needs_transcriptome
@@ -283,24 +284,47 @@ def direct_assignment_chains(isoform_beds):
             by_chain.setdefault((bed.chrom, tuple((gap.start, gap.end) for gap in bed.getGaps())), []).append(bed)
     return {chain: beds[0] for chain, beds in by_chain.items() if len(beds) == 1}
 
+def _covers_terminal_exons(read, bed, trust_ends):
+    """Does a read's genome alignment reach as far into the isoform's first and last
+    exons as the realignment requires (covers_terminal_exon).  Only the ends are in
+    question, the read's chain being the isoform's, and quantify collects no unique
+    sequence boundaries.  splice_sites_cleanly_aligned requires the same bases next
+    to the terminal splice sites, so this rejects nothing beyond it now, and keeps
+    both paths on one rule if that window changes."""
+    first, last = bed.blocks[0], bed.blocks[-1]
+    return (covers_terminal_exon(first.end - max(read.reference_start, first.start),
+                                 abs(read.reference_start - bed.chromStart), None, trust_ends)
+            and covers_terminal_exon(min(read.reference_end, last.end) - last.start,
+                                     abs(read.reference_end - bed.chromEnd), None, trust_ends))
+
+
+def _has_large_indel(read):
+    """Is an indel in the read longer than the realignment tolerates.  Where it falls
+    in the transcript decides whether it is tolerated (process_cigar), which the
+    realignment is left to work out."""
+    return any((op in (pysam.CINS, pysam.CDEL)) and (length > LARGE_INDEL_TOLERANCE)
+               for op, length in read.cigartuples)
+
+
 def direct_isoform(read, chains, genome, trust_ends):
     """The isoform a read is assigned to without the realignment, or None: its
     introns are the chain of one isoform (direct_assignment_chains), aligned cleanly
     at their splice sites, as flair transcriptome's direct assignment requires of
-    reads.  Unlike there, the read needn't cover the isoform's unique sequence
-    past the exons of an isoform whose chain contains its own: a read is
-    full-length for the one isoform with exactly its junctions, so that is its
-    isoform, as in the realignment (count_batch).  With trust_ends, its
+    reads, and it reaches into the isoform's terminal exons as far as the
+    realignment requires.  Unlike flair transcriptome, the read needn't cover the
+    isoform's unique sequence past the exons of an isoform whose chain contains its
+    own: a read is full-length for the one isoform with exactly its junctions, so
+    that is its isoform, as in the realignment (count_batch).  With trust_ends, its
     ends must also be near the isoform's, as count_sam_transcripts requires.  A
-    read with a supplementary alignment, perhaps a fusion's, is realigned."""
+    read with a supplementary alignment, perhaps a fusion's, is realigned, as is one
+    the realignment may reject for a large indel."""
     if read.has_tag('SA'):
         return None
     introns = read_introns(read)
     bed = chains.get((read.reference_name, introns))
     if bed is None or not splice_sites_cleanly_aligned(read, introns, genome):
         return None
-    if trust_ends and (abs(read.reference_start - bed.chromStart) > TRUST_ENDS_WINDOW
-                       or abs(read.reference_end - bed.chromEnd) > TRUST_ENDS_WINDOW):
+    if _has_large_indel(read) or not _covers_terminal_exons(read, bed, trust_ends):
         return None
     return bed
 
@@ -335,7 +359,7 @@ def single_exon_isoform(read, se_index):
         return None
     start, end = read.reference_start, read.reference_end
     covered = [iso for iso in chrom_index.overlap(start, end)
-               if min(iso[1], end) - max(iso[0], start) > (iso[1] - iso[0]) / 2]
+               if covers_single_exon(min(iso[1], end) - max(iso[0], start), iso[1] - iso[0])]
     return min(covered, key=lambda iso: (abs(start - iso[0]) + abs(end - iso[1]),) + iso, default=None)
 
 def _batch_alignments(bam_file, batch):

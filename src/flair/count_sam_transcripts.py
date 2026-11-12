@@ -183,36 +183,44 @@ def read_isoforms_bed(*, isoforms, fusion_breakpoints=None, unique_bound=None, t
     return info
 
 
-def check_singleexon(read_start, read_end, tlen):
-    """Decide whether a read covers enough of a single-exon transcript to be counted."""
-    if read_end - read_start > (tlen / 2):  # must cover at least 50% of single exon transcript
-        return True
-    else:
-        return False
+def covers_single_exon(covered, tlen):
+    "a read is counted for a single-exon transcript if it covers more than half of it"
+    return covered > (tlen / 2)
 
 
-def check_exonenddist(blocksize, read_edge, transcript_edge, trust_ends, disttoblock, unique_bound):
-    """Decide whether a read's alignment extends far enough into a terminal
-    exon, honoring trust_ends and unique-bound relaxations."""
+def covers_terminal_exon(exon_covered, end_dist, unique_bound_dist, trust_ends):
+    """Does a read's end reach far enough into a terminal exon to be counted for the
+    transcript: exon_covered of that exon's bases are covered, the read's end is
+    end_dist from the transcript's end, and it reaches unique_bound_dist past the
+    transcript's unique sequence boundary, None where there is none.
+
+    Stated here for both the transcript alignment (check_firstlastexon) and the
+    genome alignment of a read assigned without it (flair_quantify)."""
     if trust_ends:
         # the read end must be near the transcript end, and in its terminal exon: a
         # last exon shorter than TRUST_ENDS_WINDOW let a read stopping before it pass
-        return abs(transcript_edge - read_edge) <= TRUST_ENDS_WINDOW and disttoblock >= SPLICE_SITE_FLANK
-    elif unique_bound:
+        return (end_dist <= TRUST_ENDS_WINDOW) and (exon_covered >= SPLICE_SITE_FLANK)
+    elif unique_bound_dist is not None:
         # NOTE: I originally had this so that read ends needed to be closer to the end of the transcript than the exon edge, but found that was too stringent, especially after normalizing ends
-        if transcript_edge < unique_bound:  # left end of transcript
-            return unique_bound - read_edge >= SPLICE_SITE_FLANK  # and disttoblock > abs(transcript_edge - read_edge)
-        else:
-            return read_edge - unique_bound >= SPLICE_SITE_FLANK  # and disttoblock > abs(transcript_edge - read_edge)
+        return unique_bound_dist >= SPLICE_SITE_FLANK
     else:
-        return disttoblock >= SPLICE_SITE_FLANK
+        return exon_covered >= SPLICE_SITE_FLANK
+
+
+def _unique_bound_dist(unique_bound, read_edge, left_end):
+    "the bases a read's end reaches past a unique sequence boundary, None without one"
+    if not unique_bound:
+        return None
+    return (unique_bound - read_edge) if left_end else (read_edge - unique_bound)
 
 
 def check_firstlastexon(first_blocksize, last_blocksize, read_start, read_end, tlen, trust_ends, unique_bound_left, unique_bound_right):
     """Require the read to cover enough of both the first and last exons
     of a multi-exon transcript."""
-    left_coverage = check_exonenddist(first_blocksize, read_start, 0, trust_ends, first_blocksize - read_start, unique_bound_left)
-    right_coverage = check_exonenddist(last_blocksize, read_end, tlen, trust_ends, read_end - (tlen - last_blocksize), unique_bound_right)
+    left_coverage = covers_terminal_exon(first_blocksize - read_start, read_start,
+                                         _unique_bound_dist(unique_bound_left, read_start, True), trust_ends)
+    right_coverage = covers_terminal_exon(read_end - (tlen - last_blocksize), tlen - read_end,
+                                          _unique_bound_dist(unique_bound_right, read_end, False), trust_ends)
     return right_coverage and left_coverage
 
 
@@ -224,7 +232,7 @@ def check_stringent(coveredpos, exonpos, tlen, blockstarts, blocksizes, trust_en
     first_blocksize, last_blocksize = exonpos[0], exonpos[-1]
     # covers enough bases into the first and last exons
     if len(exonpos) == 1:  # single exon transcript
-        return check_singleexon(read_start, read_end, tlen)
+        return covers_single_exon(read_end - read_start, tlen)
     else:
         if tname in transcript_to_unique_bounds:
             unique_bound_left = transcript_to_unique_bounds[tname]['left']  # can also be None

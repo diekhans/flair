@@ -20,6 +20,15 @@ def parse_args():
                              'are not length normalized, giving reads per million')
     return parser.parse_args()
 
+def _isoform_size(sizes, isoform_id, sizefile):
+    try:
+        return sizes[isoform_id]
+    except KeyError as ex:
+        raise FlairInputDataError(f"{sizefile}: no length for isoform {isoform_id}; the names are the whole "
+                                  f"FASTA header line, so the FASTA the lengths came from must be the one "
+                                  f"the counts matrix names, with no description after the id") from ex
+
+
 def counts_to_tpm(counts_matrix, outfilename, sizefile=None, empty_ok=False):
     """Write a counts matrix as transcripts per million.  A sample with no counts in
     any row has no TPM: an error, or with empty_ok, 0 in every row.  Returns the names
@@ -37,8 +46,8 @@ def counts_to_tpm(counts_matrix, outfilename, sizefile=None, empty_ok=False):
         line = line.rstrip().split('\t')
         ids, counts = line[:num_id_cols], line[num_id_cols:]
         isoform_id = ids[-1]
-        if sizes:
-            rpk = [float(count) / sizes[isoform_id] for count in counts]
+        if sizefile:
+            rpk = [float(count) / _isoform_size(sizes, isoform_id, sizefile) for count in counts]
         else:
             rpk = [float(count) for count in counts]
         for n in range(num_samples):

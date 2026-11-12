@@ -1,6 +1,6 @@
 """Checks on a matrix before it is handed to DRIMSeq.
 
-DRIMSeq indexes its rows by feature_id and refuses a repeat, reporting it as a
+DRIMSeq indexes its rows by feature_id and fails on a repeat, reporting it as a
 failed stopifnot that names neither the file nor a value.  Both commands that run
 DRIMSeq check here first: flair diffsplice with an events quant TSV, flair diffexp
 with its DRIMSeq counts matrix.

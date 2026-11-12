@@ -17,7 +17,7 @@ from flair.output_compress import compressed_path, open_seekable_output
 from flair import thread_share
 from flair.pycbio.hgdata.bed import BedReader, BedBlock
 from flair.flair_bed import FlairBed
-from flair.terminal_exon_ends import GeneTerminalExonEnds
+from flair.terminal_exon_ends import GeneTerminalExonEnds, NORM_END_EXTRA_LEN
 from flair.count_sam_transcripts import run_count_sam_transcripts, TRUST_ENDS_WINDOW, MINIMAP2_SECONDARY_ALIGNMENTS
 from flair.annotation_precheck import read_introns, splice_sites_cleanly_aligned
 from flair.interval_index import IntervalIndex
@@ -80,7 +80,7 @@ def add_subparser(subparsers):
     parser.add_argument('--normalize_ends', action='store_true',
                         help="give each spliced isoform, for counting, the furthest ends of its gene's isoforms with "
                              'terminal exons like its own, so reads are counted whatever their ends; recommended '
-                             'without --trust_ends when the isoforms of a gene differ only in their ends')
+                             'when the isoforms of a gene differ only in their ends, and not usable with --trust_ends')
     parser.add_argument('--temp_dir',
                         help='directory for temporary files; each run makes its own directory, named for the '
                              'output, in it, with the reads and isoforms of each batch of genes realigned '
@@ -93,6 +93,12 @@ def add_subparser(subparsers):
 def quantify_cmd(args):
     if args.keep_intermediate and args.temp_dir is None:
         raise FlairInputDataError('--keep_intermediate requires --temp_dir, the directory to keep them in')
+    if args.trust_ends and args.normalize_ends:
+        raise FlairInputDataError(
+            f"--trust_ends and --normalize_ends cannot be used together: --normalize_ends moves a "
+            f"spliced isoform's ends out to the furthest ends of its gene's isoforms, padded by "
+            f"{NORM_END_EXTRA_LEN} bases, which is beyond the {TRUST_ENDS_WINDOW} bases --trust_ends "
+            f"allows, so every spliced isoform would count zero reads; give one or the other")
     check_input_files(manifest=args.manifest, genome=args.genome, isoform_bed=args.isoform_bed)
     quantify(manifest=args.manifest, genome=args.genome, isoform_bed=args.isoform_bed,
              output=args.output, threads=args.threads,
@@ -184,14 +190,16 @@ def load_isoform_data(isoform_bed):
                                       f"{gene_info.strand} and on {bed.chrom} {bed.strand}; a gene's isoforms are on one "
                                       'chromosome and strand.  A set from an older flair combine can have such genes: '
                                       'combine the samples again with the current flair combine')
-        # isoforms are realigned to and counted by name, a batch of genes at a time
-        if (bed.chrom, bed.name) in names:
-            raise FlairInputDataError(f"{isoform_bed}: isoform name '{bed.name}' is used more than once on {bed.chrom}")
-        names[(bed.chrom, bed.name)] = bed.gene_id
+        # isoforms are realigned to and counted by name alone, a batch of genes at a
+        # time, so two isoforms of one name anywhere would share a counts row
+        if bed.name in names:
+            raise FlairInputDataError(f"{isoform_bed}: isoform name '{bed.name}' is used more than once; "
+                                      "each isoform of a set must have its own name, whatever its chromosome")
+        names[bed.name] = bed.gene_id
         gene_info.add_isoform_bed(bed)
     if not gene_data and not fusions:
         raise FlairInputDataError(f'{isoform_bed}: no isoforms')
-    _order_fusion_pieces(isoform_bed, fusions, {name for _, name in names})
+    _order_fusion_pieces(isoform_bed, fusions, set(names))
     return gene_data, fusions
 
 def _order_fusion_pieces(isoform_bed, fusions, other_names):

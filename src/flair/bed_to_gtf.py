@@ -81,6 +81,10 @@ def _collect_gene_records(query, force, use_cds, is_flair_bed):  # noqa: C901 - 
         if is_flair_bed:
             transcript_id = name
             gene_id = bed.gene_id
+            if gene_id is None:
+                raise FlairInputDataError(f'{query}: isoform {name} has no gene id in column 13; every row of a '
+                                          'flair BED must name its gene, or use --force to take each isoform '
+                                          'name as its gene id')
         elif force:
             transcript_id, gene_id = name, name
         else:
@@ -94,39 +98,56 @@ def _collect_gene_records(query, force, use_cds, is_flair_bed):  # noqa: C901 - 
         _add_record(gene_to_records[gene_id], ('transcript', bed.chrom, bed.chromStart, bed.chromEnd, bed.strand, attrs))
 
         for b, blk in enumerate(bed.blocks):
-            exon_attrs = _make_attrs(gene_id, transcript_id, bed, is_flair_bed, exon_number=b)
+            # 1-based and counted 5' to 3', as the GTF specification has it
+            number = b + 1 if bed.strand == '+' else len(bed.blocks) - b
+            exon_attrs = _make_attrs(gene_id, transcript_id, bed, is_flair_bed, exon_number=number)
             _add_record(gene_to_records[gene_id], ('exon', bed.chrom, blk.start, blk.end, bed.strand, exon_attrs))
-            if bed.thickStart != bed.thickEnd and (bed.thickStart != bed.chromStart or bed.thickEnd != bed.chromEnd) and use_cds:
-                if bed.thickStart < blk.start and blk.end < bed.thickEnd:  # in CDS
-                    _add_record(gene_to_records[gene_id], ('CDS', bed.chrom, blk.start, blk.end, bed.strand, exon_attrs))
-                elif blk.end < bed.thickStart:  # fully left of CDS
-                    if bed.strand == '+':
-                        _add_record(gene_to_records[gene_id], ('5UTR', bed.chrom, blk.start, blk.end, bed.strand, exon_attrs))
-                    elif bed.strand == '-':
-                        _add_record(gene_to_records[gene_id], ('3UTR', bed.chrom, blk.start, blk.end, bed.strand, exon_attrs))
-                elif blk.start > bed.thickEnd:  # fully right of CDS
-                    if bed.strand == '+':
-                        _add_record(gene_to_records[gene_id], ('3UTR', bed.chrom, blk.start, blk.end, bed.strand, exon_attrs))
-                    elif bed.strand == '-':
-                        _add_record(gene_to_records[gene_id], ('5UTR', bed.chrom, blk.start, blk.end, bed.strand, exon_attrs))
-                elif blk.start <= bed.thickStart <= blk.end:  # left end of CDS in exon
-                    if bed.strand == '+':
-                        _add_record(gene_to_records[gene_id], ('5UTR', bed.chrom, blk.start, bed.thickStart, bed.strand, exon_attrs))
-                        _add_record(gene_to_records[gene_id], ('start_codon', bed.chrom, bed.thickStart, min(bed.thickStart + 3, blk.end), bed.strand, attrs))
-                        _add_record(gene_to_records[gene_id], ('CDS', bed.chrom, bed.thickStart, blk.end, bed.strand, exon_attrs))
-                    elif bed.strand == '-':
-                        _add_record(gene_to_records[gene_id], ('3UTR', bed.chrom, blk.start, bed.thickStart, bed.strand, exon_attrs))
-                        _add_record(gene_to_records[gene_id], ('CDS', bed.chrom, bed.thickStart, blk.end, bed.strand, exon_attrs))
-                elif blk.start <= bed.thickEnd <= blk.end:  # right end of CDS in exon
-                    if bed.strand == '+':
-                        _add_record(gene_to_records[gene_id], ('CDS', bed.chrom, blk.start, bed.thickEnd, bed.strand, exon_attrs))
-                        _add_record(gene_to_records[gene_id], ('3UTR', bed.chrom, bed.thickEnd, blk.end, bed.strand, exon_attrs))
-                    elif bed.strand == '-':
-                        _add_record(gene_to_records[gene_id], ('CDS', bed.chrom, blk.start, bed.thickEnd, bed.strand, exon_attrs))
-                        _add_record(gene_to_records[gene_id], ('start_codon', bed.chrom, max(bed.thickEnd - 3, blk.start), bed.thickEnd, bed.strand, attrs))
-                        _add_record(gene_to_records[gene_id], ('5UTR', bed.chrom, bed.thickEnd, blk.end, bed.strand, exon_attrs))
+            if use_cds and _has_cds(bed):
+                _add_cds_records(gene_to_records[gene_id], bed, blk, attrs, exon_attrs)
 
     return gene_to_records
+
+
+def _has_cds(bed):
+    """A BED names a CDS with thickStart below thickEnd.  A thick range covering the
+    whole transcript is taken for an absent CDS, as gtf_to_bed wrote one before it
+    used the thickStart == thickEnd convention."""
+    return (bed.thickStart != bed.thickEnd) and ((bed.thickStart != bed.chromStart) or (bed.thickEnd != bed.chromEnd))
+
+
+def _utr_feature(strand, before_cds):
+    "the name of the UTR part of an exon before or after the CDS on this strand"
+    if before_cds:
+        return '5UTR' if strand == '+' else '3UTR'
+    else:
+        return '3UTR' if strand == '+' else '5UTR'
+
+
+def _add_cds_records(records, bed, blk, attrs, exon_attrs):
+    """The CDS and UTR parts of one block, each written only where it is not empty, so
+    a block holding the whole CDS gets a UTR on both sides of it."""
+    utr_left_end = min(blk.end, bed.thickStart)
+    if blk.start < utr_left_end:
+        _add_record(records, (_utr_feature(bed.strand, True), bed.chrom, blk.start, utr_left_end,
+                              bed.strand, exon_attrs))
+    cds_start, cds_end = max(blk.start, bed.thickStart), min(blk.end, bed.thickEnd)
+    if cds_start < cds_end:
+        _add_record(records, ('CDS', bed.chrom, cds_start, cds_end, bed.strand, exon_attrs))
+        _add_start_codon(records, bed, blk, attrs)
+    utr_right_start = max(blk.start, bed.thickEnd)
+    if utr_right_start < blk.end:
+        _add_record(records, (_utr_feature(bed.strand, False), bed.chrom, utr_right_start, blk.end,
+                              bed.strand, exon_attrs))
+
+
+def _add_start_codon(records, bed, blk, attrs):
+    "the start codon, where this block holds the first base of the CDS"
+    if (bed.strand == '+') and (blk.start <= bed.thickStart < blk.end):
+        _add_record(records, ('start_codon', bed.chrom, bed.thickStart,
+                              min(bed.thickStart + 3, blk.end), bed.strand, attrs))
+    elif (bed.strand == '-') and (blk.start < bed.thickEnd <= blk.end):
+        _add_record(records, ('start_codon', bed.chrom, max(bed.thickEnd - 3, blk.start),
+                              bed.thickEnd, bed.strand, attrs))
 
 
 if __name__ == "__main__":

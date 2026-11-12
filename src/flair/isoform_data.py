@@ -21,6 +21,11 @@ COMPBASE = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'U': 'A',
             'B': 'V', 'D': 'H', 'H': 'D', 'V': 'B', 'N': 'N',
             '.': '.', '-': '-'}
 
+# CIGAR operations that align a base to the reference, and those that advance
+# the reference position without an intron.
+ALIGNED_CIGAR_OPS = (pysam.CIGAR_OPS.CMATCH, pysam.CIGAR_OPS.CEQUAL, pysam.CIGAR_OPS.CDIFF)
+REF_CONSUMING_CIGAR_OPS = ALIGNED_CIGAR_OPS + (pysam.CIGAR_OPS.CDEL,)
+
 POLYA_MIN_FRAC = 0.6
 POLYA_SEARCH_WINDOW = 5
 POLYA_MIN_LEN = 10
@@ -350,6 +355,17 @@ class ReadRec:
             right_polyA = _check_polyA(right_seq)
         return left_polyA, right_polyA
 
+    @staticmethod
+    def _add_cigar_intron(intron_blocks, has_match, ref_pos, length):
+        """Record an intron running from ref_pos to ref_pos + length.  With no
+        aligned base since the previous intron, it extends that intron instead,
+        since insertions and deletions between two N operations leave no exon
+        between them.  An N before any aligned base is not an intron."""
+        if has_match:
+            intron_blocks.append([ref_pos, ref_pos + length])
+        elif len(intron_blocks) > 0:
+            intron_blocks[-1][1] = ref_pos + length
+
     @classmethod
     def from_read(cls, read, *, genome=None):
         """Create a ReadRec from a pysam aligned read."""
@@ -358,19 +374,14 @@ class ReadRec:
         ref_pos = align_start
         intron_blocks = []
         has_match = False
-        for block in read.cigartuples:
-            if block[0] == pysam.CIGAR_OPS.CREF_SKIP:  # intron
-                if has_match:
-                    intron_blocks.append([ref_pos, ref_pos + block[1]])
-                # this fixes weird bug if there's an intron, then an insertion, then another intron???
-                elif len(intron_blocks) > 0:
-                    intron_blocks[-1][1] += block[1]
+        for op, length in read.cigartuples:
+            if op == pysam.CIGAR_OPS.CREF_SKIP:  # intron
+                cls._add_cigar_intron(intron_blocks, has_match, ref_pos, length)
                 has_match = False
-                ref_pos += block[1]
-            elif block[0] in (pysam.CIGAR_OPS.CMATCH, pysam.CIGAR_OPS.CEQUAL, pysam.CIGAR_OPS.CDIFF, pysam.CIGAR_OPS.CDEL):  # consumes reference
-                ref_pos += block[1]
-                if block[0] in (pysam.CIGAR_OPS.CMATCH, pysam.CIGAR_OPS.CEQUAL, pysam.CIGAR_OPS.CDIFF):
-                    has_match = True
+                ref_pos += length
+            elif op in REF_CONSUMING_CIGAR_OPS:
+                ref_pos += length
+                has_match = has_match or (op in ALIGNED_CIGAR_OPS)
         junc_direction = "-" if read.is_reverse else "+"
         juncs = tuple(Junc(blk[0], blk[1]) for blk in intron_blocks)
         left_polyA, right_polyA = cls._detect_poly_tails(read)

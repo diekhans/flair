@@ -644,28 +644,27 @@ def format_line(line):
 
 
 def get_forced_junctions(forced_junction_file):
-    """
-    File has chr start end for introns that would like to be kept in analysis.
-    set will be "chr_start_end"
-    """
-    jcn_file = fileOps.opengz(forced_junction_file)
-    forced_junctions = set([])
-
-    for line_num, line in enumerate(jcn_file, 1):
-        line = format_line(line)
-
-        line_list = line.split("\t")
-
-        # Slicing list in case strand is included in the file
-        if len(line_list) < 3:
-            raise FlairInputDataError(f"{forced_junction_file} line {line_num} has {len(line_list)} columns; "
-                                      "a forced junction file is tab-separated chrom, start, end")
-
-        forced_junctions.add("_".join(line_list[0:3]))
-
-    jcn_file.close()
-
+    """The introns of a BED of junctions to keep whatever their confidence score, as
+    the chrom:start-end keys is_confident_junction tests, with the BED's zero-based
+    start taken to the one-based intron start those keys use."""
+    forced_junctions = set()
+    with fileOps.opengz(forced_junction_file) as jcn_file:
+        for line_num, line in enumerate(jcn_file, 1):
+            # a strand column is allowed and not read
+            line_list = format_line(line).split("\t")
+            if len(line_list) < 3:
+                raise FlairInputDataError(f"{forced_junction_file} line {line_num} has {len(line_list)} columns; "
+                                          "a forced junction file is tab-separated chrom, start, end")
+            forced_junctions.add(_forced_junction_key(forced_junction_file, line_num, line_list))
     return forced_junctions
+
+
+def _forced_junction_key(forced_junction_file, line_num, line_list):
+    try:
+        return "%s:%d-%d" % (line_list[0], int(line_list[1]) + 1, int(line_list[2]))
+    except ValueError as ex:
+        raise FlairInputDataError(f"{forced_junction_file} line {line_num}: start and end must be integers, "
+                                  f"found {line_list[1]!r} and {line_list[2]!r}") from ex
 
 
 def get_pos_to_count(blocklist):

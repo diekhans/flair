@@ -36,6 +36,19 @@ ID_COLUMNS = ('gene_id', 'isoform_id')
 # ids named when an error reports a set of offending ids, the rest being redundant
 MAX_REPORTED_IDS = 10
 
+# names a sample column may not take: the reader's row class gives counts its own
+# meaning, and TsvRow sets an attribute per column, so such a column cannot be read
+RESERVED_SAMPLE_COLUMNS = ('counts', *ID_COLUMNS)
+
+def check_sample_columns(counts_matrix_tsv, sample_columns):
+    "a sample name that cannot be a column of a counts matrix"
+    taken = [col for col in sample_columns if col in RESERVED_SAMPLE_COLUMNS]
+    if taken:
+        raise FlairInputDataError(
+            f"{counts_matrix_tsv}: sample {', '.join(taken)} cannot name a column of a counts "
+            f"matrix, which already has {', '.join(RESERVED_SAMPLE_COLUMNS)}; rename the sample "
+            "in the manifest")
+
 class CountsRow(namedtuple('CountsRow', ('gene_id', 'isoform_id', 'counts'))):
     """One row: one isoform of one gene, and its count in each sample, in column
     order.  Rows are built in memory by quantify, combine and diffexp as well as
@@ -59,6 +72,7 @@ class CountsMatrixReader(TsvReader):
                          typeMap={col: str for col in ID_COLUMNS},
                          defaultColType=countType)
         self._check_id_columns(counts_matrix_tsv)
+        check_sample_columns(counts_matrix_tsv, self.columns[len(ID_COLUMNS):])
 
     def _check_id_columns(self, counts_matrix_tsv):
         found = tuple(self.columns[:len(ID_COLUMNS)])
@@ -82,6 +96,7 @@ class CountsMatrixWriter(TsvWriter):
     "Writes a counts matrix for the given samples, in column order."
 
     def __init__(self, counts_matrix_tsv, sample_columns, *, countType=int):
+        check_sample_columns(counts_matrix_tsv, sample_columns)
         super().__init__(counts_matrix_tsv,
                          columns=list(ID_COLUMNS) + list(sample_columns),
                          typeMap={col: str for col in ID_COLUMNS},

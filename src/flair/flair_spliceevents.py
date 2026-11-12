@@ -292,7 +292,7 @@ def spliceevents(args):
     with pysam.FastaFile(args.genome) as genome:
         report_regions = regions if regions is not None else chromosomes(genome, genome.references)
     plan = plan_correction(args, report_regions, bamfiles, regions is not None, temp_dir)
-    write_regions_bed(plan.regions, args.output + '.spliceevents.regions.bed')
+    write_regions_bed(plan.regions, args.output + '.spliceevents.regions.bed', compress=True)
 
     logging.info('building intron support database')
     junction_corrector = junction_corrector_factory(args.ss_window, args.junction_support, annot_gtf_data=plan.gtf_data,

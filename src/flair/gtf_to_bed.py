@@ -36,7 +36,9 @@ def write_bed_row(include_gene, name_sep, iso_to_cds, prev_transcript, blockstar
     if prev_transcript in iso_to_cds:
         cds_start, cds_end = iso_to_cds[prev_transcript]
     else:
-        cds_start, cds_end = tstart, tend
+        # the BED convention for a transcript with no CDS, rather than a thick range
+        # over the whole transcript, which browsers draw as a full-length CDS
+        cds_start, cds_end = tstart, tstart
     blocks = [BedBlock(blockstarts[i], blockstarts[i] + blocksizes[i]) for i in range(blockcount)]
     # the gene goes in a column of its own rather than into the name, which could only
     # be split again with a heuristic that is wrong for a gene id containing '_'.  One

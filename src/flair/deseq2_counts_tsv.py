@@ -37,7 +37,9 @@ class Deseq2CountsWriter(TsvWriter):
                          defaultColType=str)
 
     def writeFeature(self, feature_id, counts):
-        self.writeRow([feature_id] + list(counts))
+        # DESeq2 takes integer counts, and diffexp sums them as floats, so a count
+        # arrives as 3.0 and is written 3, which Deseq2CountsReader reads back
+        self.writeRow([feature_id] + [round(count) for count in counts])
 
 @contextmanager
 def deseq2_counts_writer(deseq2_counts_tsv, sample_columns):

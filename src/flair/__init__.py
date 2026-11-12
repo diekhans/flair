@@ -68,15 +68,20 @@ class SeqRange(namedtuple("SeqRange",
         assert isinstance(strand, (str, NoneType)) and ((strand is None) or (strand in ('+', '-', '.', None)))
         return super(SeqRange, cls).__new__(cls, name, start, end, strand)
 
+    def __len__(self):
+        return self.end - self.start
+
 
 def range_overlap(a, b):
     """Return the overlap length between two ranges with .start/.end attributes. Returns 0 if no overlap."""
     return max(0, min(a.end, b.end) - max(a.start, b.start))
 
 def combine_regions(regions):
-    "regions sorted, with those overlapping or touching merged"
+    """regions sorted, with those overlapping or touching merged.  Sorting is on
+    name, start and end, since a strand of None and one of '+' do not compare, and
+    the merged regions carry no strand."""
     merged = []
-    for region in sorted(regions):
+    for region in sorted(regions, key=lambda r: (r.name, r.start, r.end)):
         if merged and merged[-1].name == region.name and region.start <= merged[-1].end:
             merged[-1] = SeqRange(region.name, merged[-1].start, max(merged[-1].end, region.end))
         else:

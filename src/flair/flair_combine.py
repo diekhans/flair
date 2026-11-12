@@ -2,7 +2,7 @@
 
 import logging
 import pysam
-from flair import FlairError
+from flair import FlairError, FlairInputDataError
 from flair.bed_to_gtf import bed_to_gtf
 from flair.cli_options import option_values
 from flair.combined_map_tsv import CombinedMapWriter
@@ -131,11 +131,22 @@ def _has_allele_info(bed):
     return bed.transcript_class == 'with_vars' or bed.allele_group is not None or bed.source_isoform is not None
 
 
+def _check_support(bedfile, bed):
+    """combine filters on read support and fractional support, so both columns must
+    be set, as flair transcriptome and flair isoalleles write them."""
+    for column, value in (('read_support (column 16)', bed.read_support),
+                          ('frac_support (column 17)', bed.frac_support)):
+        if value is None:
+            raise FlairInputDataError(f"{bedfile}: isoform {bed.name} has no {column}; flair combine needs it to "
+                                      f"filter on --min_reads and --min_percent_usage")
+
+
 def load_isos_by_id(bedfile):
     isotoinfo = {}
     mysamples = set()
     num_alleles = 0
     for bed in BedReader(bedfile, bedClass=FlairBed):
+        _check_support(bedfile, bed)
         num_alleles += _has_allele_info(bed)
         # by strand too: a single-exon isoform and one antisense to it, with
         # similar ends, aren't the same isoform
@@ -202,7 +213,7 @@ def filter_groups(ends_to_iso_groups, max_ends, minpercentusage, min_reads):
         for group in ends_to_iso_groups[1:]:
             groups_after_end_filtering[0].extend(group)  # adding to main group
     else:
-        groups_after_end_filtering = [x for x in ends_to_iso_groups if x[0][0].frac_support > minpercentusage and x[0][0].read_support >= min_reads]
+        groups_after_end_filtering = [x for x in ends_to_iso_groups if x[0][0].frac_support >= minpercentusage and x[0][0].read_support >= min_reads]
         if len(groups_after_end_filtering) == 0:
             groups_after_end_filtering = [ends_to_iso_groups[0], ]
     return groups_after_end_filtering
@@ -548,9 +559,9 @@ def combine(*, manifest, prefixes, isoform_beds, genome, output, end_window,
                 # group of them with similar ends is an isoform of its own, which
                 # max_ends mustn't merge, filtered on its own
                 groups_after_end_filtering = [group for group in ends_to_iso_groups
-                                              if max(x[0].frac_support for x in group) > min_frac_usage
+                                              if max(x[0].frac_support for x in group) >= min_frac_usage
                                               and sum(x[0].read_support for x in group) >= min_reads]
-            elif max_usage > min_frac_usage and tot_counts >= min_reads:
+            elif max_usage >= min_frac_usage and tot_counts >= min_reads:
                 # sum all reads from all files, but do median usage from original usages
                 # that way high counts files don't throw off the usage estimates
                 groups_after_end_filtering = filter_groups(ends_to_iso_groups, max_ends, min_frac_usage, min_reads)

@@ -123,13 +123,15 @@ The script will produce two images, one of the isoform models and another of the
 
 The most highly expressed isoforms across all the samples will be plotted.
 
-The minor isoforms are aggregated into a gray bar. You can toggle min_reads or
-color_palette to plot more isoforms.
+The minor isoforms are aggregated into a gray bar. You can toggle --min_reads or
+--palette to plot more isoforms.
 
 **Outputs**
 
- - gene_name_isoforms.png of isoform structures
- - gene_name_usage.png of isoform usage by sample
+ - gene_name_isoforms.pdf of isoform structures
+ - gene_name_usage.pdf of isoform usage by sample
+
+With -o, the prefix comes before the gene name.
 
 For example:
 

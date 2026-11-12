@@ -2,7 +2,7 @@
 OUTPUT.fusions.tsv: per final fusion, its preliminary and final reads, isoforms, and best
 supported breakpoint and isoform, most final reads first.
 """
-from flair.fusion_table import breakpoint, isoform_breakpoints, fusion_rows, write_table, FUSION_TABLE_COLUMNS
+from flair.fusion_table import piece_junction, isoform_breakpoints, fusion_rows, write_table, FUSION_TABLE_COLUMNS
 
 # pieces are (position in fusion, chrom, start, end, strand) in 0-based half-open coordinates
 ERGIC3 = (0, 'chr20', 35542078, 35548865, '+')
@@ -11,10 +11,10 @@ KRAS = (1, 'chr12', 25205245, 25227412, '-')
 
 def test_breakpoint_is_the_last_and_first_bases_1_based():
     "ERGIC3 (+) ends at its piece's last base, KRAS (-) starts at its piece's highest base"
-    assert breakpoint(ERGIC3, KRAS) == 'chr20:35548865(+)--chr12:25227412(-)'
+    assert piece_junction(ERGIC3, KRAS) == 'chr20:35548865(+)--chr12:25227412(-)'
     minus5 = (0, 'chr17', 64502925, 64503571, '-')
     plus3 = (1, 'chr1', 1000, 2000, '+')
-    assert breakpoint(minus5, plus3) == 'chr17:64502926(-)--chr1:1001(+)'
+    assert piece_junction(minus5, plus3) == 'chr17:64502926(-)--chr1:1001(+)'
 
 
 def test_each_junction_in_fusion_order():

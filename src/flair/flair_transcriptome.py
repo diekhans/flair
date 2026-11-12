@@ -63,7 +63,7 @@ DEFAULT_FILTER = 'nosubset'
 # them minimap2 reports in the realignment, for the read's own to be among them: with
 # the default 4, of a KIF5B--RET fusion's 123 reads, mostly 5' truncated, 74 were
 # assigned among its 20 isoforms, and 117 with 50
-KEEP_SUBSET_FILTERS = ('comprehensive', 'ginormous')
+KEEP_SUBSET_NAMED_FILTERS = ('comprehensive', 'ginormous')
 KEEP_SUBSET_SECONDARY_ALIGNMENTS = 50
 _SUPPORT_RATIO_FILTER_RE = re.compile(r'^(\d+(?:\.\d+)?)[xX]$')
 
@@ -73,6 +73,13 @@ def subset_support_ratio(filter_mode):
     exceed the isoforms it is a subset of to be kept; None for the named modes"""
     match = _SUPPORT_RATIO_FILTER_RE.match(filter_mode)
     return float(match.group(1)) if match else None
+
+
+def keeps_subset_isoforms(filter_mode):
+    """Does this --filter keep subset isoforms?  True for the named modes that keep
+    them all and for every <N>X mode, which keeps those with the reads to pass the
+    ratio."""
+    return (filter_mode in KEEP_SUBSET_NAMED_FILTERS) or (subset_support_ratio(filter_mode) is not None)
 
 
 def parse_filter(filter_mode):
@@ -866,7 +873,7 @@ def filter_single_exon_iso(args, single_exon, curr_group, all_isoforms):
                 else:  # is other single exon - check relative expression, by the --filter ratio
                     other_score = all_isoforms[exon.name].score
                     ratio = subset_support_ratio(args.filter) or SINGLE_EXON_EXPRESSION_RATIO
-                    if isoform.score >= args.sjc_support and other_score * ratio < isoform.score:
+                    if isoform.score >= args.single_exon_support and other_score * ratio < isoform.score:
                         expression_comp_with_superset.append(True)
                     else:
                         expression_comp_with_superset.append(False)
@@ -970,26 +977,8 @@ def filter_firstpass_isos(args, candidates, annots, removed_subsets=None):
         firstpass = {}
         for iso_name, isoform in candidates.isoforms.items():
             if isoform.juncs != ():
-                if args.filter == 'comprehensive':
-                    firstpass[iso_name] = isoform
-                else:
-                    assert isinstance(isoform.exons[0], Exon)  # FIXME tmp debugging
-                    supersets = []
-                    is_not_subset, unique_seq = filter_spliced_iso(args.filter, args.sjc_support, isoform.juncs, subset_check_exons(isoform),
-                                                                   iso_name, isoform.num_reads, annots,
-                                                                   candidates.junc_to_names, candidates.isoforms,
-                                                                   isoform.strand,
-                                                                   end_window=args.end_window, ss_window=args.ss_window,
-                                                                   supersets=supersets)
-                    if not is_not_subset:
-                        logging.debug(f"isoform dropped: subset of another isoform: {iso_name} ({isoform.num_reads} reads)")
-                        if removed_subsets is not None:
-                            removed_subsets[iso_name] = (isoform, [candidates.isoforms[name] for name in supersets],
-                                                         unique_seq)
-                    else:
-                        firstpass[iso_name] = isoform
-                        if len(unique_seq) > 0:
-                            iso_to_unique_bound[iso_name] = unique_seq
+                _filter_spliced_candidate(args, iso_name, isoform, candidates, annots,
+                                          firstpass, iso_to_unique_bound, removed_subsets)
         # HANDLE SINGLE EXONS SEPARATELY - group first - one traversal of each strand's
         # exons, a single-exon isoform only compared with isoforms on its strand.  3' UTR
         # fragments are of the spliced isoforms kept above, not of candidates the
@@ -1000,6 +989,31 @@ def filter_firstpass_isos(args, candidates, annots, removed_subsets=None):
                                                _ThreePrimeFragments(spliced_kept, annots, strand))
 
     return firstpass, iso_to_unique_bound
+
+def _filter_spliced_candidate(args, iso_name, isoform, candidates, annots, firstpass,
+                              iso_to_unique_bound, removed_subsets):
+    """Keep or drop one spliced candidate and record its unique sequence boundaries.
+    With --filter comprehensive every candidate is kept, but the subset check still
+    runs: the boundaries it returns are what the realignment needs to tell a subset
+    isoform's reads from those of the isoforms containing it."""
+    supersets = []
+    is_not_subset, unique_seq = filter_spliced_iso(args.filter, args.sjc_support, isoform.juncs,
+                                                   subset_check_exons(isoform),
+                                                   iso_name, isoform.num_reads, annots,
+                                                   candidates.junc_to_names, candidates.isoforms,
+                                                   isoform.strand,
+                                                   end_window=args.end_window, ss_window=args.ss_window,
+                                                   supersets=supersets)
+    if is_not_subset or (args.filter == 'comprehensive'):
+        firstpass[iso_name] = isoform
+        if len(unique_seq) > 0:
+            iso_to_unique_bound[iso_name] = unique_seq
+    else:
+        logging.debug(f"isoform dropped: subset of another isoform: {iso_name} ({isoform.num_reads} reads)")
+        if removed_subsets is not None:
+            removed_subsets[iso_name] = (isoform, [candidates.isoforms[name] for name in supersets],
+                                         unique_seq)
+
 
 def write_first_pass_isoforms(iso_name, isoform, max_terminal_exons_ends, unique_bound, unique_fh, iso_fh, seq_fh, genome):
     # the exons the subset check compared, with the isoform's best supported ends,
@@ -1590,7 +1604,7 @@ def _run_region_reads(*, partition, region, gtf_data, junction_corrector, args):
                                               directRNA=args.directRNA, trust_strand=args.trust_strand,
                                               fusion_breakpoints=args.fusion_breakpoints,
                                               secondary_alignments=(KEEP_SUBSET_SECONDARY_ALIGNMENTS
-                                                                    if args.filter in KEEP_SUBSET_FILTERS
+                                                                    if keeps_subset_isoforms(args.filter)
                                                                     else MINIMAP2_SECONDARY_ALIGNMENTS))
             else:
                 generate_empty_intermediate_files(partition.file_prefix, ['.isoforms.counts.tsv', '.countsam.read.map.tsv', '.isoforms.ends.tsv'])

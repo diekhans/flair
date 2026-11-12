@@ -305,30 +305,61 @@ def _parse_all_attributes(attrs_str: str, record_type: str, attr_re=_ALL_ATTR_RE
         attrs['tag'] = _parse_tags(attrs_str)
     return attrs
 
+def _is_name_char(ch: str) -> bool:
+    return ch.isalnum() or (ch == '_')
+
+def _prev_non_space(attrs_str: str, idx: int):
+    "the character before idx, skipping spaces, or None at the start of the string"
+    idx -= 1
+    while (idx >= 0) and attrs_str[idx].isspace():
+        idx -= 1
+    return attrs_str[idx] if idx >= 0 else None
+
+def _is_attr_key_at(attrs_str: str, idx: int, key: str) -> bool:
+    """Is key at idx a whole attribute name?  False for the tail of a longer name
+    such as gene_id inside ref_gene_id, for the head of one such as gene_id inside
+    gene_id_version, and for a match inside a quoted value."""
+    end = idx + len(key)
+    if (end < len(attrs_str)) and _is_name_char(attrs_str[end]):
+        return False
+    else:
+        return _prev_non_space(attrs_str, idx) in (None, ';')
+
 def _find_attr_key(attrs_str: str, key: str) -> int:
-    """Index of key as a whole attribute name, skipping matches that are the tail
-    of a longer name such as gene_id inside ref_gene_id.  -1 when not found."""
+    "Index of key as a whole attribute name, or -1 when not found."
     idx = attrs_str.find(key)
-    while (idx > 0) and (attrs_str[idx - 1].isalnum() or (attrs_str[idx - 1] == '_')):
+    while (idx >= 0) and not _is_attr_key_at(attrs_str, idx, key):
         idx = attrs_str.find(key, idx + 1)
     return idx
 
+def _skip_spaces(attrs_str: str, idx: int) -> int:
+    while (idx < len(attrs_str)) and attrs_str[idx].isspace():
+        idx += 1
+    return idx
+
+def _quoted_attr_value(attrs_str: str, start: int):
+    end = attrs_str.find('"', start)
+    return attrs_str[start:end] if end >= 0 else None
+
+def _unquoted_attr_value(attrs_str: str, start: int):
+    end = start
+    while (end < len(attrs_str)) and (attrs_str[end] != ';') and not attrs_str[end].isspace():
+        end += 1
+    return attrs_str[start:end] if end > start else None
+
 def _find_flair_attr_value(attrs_str: str, key: str):
-    """Find the quoted value of a single GTF attribute by key using str.find().
-    Returns the value as a str or None if not found."""
-    alen = len(attrs_str)
+    """The value of one GTF attribute, as a str, or None when the key is absent.
+    Quoted and unquoted values are both taken, as _ALL_ATTR_RE takes them."""
     idx = _find_attr_key(attrs_str, key)
     if idx < 0:
         return None
-    # skip whitespace to opening quote
-    val_idx = idx + len(key)
-    while val_idx < alen and attrs_str[val_idx] == ' ':
-        val_idx += 1
-    if val_idx >= alen or attrs_str[val_idx] != '"':
+    val_idx = _skip_spaces(attrs_str, idx + len(key))
+    if val_idx >= len(attrs_str):
         return None
-    val_start = val_idx + 1
-    val_end = attrs_str.find('"', val_start)
-    return attrs_str[val_start:val_end] if val_end >= 0 else None
+    elif attrs_str[val_idx] == '"':
+        return _quoted_attr_value(attrs_str, val_idx + 1)
+    else:
+        return _unquoted_attr_value(attrs_str, val_idx)
 
 def _parse_basic_attributes(attrs_str: str, record_type: str) -> Attrs:
     """Fast-path parser for BASIC_ATTRS using str.find() instead of regex."""

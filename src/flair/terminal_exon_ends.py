@@ -15,6 +15,12 @@ NORM_END_EXTRA_LEN = 100
 NORM_END_SS_WINDOW = 50
 
 
+def _window(splice_site):
+    """The positions within NORM_END_SS_WINDOW of a splice site, both sides inclusive,
+    so that two splice sites are grouped whichever of them is asked about."""
+    return range(splice_site - NORM_END_SS_WINDOW, splice_site + NORM_END_SS_WINDOW + 1)
+
+
 class GeneTerminalExonEnds:
     """Furthest terminal exon ends of one gene, grouped by the splice site at the
     inner edge of the terminal exon."""
@@ -36,13 +42,13 @@ class GeneTerminalExonEnds:
     def first_exon_start(self, first_ss):
         "min start of first exons with a splice site within the window of first_ss"
         return min(self.first_exon_starts[i]
-                   for i in range(first_ss - NORM_END_SS_WINDOW, first_ss + NORM_END_SS_WINDOW)
+                   for i in _window(first_ss)
                    if i in self.first_exon_starts)
 
     def last_exon_end(self, last_ss):
         "max end of last exons with a splice site within the window of last_ss"
         return max(self.last_exon_ends[i]
-                   for i in range(last_ss - NORM_END_SS_WINDOW, last_ss + NORM_END_SS_WINDOW)
+                   for i in _window(last_ss)
                    if i in self.last_exon_ends)
 
     def furthest_ends(self, first_ss, last_ss):
@@ -91,8 +97,13 @@ class TerminalExonEnds:
             gene_entry.add(first_start, first_ss, last_ss, last_end)
 
     def fetch(self, gene_id, strand) -> GeneTerminalExonEnds:
-        """return entry or error"""
-        return self._by_gene[(gene_id, strand)]
+        "the gene's entry, which add_transcript must have created"
+        try:
+            return self._by_gene[(gene_id, strand)]
+        except KeyError as ex:
+            raise FlairInputDataError(f"no terminal exon ends recorded for gene '{gene_id}' on strand "
+                                      f"'{strand}'; every transcript of a gene must be added with "
+                                      "add_transcript before its ends are normalized") from ex
 
     def furthest_ends(self, gene_id, strand, exon_bounds):
         """return the unpadded (start, end) for a spliced transcript in the gene, given

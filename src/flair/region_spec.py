@@ -4,7 +4,9 @@ BED line.  Combined with the regions of a --region_bed file."""
 
 import re
 from flair import SeqRange, FlairInputDataError, combine_regions
+from flair.output_compress import compressed_path
 from flair.pycbio.hgdata.bed import BedReader
+from flair.pycbio.sys import fileOps
 
 # appended to the help of each program's --region option
 REGION_FORMAT_HELP = ("A region is either one-based and closed, chr1:1,000-2,000, or "
@@ -60,7 +62,7 @@ def parse_regions(region_specs, region_bed=None):
     if neither was given"""
     if not region_specs and (region_bed is None):
         return None
-    regions = [parse_region(spec) for spec in region_specs]
+    regions = [parse_region(spec) for spec in (region_specs or ())]
     if region_bed is not None:
         regions += read_region_bed(region_bed)
     if len(regions) == 0:
@@ -75,8 +77,11 @@ def write_regions(regions, fh):
         fh.write(f"{region.name}\t{region.start}\t{region.end}\n")
 
 
-def write_regions_bed(regions, bed_file):
-    "the regions as a BED3, for a program that takes a region BED; returns the path"
-    with open(bed_file, 'w') as fh:
+def write_regions_bed(regions, bed_file, *, compress=False):
+    """the regions as a BED3, for a program that takes a region BED; returns the path.
+    With compress, which a run's own output passes and a temporary file does not, the
+    path is the one compressed_path gives."""
+    path = compressed_path(bed_file) if compress else bed_file
+    with fileOps.opengz(path, 'w') as fh:
         write_regions(regions, fh)
-    return bed_file
+    return path

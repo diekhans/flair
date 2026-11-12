@@ -65,7 +65,7 @@ class FlairBed(Bed):
         elif self.productivity is not None:
             return PRODUCTIVITY_COLORS[self.productivity]
         else:
-            return get_strand_rgb(self.strand, max((self.blockCount, 0)))
+            return get_strand_rgb(self.strand, max(self.blockCount - 1, 0))
 
     def addBlock(self, start, end):
         super().addBlock(start, end)
@@ -129,7 +129,7 @@ class FlairBed(Bed):
     def parse(cls, row, numStdCols=None, fixScores=None, rawScores=False):  # numStdCols is only here for compatibility with BedReader
         needed_cols = 12 + len(cls.__slots__)
         if len(row) != needed_cols:
-            raise BedException("expected at {} columns, found {}: ".format(needed_cols, len(row)))
+            raise BedException(f"a flair BED row has {needed_cols} columns, found {len(row)}: {row}")
         try:
             return cls._parse(row, fixScores=fixScores, rawScores=rawScores)
         except Exception as ex:

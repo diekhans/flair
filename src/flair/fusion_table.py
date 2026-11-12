@@ -45,7 +45,7 @@ def isoform_pieces(fusion_isoforms_bed):
     return pieces
 
 
-def breakpoint(piece5, piece3):
+def piece_junction(piece5, piece3):
     """the junction of a 5' piece and the 3' piece after it, as chrom:pos(strand) of the
     5' piece's last base and of the 3' piece's first base, 1-based, joined by --"""
     _, chrom5, start5, end5, strand5 = piece5
@@ -58,7 +58,7 @@ def breakpoint(piece5, piece3):
 def isoform_breakpoints(pieces):
     "an isoform's junctions between consecutive loci, in fusion order, comma-separated"
     pieces = sorted(pieces)
-    return ','.join(breakpoint(pieces[k], pieces[k + 1]) for k in range(len(pieces) - 1))
+    return ','.join(piece_junction(pieces[k], pieces[k + 1]) for k in range(len(pieces) - 1))
 
 
 def fusion_row(genes, isos, prelim_reads, iso_contig, iso_reads, iso_pieces, genetoname):

@@ -1,6 +1,7 @@
 """The tables of splicing events: their columns, the rows each region writes, and
 their combination into a run's.  Used by flair spliceevents"""
 
+from flair.output_compress import compressed_path, output_compression
 from flair.partition_runner import combine_temp_files_by_suffix
 from flair.io_utils import sort_bed_file
 from statistics import median
@@ -89,7 +90,8 @@ REGION_OUTPUT_SUFFIXES = ('.spliceevents.bed', *EVENT_TABLE_SUFFIXES, TOTALS_SUF
 def combine_region_tables(output, prefixes):
     """the regions' tables as the run's, OUTPUT.spliceevents.*, the BED sorted by position
     as every final BED is.  Each region's table parts carry the header, kept once"""
-    combine_temp_files_by_suffix(output, prefixes, ['.spliceevents.bed'])
-    sort_bed_file(output + '.spliceevents.bed')
+    compress = output_compression()
+    combine_temp_files_by_suffix(output, prefixes, ['.spliceevents.bed'], compress=compress)
+    sort_bed_file(compressed_path(output + '.spliceevents.bed'))
     tables = [*EVENT_TABLE_SUFFIXES, TOTALS_SUFFIX]
-    combine_temp_files_by_suffix(output, prefixes, tables, headers=tables)
+    combine_temp_files_by_suffix(output, prefixes, tables, headers=tables, compress=compress)

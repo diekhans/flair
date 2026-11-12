@@ -6,7 +6,7 @@ Columns, in order:
   isoform_id   the isoform
   <sample>     one column per sample, named by its sample id, holding TPM
 
-The same shape as a counts matrix, with the counts replaced by TPM, so it is read
+The same columns as a counts matrix, with the counts replaced by TPM, so it is read
 and written through counts_matrix_tsv with float values.  flair quantify --tpm
 writes it beside the counts matrix.
 """

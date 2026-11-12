@@ -16,7 +16,7 @@ def _add_corrected_spliced_read(read, readrec, aligned_juncs, genome, sj_to_ends
     readrec.junctions_from_annotation = from_annotation
     readrec.junctions_moved = juncs != aligned
     readrec.terminal_junctions_moved = not (
-        len(aligned) > 0
+        len(juncs) > 0 and len(aligned) > 0
         and all(abs(a - b) <= window for a, b in zip(juncs[0] + juncs[-1], aligned[0] + aligned[-1])))
     if not readrec.junctions_moved and genome is not None:
         readrec.clean_splice_sites = splice_sites_cleanly_aligned(read, juncs, genome)

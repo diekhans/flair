@@ -118,6 +118,23 @@ def find_altss(alljuncs, writer, search_threeprime=True):
                     n += 1
 
 
+def _ir_event_kept(ir_junction, sample_names):
+    """An intron retention event needs an isoform retaining the intron, and, when
+    counts were given, reads on that side."""
+    if len(ir_junction['inclusion']['isos']) == 0:
+        return False
+    else:
+        return (not sample_names) or (sum(ir_junction['inclusion']['counts']) > 0)
+
+
+def _write_ir_event(writer, chrom, junc, ir_junction, sample_names):
+    strand, chrom_clean = chrom[0], chrom[1:]
+    event = junction_id(chrom_clean, strand, junc.start, junc.end)
+    for side in ('inclusion', 'exclusion'):
+        counts = ir_junction[side]['counts'] if sample_names else []
+        writer.writeSide(side, event, event, counts, sorted(ir_junction[side]['isos']))
+
+
 def main():
     args = parse_args()
     with cli.ErrorHandler():
@@ -199,20 +216,8 @@ def call_events(args):  # noqa: C901 - FIXME: reduce complexity
                             ir_junctions[chrom][j]['inclusion']['counts'][c] += iso_counts[iname][c]
 
             for j in ir_junctions[chrom]:
-                incounts = ir_junctions[chrom][j]['inclusion']['counts']
-                if sum(incounts) == 0:
-                    continue
-                if not sample_names:
-                    ir_junctions[chrom][j]['exclusion']['counts'] = ir_junctions[chrom][j]['inclusion']['counts'] = []
-
-                strand, chrom_clean = chrom[0], chrom[1:]
-                event = junction_id(chrom_clean, strand, j.start, j.end)
-                writer.writeSide('inclusion', event, event,
-                                 ir_junctions[chrom][j]['inclusion']['counts'],
-                                 sorted(ir_junctions[chrom][j]['inclusion']['isos']))
-                writer.writeSide('exclusion', event, event,
-                                 ir_junctions[chrom][j]['exclusion']['counts'],
-                                 sorted(ir_junctions[chrom][j]['exclusion']['isos']))
+                if _ir_event_kept(ir_junctions[chrom][j], sample_names):
+                    _write_ir_event(writer, chrom, j, ir_junctions[chrom][j], sample_names)
             ir_junctions[chrom] = None
 
 

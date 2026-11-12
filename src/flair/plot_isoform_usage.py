@@ -17,8 +17,8 @@ from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows  # noq
 def build_parser():
     desc = '''The script will produce two images, one of the isoform models and another of the usage proportions.
     The most highly expressed isoforms across all the samples will be plotted.
-    The minor isoforms are aggregated into a gray bar. You can toggle min_reads or
-    color_palette to plot more isoforms.'''
+    The minor isoforms are aggregated into a gray bar. You can toggle --min_reads or
+    --palette to plot more isoforms.'''
     parser = argparse.ArgumentParser(prog='plot_isoform_usage', formatter_class=FlairHelpFormatter, description=desc)
     parser.add_argument('isoforms', type=str, action='store',
                         help='isoforms in bed format')
@@ -187,8 +187,8 @@ def read_color_palette(palette_file):
 
 
 def plot_isoform_usage(args):  # noqa: C901 - FIXME: reduce complexity
-    if not args.o:
-        args.o = args.gene_name
+    # the gene is always in the name, since one prefix may be used for several genes
+    prefix = f'{args.o}_{args.gene_name}' if args.o else args.gene_name
 
     color_palette = name_colors + hex_colors
     if args.palette:
@@ -275,22 +275,20 @@ def plot_isoform_usage(args):  # noqa: C901 - FIXME: reduce complexity
     panel.set_xlim(0.5, xlim)
     panel.set_ylim(0, 100)
     panel.set_ylabel('Percent Usage', fontsize=12)
-    # plt.savefig(args.o+'_proportion.pdf', transparent=True, dpi=600)  # uncomment to output as pdf
-    # plt.savefig(args.o + '_usage.png', dpi=600)
-    plt.savefig(f'{args.o}_{args.gene_name}_usage.pdf', transparent=True)
+    plt.savefig(f'{prefix}_usage.pdf', transparent=True)
     plt.figure()
 
     # plotting isoform structures
     panel = plt.axes([0.005, 0.015, .99, 0.97], frameon=True)  # annotation
 
     isoforms, lower, upper, strand, names = parse_bed(args.isoforms, keepiso)
-    isoforms = sorted(isoforms, key=lambda x: x[3], reverse=True)  # sort by productivity
+    # productivity is empty in a BED not run through predictProductivity
+    isoforms = sorted(isoforms, key=lambda x: x[3] or '', reverse=True)
     packed = pack(isoforms, rev=False, tosort=False)
 
     plot_blocks(packed, panel, names, upper, lower, strand, l=1)
 
-    # plt.savefig(args.o+'_bars.pdf', transparent=True, dpi=600)  # uncomment to output as pdf
-    plt.savefig(f'{args.o}_{args.gene_name}_isoforms.pdf', transparent=True)
+    plt.savefig(f'{prefix}_isoforms.pdf', transparent=True)
 
 
 def main():

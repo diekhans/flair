@@ -112,7 +112,7 @@ def test_to_row_values():
 
 
 def test_parse_wrong_column_count():
-    with pytest.raises(BedException, match="expected at"):
+    with pytest.raises(BedException, match="a flair BED row has 25 columns, found 3"):
         FlairBed.parse(["chr1", "0", "10"])
 
 

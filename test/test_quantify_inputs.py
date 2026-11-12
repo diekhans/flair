@@ -91,8 +91,12 @@ def test_isoform_bed_errors(tmp_path):
         load_isoform_data(_bed(tmp_path, _iso('T1', 'G1'), _iso('T2', 'G1', chrom='chr2')))
     with pytest.raises(FlairInputDataError, match='chr1 \\+ and on chr1 -.*current flair combine'):
         load_isoform_data(_bed(tmp_path, _iso('T1', 'G1'), _iso('T2', 'G1', strand='-')))
-    with pytest.raises(FlairInputDataError, match="isoform name 'T1' is used more than once on chr1"):
+    with pytest.raises(FlairInputDataError, match="isoform name 'T1' is used more than once"):
         load_isoform_data(_bed(tmp_path, _iso('T1', 'G1'), _iso('T1', 'G2')))
+    # counts and read maps are keyed by the name alone, so two chromosomes do not
+    # make two isoforms of one name distinct
+    with pytest.raises(FlairInputDataError, match="isoform name 'T1' is used more than once"):
+        load_isoform_data(_bed(tmp_path, _iso('T1', 'G1'), _iso('T1', 'G2', chrom='chr2')))
     with pytest.raises(FlairInputDataError, match='no isoforms'):
         load_isoform_data(_bed(tmp_path))
 

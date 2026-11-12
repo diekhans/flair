@@ -44,7 +44,8 @@ class _PlainLines:
         self.fh.seek(offset)
 
     def readline(self):
-        return self.fh.readline().rstrip(b'\r\n')
+        "the raw line, with its newline, so that an empty line is not end of file"
+        return self.fh.readline()
 
     def close(self):
         self.fh.close()
@@ -63,7 +64,8 @@ class _BgzipLines:
         self.fh.seek(offset)
 
     def readline(self):
-        return self.fh.readline().rstrip(b'\r\n')
+        "the raw line, with its newline, so that an empty line is not end of file"
+        return self.fh.readline()
 
     def close(self):
         self.fh.close()
@@ -105,21 +107,27 @@ class ReadMapIndex:
                 line = lines.readline()
                 if not line:
                     break
-                text = line.decode()
+                text = line.decode().rstrip('\r\n')
                 if first and text == _HEADER:
                     first = False
-                    continue
-                first = False
-                name, sep, _ = text.partition('\t')
-                if not sep:
-                    raise FlairInputDataError(f'{self.read_map_tsv}: expected a row of an isoform and its reads, '
-                                              f'tab separated, found: {text[:100]}')
-                if name in offsets:
-                    raise FlairInputDataError(f'{self.read_map_tsv}: isoform {name} has two rows')
-                offsets[name] = offset
+                else:
+                    first = False
+                    self._index_row(offsets, text, offset)
         finally:
             lines.close()
         return offsets
+
+    def _index_row(self, offsets, text, offset):
+        if text == '':
+            raise FlairInputDataError(f'{self.read_map_tsv}: blank line; every line must be a row of an '
+                                      f'isoform and its reads, tab separated')
+        name, sep, _ = text.partition('\t')
+        if not sep:
+            raise FlairInputDataError(f'{self.read_map_tsv}: expected a row of an isoform and its reads, '
+                                      f'tab separated, found: {text[:100]}')
+        if name in offsets:
+            raise FlairInputDataError(f'{self.read_map_tsv}: isoform {name} has two rows')
+        offsets[name] = offset
 
     def open_reader(self):
         return ReadMapReader(self)
@@ -137,14 +145,16 @@ class ReadMapReader:
         out = {}
         for iso in isoforms:
             offset = self.index.offsets.get(iso)
-            if offset is None:
-                continue
-            self.lines.seek(offset)
-            _, _, reads = self.lines.readline().decode().partition('\t')
-            for read in reads.split(','):
-                if read:
-                    out[read] = iso
+            if offset is not None:
+                self._add_isoform_reads(out, iso, offset)
         return out
+
+    def _add_isoform_reads(self, out, iso, offset):
+        self.lines.seek(offset)
+        _, _, reads = self.lines.readline().decode().rstrip('\r\n').partition('\t')
+        for read in reads.split(','):
+            if read:
+                out[read] = iso
 
     def close(self):
         self.lines.close()

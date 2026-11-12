@@ -30,7 +30,7 @@ def feature_of(row):
 
 def group_events(reader, col1, col2):
     """The rows of each event, with the two by two table the test needs.  Events are
-    keyed by the feature the two sides share, which orders the output by locus."""
+    keyed by the feature the two sides share, which orders the output by chromosome name as a string."""
     events = {}
     for row in reader:
         feature = feature_of(row)

@@ -34,7 +34,7 @@
 
 .. option:: --normalize_ends
 
-   give each spliced isoform, for counting, the furthest ends of its gene's isoforms with terminal exons like its own, so reads are counted whatever their ends; recommended without --trust_ends when the isoforms of a gene differ only in their ends
+   give each spliced isoform, for counting, the furthest ends of its gene's isoforms with terminal exons like its own, so reads are counted whatever their ends; recommended when the isoforms of a gene differ only in their ends, and not usable with --trust_ends
 
 .. option:: --temp_dir TEMP_DIR
 

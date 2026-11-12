@@ -35,8 +35,9 @@ class DrimSeqCountsWriter(TsvWriter):
         self.irow = 0
 
     def writeIsoform(self, gene_id, feature_id, counts):
-        "rows are numbered in the order they are written"
-        self.writeRow([self.irow, gene_id, feature_id] + list(counts))
+        """rows are numbered in the order they are written.  Counts are written as
+        integers, which DrimSeqCountsReader declares and diffexp's float sums are."""
+        self.writeRow([self.irow, gene_id, feature_id] + [round(count) for count in counts])
         self.irow += 1
 
 @contextmanager

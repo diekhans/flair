@@ -12,9 +12,11 @@ import os
 import shutil
 import multiprocessing as mp
 import pipettor
-from flair import SeqRange
+from flair import FlairError, SeqRange
 from flair import thread_share
+from flair.output_compress import compressed_path
 from flair.pycbio.hgdata.bed import BedReader
+from flair.pycbio.sys import fileOps
 
 # the full annotation data of each PartitionRunner, keyed by its work_dir.  The
 # pool workers are forked, so they inherit this and subset their own region,
@@ -31,15 +33,20 @@ def _copy_part(in_fh, combined_fh, skip_header):
         in_fh.readline()
     shutil.copyfileobj(in_fh, combined_fh, 1024 * 1024 * 10)
 
-def combine_temp_files_by_suffix(output, temp_prefixes, suffixes, *, headers=()):
+def combine_temp_files_by_suffix(output, temp_prefixes, suffixes, *, headers=(), compress=False):
     """Join each partition file into one.  A suffix named in headers is a TSV whose
-    parts each carry the header, so only the first part keeps it."""
+    parts each carry the header, so only the first part keeps it.  With compress, the
+    joined file is written under compressed_path, for a caller whose joined files are
+    the run's outputs rather than intermediates it rewrites later."""
     for filesuffix in suffixes:
         has_header = filesuffix in headers
-        with open(output + filesuffix, 'wb') as combined_fh:
+        with _open_combined(output + filesuffix, compress) as combined_fh:
             for num, temp_prefix in enumerate(temp_prefixes):
                 with open(temp_prefix + filesuffix, 'rb') as in_fh:
                     _copy_part(in_fh, combined_fh, has_header and (num > 0))
+
+def _open_combined(path, compress):
+    return fileOps.opengz(compressed_path(path), 'wb') if compress else open(path, 'wb')
 
 
 class Partition:
@@ -59,7 +66,15 @@ class Partition:
         os.makedirs(temp_dir, exist_ok=True)
 
     def _subset(self, name):
-        data = _shared_data.get(self._data_key, {}).get(name)
+        """The region's part of one of the runner's shared data, or None when the
+        runner was given none.  A data key the runner never registered means this
+        process did not inherit the shared data, which would otherwise look like a
+        run with no annotation and no junction correction."""
+        shared = _shared_data.get(self._data_key)
+        if shared is None:
+            raise FlairError(f"no shared data for {self._data_key}; a partition must run in the process "
+                             f"that built its PartitionRunner, or in one forked from it")
+        data = shared.get(name)
         if data is None:
             return None
         return data.subset_for_region(self.region.name, self.region.start, self.region.end)
@@ -152,6 +167,9 @@ class PartitionRunner:
         self.threads = threads
         regions = list(regions)
         self.weights = list(weights) if weights is not None else [1] * len(regions)
+        if len(self.weights) != len(regions):
+            raise FlairError(f"{len(regions)} regions but {len(self.weights)} weights; PartitionRunner "
+                             f"takes one weight per region, or none at all")
         # indexes are built here, in the parent, so forked workers share them
         # rather than each building, and so copying, its own
         for data in (gtf_data, junction_corrector):

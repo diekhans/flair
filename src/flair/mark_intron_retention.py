@@ -22,7 +22,46 @@ def build_parser():
     parser.add_argument('intron_txt', help='output text file of the retained introns')
     return parser
 
-def mark_intron_retention(isoform_bed, marked_bed, intron_txt):  # noqa C901
+
+# an intron shorter than this is not counted: an exon spanning it is an
+# alignment difference, not intron retention
+MIN_RETAINED_INTRON = 100
+# how far an exon may fall short of an intron's ends and still retain it
+RETAINED_INTRON_SLOP = 10
+
+
+def _introns(isoform):
+    "the introns of an isoform long enough to count, as (start, end) pairs"
+    starts, sizes = isoform['starts'], isoform['sizes']
+    ends = [start + size for start, size in zip(starts, sizes)]
+    return [(ends[i], starts[i + 1]) for i in range(len(starts) - 1)
+            if starts[i + 1] - ends[i] >= MIN_RETAINED_INTRON]
+
+
+def _retains_intron(isoform, intron_start, intron_end):
+    "does an exon of the isoform span the intron"
+    return any((start < intron_start + RETAINED_INTRON_SLOP) and (start + size > intron_end - RETAINED_INTRON_SLOP)
+               for start, size in zip(isoform['starts'], isoform['sizes']))
+
+
+def _mark_retained_introns(chrom, retaining, other, introncoords):
+    "mark retaining if one of its exons spans an intron of other"
+    for intron_start, intron_end in _introns(other):
+        if _retains_intron(retaining, intron_start, intron_end):
+            retaining['ir'] = True
+            introncoords.add((chrom, intron_start, intron_end, retaining['strand']))
+
+
+def _mark_chrom_intron_retention(chrom, chrom_isoforms, introncoords):
+    "every pair of isoforms of one chromosome, on the same strand and overlapping"
+    for name0, iso0 in chrom_isoforms.items():
+        for name1, iso1 in chrom_isoforms.items():
+            if ((name0 != name1) and (iso0['strand'] == iso1['strand'])
+                    and overlap(iso0['range'], iso1['range'])):
+                _mark_retained_introns(chrom, iso0, iso1, introncoords)
+
+
+def mark_intron_retention(isoform_bed, marked_bed, intron_txt):
     outfilename = marked_bed
     txtout = intron_txt
     isoforms = {}
@@ -41,28 +80,8 @@ def mark_intron_retention(isoform_bed, marked_bed, intron_txt):  # noqa C901
         isoforms[chrom][name]['ir'] = False  # detection of intron retention event
 
     introncoords = set()
-    allcoords = set()
-
-    for chrom in isoforms:
-        for iname0 in isoforms[chrom]:
-            for iname1 in isoforms[chrom]:  # compare with all other isoforms to find IR
-                if iname0 == iname1:
-                    continue
-                if not overlap(isoforms[chrom][iname0]['range'], isoforms[chrom][iname1]['range']):
-                    continue
-                starts0, sizes0 = isoforms[chrom][iname0]['starts'], isoforms[chrom][iname0]['sizes']
-                starts1, sizes1 = isoforms[chrom][iname1]['starts'], isoforms[chrom][iname1]['sizes']
-                prev5 = starts1[0] + sizes1[0]  # previous 5' end of isoform1's intron
-                for start1, size1 in zip(starts1[1:], sizes1[1:]):
-                    if start1 - prev5 < 100:  # do not count exons spanning introns smaller than 100 bp
-                        prev5 = start1 + size1
-                        continue
-                    for start0, size0 in zip(starts0, sizes0):
-                        allcoords.add((chrom, str(prev5), (start1), isoforms[chrom][iname1]['strand']))
-                        if start0 < prev5 + 10 and start0 + size0 > start1 - 10:  # if isoform 0 has exon where isoform 1 has intron
-                            isoforms[chrom][iname0]['ir'] = True
-                            introncoords.add((chrom, str(prev5), (start1), isoforms[chrom][iname0]['strand']))
-                    prev5 = start1 + size1
+    for chrom, chrom_isoforms in isoforms.items():
+        _mark_chrom_intron_retention(chrom, chrom_isoforms, introncoords)
 
     marked = sorted([(isoforms[chrom][name]['entry'], isoforms[chrom][name]['ir'])
                      for chrom in isoforms for name in isoforms[chrom]],

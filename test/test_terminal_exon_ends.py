@@ -20,14 +20,22 @@ def test_furthest_ends_same_splice_site():
 
 def test_splice_sites_within_window_are_grouped():
     gene = _gene()
-    gene.add(800, 1200 + NORM_END_SS_WINDOW - 1, 5000 - NORM_END_SS_WINDOW, 5600)
+    gene.add(800, 1200 + NORM_END_SS_WINDOW, 5000 - NORM_END_SS_WINDOW, 5600)
     assert gene.furthest_ends(1200, 5000) == (800, 5600)
 
 
 def test_splice_sites_outside_window_are_not_grouped():
     gene = _gene()
-    gene.add(800, 1200 + NORM_END_SS_WINDOW, 5000 - NORM_END_SS_WINDOW - 1, 5600)
+    gene.add(800, 1200 + NORM_END_SS_WINDOW + 1, 5000 - NORM_END_SS_WINDOW - 1, 5600)
     assert gene.furthest_ends(1200, 5000) == (900, 5500)
+
+
+def test_grouping_is_the_same_from_either_splice_site():
+    gene = GeneTerminalExonEnds('g1')
+    gene.add(1000, 1200, 5000, 5500)
+    gene.add(800, 1200 + NORM_END_SS_WINDOW, 5000 - NORM_END_SS_WINDOW, 5600)
+    assert (gene.furthest_ends(1200, 5000)
+            == gene.furthest_ends(1200 + NORM_END_SS_WINDOW, 5000 - NORM_END_SS_WINDOW))
 
 
 def test_normalized_ends_are_padded():

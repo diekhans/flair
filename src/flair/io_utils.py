@@ -1,4 +1,5 @@
-"""Filesystem / I/O helpers shared across FLAIR pipelines."""
+"""The run temporary directory, manifest reading, genome FASTA checks, and
+position sorted BED and VCF output."""
 
 import os
 import tempfile
@@ -14,9 +15,9 @@ BED_SORT_CMD = ('sort', '-s', '-k1,1', '-k2,2n')
 
 # C collation and numeric parsing, so the order does not depend on the locale of
 # whoever runs flair.  pipettor takes no environment, so this is set here, in the
-# environment its children inherit.
-os.environ['LC_COLLATE'] = 'C'
-os.environ['LC_NUMERIC'] = 'C'
+# environment its children inherit.  LC_ALL, which POSIX gives precedence over
+# every other LC_ variable, is set rather than the two it would override.
+os.environ['LC_ALL'] = 'C'
 
 
 def make_temp_dir(out_prefix):
@@ -45,6 +46,18 @@ def make_run_temp_dir(out_prefix, temp_dir=None):
     return run_dir + '/'
 
 
+def _parse_manifest_line(where, line, field_counts, line_format, file_fields):
+    "the fields of one manifest line, checked"
+    fields = line.split('\t')
+    if len(fields) not in field_counts or '' in fields:
+        spaces = '; fields are separated by tabs, not spaces' if len(fields) == 1 and ' ' in line.strip() else ''
+        raise FlairInputDataError(f'{where}: a manifest line is {line_format}, tab-separated{spaces}: {line!r}')
+    for index, what in file_fields.items():
+        if index < len(fields) and not os.path.exists(fields[index]):
+            raise FlairInputDataError(f'{where}: {what} {fields[index]} does not exist')
+    return fields
+
+
 def read_manifest_rows(path, field_counts, line_format, file_fields):
     """A manifest's rows, each a list of its tab-separated fields, for a line each but
     blank lines and '#' comments.  A line has one of field_counts fields, none of them
@@ -56,17 +69,8 @@ def read_manifest_rows(path, field_counts, line_format, file_fields):
     with fileOps.opengz(path) as fh:
         for lineno, line in enumerate(fh, 1):
             line = line.rstrip('\r\n')
-            if line.strip() == '' or line.startswith('#'):
-                continue
-            fields = line.split('\t')
-            where = f'{path}:{lineno}'
-            if len(fields) not in field_counts or '' in fields:
-                spaces = '; fields are separated by tabs, not spaces' if len(fields) == 1 and ' ' in line.strip() else ''
-                raise FlairInputDataError(f'{where}: a manifest line is {line_format}, tab-separated{spaces}: {line!r}')
-            for index, what in file_fields.items():
-                if index < len(fields) and not os.path.exists(fields[index]):
-                    raise FlairInputDataError(f'{where}: {what} {fields[index]} does not exist')
-            rows.append(fields)
+            if (line.strip() != '') and not line.startswith('#'):
+                rows.append(_parse_manifest_line(f'{path}:{lineno}', line, field_counts, line_format, file_fields))
     if len(rows) == 0:
         raise FlairInputDataError(f'{path}: manifest has no samples')
     names = [row[0] for row in rows]
@@ -161,8 +165,11 @@ def write_sorted_vcf(path, header, records):
     # this package still runs every other subcommand
     import vcfpy
     out_path = compressed_path(path)
+    # in the order the header declares the contigs, which tools reading the file
+    # check against it, rather than by name, which puts chr10 before chr2
+    order = {line.id: num for num, line in enumerate(header.get_lines('contig'))}
     with vcfpy.Writer.from_path(out_path, header) as writer:
-        for record in sorted(records, key=lambda rec: (rec.CHROM, rec.POS)):
+        for record in sorted(records, key=lambda rec: (order.get(rec.CHROM, len(order)), rec.CHROM, rec.POS)):
             writer.write_record(record)
     if fileOps.isCompressed(out_path):
         pysam.tabix_index(out_path, preset='vcf', force=True)

@@ -231,8 +231,9 @@ def separate_tables(counts_rows, thresh, samples, a_cols, b_cols, out_dir):
     gene_ids = np.asarray(list(genes.keys()))
     vals = np.asarray([genes[x].exp for x in gene_ids])
 
-    # genes must be expressed in all samples of at least one group
-    filtered_rows = (np.min(vals[:, g1_ind], axis=1) > thresh) | (np.min(vals[:, g2_ind], axis=1) > thresh)
+    # genes must be expressed in all samples of at least one group; thresh is the
+    # documented minimum, so a count equal to it is kept
+    filtered_rows = (np.min(vals[:, g1_ind], axis=1) >= thresh) | (np.min(vals[:, g2_ind], axis=1) >= thresh)
     filtered_gene_vals = vals[filtered_rows]
     filtered_gene_ids = gene_ids[filtered_rows]
     write_deseq2_counts(out_dir + "/filtered_gene_counts_ds2.tsv", samples,
@@ -241,7 +242,7 @@ def separate_tables(counts_rows, thresh, samples, a_cols, b_cols, out_dir):
     # now do isoforms
     isoform_ids = np.asarray(list(isoforms.keys()))
     vals = np.asarray([isoforms[x].exp for x in isoform_ids])
-    filtered_rows = (np.min(vals[:, g1_ind], axis=1) > thresh) | (np.min(vals[:, g2_ind], axis=1) > thresh)
+    filtered_rows = (np.min(vals[:, g1_ind], axis=1) >= thresh) | (np.min(vals[:, g2_ind], axis=1) >= thresh)
     filtered_iso_vals = vals[filtered_rows]
     filtered_iso_ids = isoform_ids[filtered_rows]
 

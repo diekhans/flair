@@ -11,7 +11,6 @@ import argparse
 from flair.cli_help import FlairHelpFormatter
 import functools
 import os
-import re
 import logging
 import shutil
 import subprocess
@@ -21,6 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pipettor
 import pysam
 from flair import FlairInputDataError, SeqRange, combine_regions
+from flair import gtf_io
 from flair.interval_index import IntervalIndex
 from flair.region_spec import REGION_FORMAT_HELP, parse_regions
 from flair.pycbio.sys import cli, fileOps, loggingOps
@@ -198,7 +198,24 @@ def check_bam_indexed(bam_file):
                                   f"of {bam_file}; index it with `samtools index', or drop the option")
 
 
-_TRANSCRIPT_ID_RE = re.compile(r'transcript_id\s+"?([^";]+)"?')
+def _exon_span_fields(line):
+    """The chrom, zero-based start, end and transcript id of a GTF exon line, or
+    None for a line that is not an exon or carries no transcript_id."""
+    fields = line.split('\t', 8)
+    if (len(fields) < 9) or (fields[2] != 'exon'):
+        return None
+    transcript_id = gtf_io.find_attr_value(fields[8], 'transcript_id')
+    if transcript_id is None:
+        return None
+    return fields[0], int(fields[3]) - 1, int(fields[4]), transcript_id
+
+def _extend_span(spans, chrom, start, end, transcript_id):
+    span = spans.get(transcript_id)
+    if span is None:
+        spans[transcript_id] = [chrom, start, end]
+    else:
+        span[1] = min(span[1], start)
+        span[2] = max(span[2], end)
 
 @functools.lru_cache(maxsize=None)
 def gtf_spans(gtf_file):
@@ -209,19 +226,9 @@ def gtf_spans(gtf_file):
     spans = {}  # transcript_id -> [chrom, start, end], start zero-based
     with fileOps.opengz(gtf_file) as fh:
         for line in fh:
-            fields = line.split('\t', 8)
-            if len(fields) < 9 or fields[2] != 'exon':
-                continue
-            match = _TRANSCRIPT_ID_RE.search(fields[8])
-            if match is None:
-                continue
-            start, end = int(fields[3]) - 1, int(fields[4])
-            span = spans.get(match.group(1))
-            if span is None:
-                spans[match.group(1)] = [fields[0], start, end]
-            else:
-                span[1] = min(span[1], start)
-                span[2] = max(span[2], end)
+            exon = _exon_span_fields(line)
+            if exon is not None:
+                _extend_span(spans, *exon)
     return spans
 
 def gtf_to_file(gtf_file, out_bed, regions=None):

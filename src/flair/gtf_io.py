@@ -1,6 +1,7 @@
 """
 Simplistic, non-validating GTF parser.
 """
+import functools
 import re
 from enum import Enum
 from typing import Optional
@@ -347,9 +348,11 @@ def _unquoted_attr_value(attrs_str: str, start: int):
         end += 1
     return attrs_str[start:end] if end > start else None
 
-def _find_flair_attr_value(attrs_str: str, key: str):
+def find_attr_value(attrs_str: str, key: str):
     """The value of one GTF attribute, as a str, or None when the key is absent.
-    Quoted and unquoted values are both taken, as _ALL_ATTR_RE takes them."""
+    Quoted and unquoted values are both taken, as _ALL_ATTR_RE takes them.  Only a
+    whole attribute name matches, so transcript_id is not read from
+    ref_transcript_id."""
     idx = _find_attr_key(attrs_str, key)
     if idx < 0:
         return None
@@ -361,31 +364,24 @@ def _find_flair_attr_value(attrs_str: str, key: str):
     else:
         return _unquoted_attr_value(attrs_str, val_idx)
 
-def _parse_basic_attributes(attrs_str: str, record_type: str) -> Attrs:
-    """Fast-path parser for BASIC_ATTRS using str.find() instead of regex."""
+def _parse_named_attributes(attrs_str: str, record_type: str, *, keys, with_tags) -> Attrs:
+    """Parse only the named attributes, with str.find() rather than the regex of
+    _parse_all_attributes.  With with_tags, a transcript record also gets its tag
+    list, which is not one named value."""
     attrs = {}
-    for key in BASIC_ATTRS:
-        value = _find_flair_attr_value(attrs_str, key)
+    for key in keys:
+        value = find_attr_value(attrs_str, key)
         if value is not None:
             attrs[key] = value
-    return attrs
-
-def _parse_flair_attributes(attrs_str: str, record_type: str) -> Attrs:
-    """Fast-path parser for FLAIR_ATTRS using str.find() instead of regex."""
-    attrs = {}
-    for key in FLAIR_ATTRS:
-        value = _find_flair_attr_value(attrs_str, key)
-        if value is not None:
-            attrs[key] = value
-    if record_type in TRANSCRIPT_FEATURES:
+    if with_tags and (record_type in TRANSCRIPT_FEATURES):
         attrs['tag'] = _parse_tags(attrs_str)
     return attrs
 
 
 _ATTRS_SET_TO_PARSER = {
     GtfAttrsSet.ALL: _parse_all_attributes,
-    GtfAttrsSet.FLAIR: _parse_flair_attributes,
-    GtfAttrsSet.BASIC: _parse_basic_attributes,
+    GtfAttrsSet.FLAIR: functools.partial(_parse_named_attributes, keys=FLAIR_ATTRS, with_tags=True),
+    GtfAttrsSet.BASIC: functools.partial(_parse_named_attributes, keys=BASIC_ATTRS, with_tags=False),
 }
 
 
@@ -459,7 +455,7 @@ def _check_id_whitespace(attrs):
             _check_id_value(key, val)
 
 
-def _parse_gtf_line(line: str, include_features: StrSetNone, attrs_parser=_parse_flair_attributes) -> GtfRecord:
+def _parse_gtf_line(line: str, include_features: StrSetNone, attrs_parser) -> GtfRecord:
     """Parse a single GTF line into a GtfRecord or derived class."""
     # drop excluded features before stripping and splitting the whole line; in
     # GENCODE, CDS, UTR, and codon lines are over 40% of the file

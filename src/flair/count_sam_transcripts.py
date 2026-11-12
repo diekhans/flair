@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 import pipettor
 import pysam
 from flair import FlairError, FlairInputDataError
+from flair.isoform_data import cigar_clipping
 from flair.read_ends_tsv import ReadEndsWriter
 from flair.read_map_tsv import ReadMapWriter
 from flair.transcript_counts_tsv import TranscriptCountsWriter
@@ -341,7 +342,7 @@ def process_cigar(matchvals, cigarblocks, startpos, exoninfo, tseq=None):  # noq
     matchpos = 0
     # indexed by transcript position; startpos is 0-based (pysam reference_start)
     coveredpos = [0] * startpos
-    query_clipping = [0, 0]
+    query_clipping = list(cigar_clipping(cigarblocks))
     tendpos = startpos
     blockstarts, blocksizes = [], []
     if exoninfo:
@@ -353,13 +354,8 @@ def process_cigar(matchvals, cigarblocks, startpos, exoninfo, tseq=None):  # noq
     else:
         lb, rb = None, None
     indel_detected = False
-    for i, (btype, blen) in enumerate(cigarblocks):
-        if btype in (pysam.CSOFT_CLIP, pysam.CHARD_CLIP):
-            if i == 0:
-                query_clipping[0] = blen
-            else:
-                query_clipping[1] = blen
-        elif btype == pysam.CMATCH:
+    for btype, blen in cigarblocks:
+        if btype == pysam.CMATCH:
             coveredpos.extend(matchvals[matchpos:matchpos + blen])
             blockstarts.append(tendpos)
             blocksizes.append(blen)

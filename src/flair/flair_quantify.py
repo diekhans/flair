@@ -23,7 +23,7 @@ from flair.annotation_precheck import read_introns, splice_sites_cleanly_aligned
 from flair.interval_index import IntervalIndex
 from flair.identify_prelim_fusions import needs_transcriptome
 from flair.counts_to_tpm import counts_to_tpm
-from flair.isoform_data import get_reverse_complement
+from flair.isoform_data import get_reverse_complement, cigar_clipping
 import multiprocessing as mp
 from flair.pycbio.sys import fileOps
 
@@ -338,13 +338,6 @@ def single_exon_isoform(read, se_index):
                if min(iso[1], end) - max(iso[0], start) > (iso[1] - iso[0]) / 2]
     return min(covered, key=lambda iso: (abs(start - iso[0]) + abs(end - iso[1]),) + iso, default=None)
 
-def _genomic_clipping(read):
-    "the read's soft and hard clipping at the two ends of its genome alignment"
-    clipping_types = (pysam.CIGAR_OPS.CSOFT_CLIP, pysam.CIGAR_OPS.CHARD_CLIP)
-    cigar = read.cigartuples
-    return (cigar[0][1] if cigar[0][0] in clipping_types else 0,
-            cigar[-1][1] if cigar[-1][0] in clipping_types else 0)
-
 def _batch_alignments(bam_file, batch):
     """The batch's alignments.  A sample's BAM holds some of the isoforms'
     chromosomes, which check_bam_chromosomes allows, and fetch raises on one it
@@ -382,7 +375,7 @@ def batch_reads(bam_file, batch, chains, genome, trust_ends, se_index, fasta, cl
                 direct.setdefault(bed.name, []).append(read.query_name)
             else:
                 fa_fh.write('>' + read.query_name + '\n' + read.get_forward_sequence() + '\n')
-                clip_fh.write(read.query_name + '\t' + '\t'.join(str(c) for c in _genomic_clipping(read)) + '\n')
+                clip_fh.write(read.query_name + '\t' + '\t'.join(str(c) for c in cigar_clipping(read.cigartuples)) + '\n')
                 num_realign += 1
     return direct, num_realign
 

@@ -3,9 +3,8 @@
 import logging
 import os
 from collections import namedtuple
-import pysam
 import pipettor
-from flair.isoform_data import Isoform
+from flair.isoform_data import Isoform, cigar_clipping
 
 
 # the windows of a region to fetch its reads from: ranges, sorted SeqRanges that don't
@@ -85,25 +84,16 @@ def add_corrected_read_to_groups(corrected_read, sj_to_ends):
     sj_to_ends[junc_key].reads.append(corrected_read)
 
 
-def _read_clipping(cigar, clipping_types):
-    "the bases clipped from each end of an aligned read"
-    left = cigar[0][1] if cigar[0][0] in clipping_types else 0
-    right = cigar[-1][1] if cigar[-1][0] in clipping_types else 0
-    return left, right
-
-
 def generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, chrom, start, end, windows=None):
     """write each primary alignment's clipping at its two ends, given windows, ReadWindows,
     only of the reads in them (fetch_reads)"""
     c = 0
-    # use both soft and hard-clipping because some alignments (secondary, maybe supplementary) can be hard-clipped
-    clipping_types = (pysam.CIGAR_OPS.CSOFT_CLIP, pysam.CIGAR_OPS.CHARD_CLIP)
     with open(temp_prefix + '.reads.genomicclipping.tsv', 'w') as clipping_fh:
         for read in fetch_reads(bam_file, chrom, start, end, windows):
             # a record placed in the BAM but not aligned has no cigar, so it has no
             # clipping to report
             if (not read.is_secondary) and (not read.is_supplementary) and (read.cigartuples is not None):
                 c += 1
-                left_clipping, right_clipping = _read_clipping(read.cigartuples, clipping_types)
+                left_clipping, right_clipping = cigar_clipping(read.cigartuples)
                 clipping_fh.write(read.query_name + '\t' + str(left_clipping) + '\t' + str(right_clipping) + '\n')
     return c, temp_prefix + '.reads.genomicclipping.tsv'

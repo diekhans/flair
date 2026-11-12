@@ -25,6 +25,27 @@ COMPBASE = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A', 'U': 'A',
 # the reference position without an intron.
 ALIGNED_CIGAR_OPS = (pysam.CIGAR_OPS.CMATCH, pysam.CIGAR_OPS.CEQUAL, pysam.CIGAR_OPS.CDIFF)
 REF_CONSUMING_CIGAR_OPS = ALIGNED_CIGAR_OPS + (pysam.CIGAR_OPS.CDEL,)
+# both kinds of clipping are counted: a secondary or supplementary alignment can be
+# hard clipped where the primary one is soft clipped
+CLIPPING_CIGAR_OPS = (pysam.CIGAR_OPS.CSOFT_CLIP, pysam.CIGAR_OPS.CHARD_CLIP)
+
+
+def _end_clipping(cigar_ops):
+    "the bases clipped at one end, over the clipping operations that start cigar_ops"
+    clipped = 0
+    for op, length in cigar_ops:
+        if op not in CLIPPING_CIGAR_OPS:
+            break
+        clipped += length
+    return clipped
+
+
+def cigar_clipping(cigar):
+    """The bases clipped from the two ends of an alignment, as (left, right).  An end
+    can hold a hard clip outside a soft clip, H S M S H, so the outermost operation
+    alone undercounts it."""
+    return _end_clipping(cigar), _end_clipping(reversed(cigar))
+
 
 POLYA_MIN_FRAC = 0.6
 POLYA_SEARCH_WINDOW = 5
@@ -389,10 +410,8 @@ class ReadRec:
         if genome is not None:
             left_intprim, right_intprim = cls._get_both_intprim(read, genome, (left_polyA, right_polyA))
 
-        clips = [length if op in (pysam.CIGAR_OPS.CSOFT_CLIP, pysam.CIGAR_OPS.CHARD_CLIP) else 0
-                 for op, length in (read.cigartuples[0], read.cigartuples[-1])]
         return cls(read.reference_name, junc_direction, juncs, align_start, ref_pos, read.query_name, polyA=(left_polyA, right_polyA),
-                   intprim=(left_intprim, right_intprim), clipping=tuple(clips))
+                   intprim=(left_intprim, right_intprim), clipping=cigar_clipping(read.cigartuples))
 
 
 class Gene:

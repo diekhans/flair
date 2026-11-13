@@ -1600,7 +1600,7 @@ def _run_region_reads(*, partition, region, gtf_data, junction_corrector, args):
                                               partition.output_path('isoforms.counts.tsv'),
                                               read_map_file, False,  # say is not annot, requires stringent, returns different end values
                                               partition.output_path('reads.genomicclipping.tsv'),
-                                              partition.output_path('firstpass.uniquebound.tsv'),
+                                              unique_bound=partition.output_path('firstpass.uniquebound.tsv'),
                                               directRNA=args.directRNA, trust_strand=args.trust_strand,
                                               fusion_breakpoints=args.fusion_breakpoints,
                                               secondary_alignments=(KEEP_SUBSET_SECONDARY_ALIGNMENTS

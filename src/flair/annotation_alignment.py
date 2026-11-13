@@ -37,7 +37,7 @@ def normalize_gene_terminal_exons(max_terminal_exons_ends, gene_id, strand, exon
     return exons
 
 def generate_transcriptome_reference_transcript(strand, transcript_to_strand, transcript_id, gene_id, annots, max_terminal_exons_ends,
-                                                transcript_to_new_exons, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh):
+                                                transcript_to_new_exons, chrom, genome, annot_bed_fh, annot_fa_fh):
     transcript_to_strand[(transcript_id, gene_id)] = strand
     exons = list(annots.transcript_to_exons[(transcript_id, gene_id)])
     assert isinstance(exons[0], Exon)  # FIXME tmp debugging
@@ -57,21 +57,20 @@ def generate_transcriptome_reference_transcript(strand, transcript_to_strand, tr
     annot_fa_fh.write('>' + transcript_id + '\n')
     annot_fa_fh.write(''.join(trans_seq) + '\n')
 
-def generate_transcriptome_reference_guts(annots, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh):
+def generate_transcriptome_reference_guts(annots, chrom, genome, annot_bed_fh, annot_fa_fh):
     transcript_to_strand = {}
     transcript_to_new_exons = {}
     max_terminal_exons_ends = max_terminal_exons_ends_from_annots(annots)
 
     for transcript_id, gene_id, strand in annots.transcripts:
         generate_transcriptome_reference_transcript(strand, transcript_to_strand, transcript_id, gene_id, annots, max_terminal_exons_ends,
-                                                    transcript_to_new_exons, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh)
+                                                    transcript_to_new_exons, chrom, genome, annot_bed_fh, annot_fa_fh)
     return transcript_to_strand, transcript_to_new_exons
 
 def generate_transcriptome_reference(temp_prefix, annots, chrom, genome):
     with (open(temp_prefix + '.annotated_transcripts.bed', 'w') as annot_bed_fh,
-          open(temp_prefix + '.annotated_transcripts.fa', 'w') as annot_fa_fh,
-          open(temp_prefix + '.annotated_transcripts_uniquebound.tsv', 'w') as annot_uniqueseq_fh):
-        return generate_transcriptome_reference_guts(annots, chrom, genome, annot_bed_fh, annot_fa_fh, annot_uniqueseq_fh)
+          open(temp_prefix + '.annotated_transcripts.fa', 'w') as annot_fa_fh):
+        return generate_transcriptome_reference_guts(annots, chrom, genome, annot_bed_fh, annot_fa_fh)
 
 
 def _write_reads_subset(in_fasta, out_fasta, skip):
@@ -116,7 +115,6 @@ def identify_good_match_to_annot(temp_prefix, region, annots, genome, bam_file, 
                                       temp_prefix + '.matchannot.counts.tsv',
                                       None, True,
                                       clipping_file,
-                                      temp_prefix + '.annotated_transcripts_uniquebound.tsv',
                                       directRNA=directRNA,
                                       trust_strand=trust_strand, fusion_breakpoints=fusion_breakpoints)
         for row in ReadEndsReader(temp_prefix + '.matchannot.ends.tsv'):
@@ -129,15 +127,16 @@ def identify_good_match_to_annot(temp_prefix, region, annots, genome, bam_file, 
     return read_to_transcript
 
 
-def transcriptome_align_and_count(input_reads, align_ref_fasta, ref_bed, output_name, map_file, is_annot, clipping_file, unique_bound,  # noqa: C901 - FIXME: reduce complexity
-                                  *, directRNA, trust_strand, fusion_breakpoints,
+def transcriptome_align_and_count(input_reads, align_ref_fasta, ref_bed, output_name, map_file, is_annot, clipping_file,  # noqa: C901 - FIXME: reduce complexity
+                                  *, unique_bound=None, directRNA, trust_strand, fusion_breakpoints,
                                   secondary_alignments=MINIMAP2_SECONDARY_ALIGNMENTS):
     """Align reads to transcripts with minimap2 and assign each to its best
     transcript with count_sam_transcripts: to the annotated transcripts (is_annot),
     or to flair transcriptome's firstpass isoforms.  minimap2 reports
     secondary_alignments other alignments of each read, which must reach the
     transcript it fits among many alike, as a truncated read among the isoforms
-    containing its own"""
+    containing its own.  unique_bound, the file of unique sequence boundaries, is
+    used only with stringent, so the annotation pass passes none."""
     # minimap (results are piped into count_sam_transcripts.py)
     # '--split-prefix', 'minimap2transcriptomeindex', doesn't work with MD tag
     if isinstance(input_reads, str):
@@ -168,7 +167,7 @@ def transcriptome_align_and_count(input_reads, align_ref_fasta, ref_bed, output_
             check_splice=True,
             isoforms=ref_bed,
             trust_ends=False,
-            unique_bound=unique_bound or None,
+            unique_bound=unique_bound,
             fusion_breakpoints=fusion_breakpoints,
             # reads come from samtools fasta in their sequenced orientation, and
             # transcript sequences are sense, so an antisense read aligns reversed

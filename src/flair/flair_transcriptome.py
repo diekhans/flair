@@ -235,6 +235,8 @@ def add_subparser(subparsers):
                              '- ginormous: comprehensive, plus every single-exon subset isoform\n'
                              '- <N>X, such as 10X: a subset isoform with more than N times the reads '
                              'of the isoforms it is a subset of\n'
+                             'A kept subset isoform is counted only reads reaching past the sequence it '
+                             'shares with the isoforms containing it\n'
                              '(default: %(default)s)')
 
     parser.add_argument('--keep_supplementary', action='store_true',
@@ -970,32 +972,39 @@ def filter_firstpass_isos(args, candidates, annots, removed_subsets=None):
     as a subset is added to removed_subsets, if given, by name, with the candidates
     it is a subset of and its unique sequence boundaries (promote_backup_subsets)."""
     iso_to_unique_bound = {}
-
+    firstpass = {}
+    for iso_name, isoform in candidates.isoforms.items():
+        if isoform.juncs != ():
+            _filter_spliced_candidate(args, iso_name, isoform, candidates, annots,
+                                      firstpass, iso_to_unique_bound, removed_subsets)
+    # HANDLE SINGLE EXONS SEPARATELY - group first - one traversal of each strand's
+    # exons, a single-exon isoform only compared with isoforms on its strand.  3' UTR
+    # fragments are of the spliced isoforms kept above, not of candidates the
+    # filter dropped
+    spliced_kept = dict(firstpass)
     if args.filter == 'ginormous':
-        firstpass = dict(candidates.isoforms)
+        _keep_all_single_exon(candidates, firstpass)
     else:
-        firstpass = {}
-        for iso_name, isoform in candidates.isoforms.items():
-            if isoform.juncs != ():
-                _filter_spliced_candidate(args, iso_name, isoform, candidates, annots,
-                                          firstpass, iso_to_unique_bound, removed_subsets)
-        # HANDLE SINGLE EXONS SEPARATELY - group first - one traversal of each strand's
-        # exons, a single-exon isoform only compared with isoforms on its strand.  3' UTR
-        # fragments are of the spliced isoforms kept above, not of candidates the
-        # filter dropped
-        spliced_kept = dict(firstpass)
         for strand in sorted(candidates.exons):
             firstpass = filter_all_single_exon(args, sorted(candidates.exons[strand]), candidates.isoforms, firstpass,
                                                _ThreePrimeFragments(spliced_kept, annots, strand))
 
     return firstpass, iso_to_unique_bound
 
+
+def _keep_all_single_exon(candidates, firstpass):
+    "every single-exon candidate, which is what ginormous keeps in place of the filter"
+    for iso_name, isoform in candidates.isoforms.items():
+        if isoform.juncs == ():
+            firstpass[iso_name] = isoform
+
+
 def _filter_spliced_candidate(args, iso_name, isoform, candidates, annots, firstpass,
                               iso_to_unique_bound, removed_subsets):
     """Keep or drop one spliced candidate and record its unique sequence boundaries.
-    With --filter comprehensive every candidate is kept, but the subset check still
-    runs: the boundaries it returns are what the realignment needs to tell a subset
-    isoform's reads from those of the isoforms containing it."""
+    With --filter comprehensive or ginormous every candidate is kept, but the subset
+    check still runs: the boundaries it returns are what the realignment needs to tell
+    a subset isoform's reads from those of the isoforms containing it."""
     supersets = []
     is_not_subset, unique_seq = filter_spliced_iso(args.filter, args.sjc_support, isoform.juncs,
                                                    subset_check_exons(isoform),
@@ -1004,7 +1013,7 @@ def _filter_spliced_candidate(args, iso_name, isoform, candidates, annots, first
                                                    isoform.strand,
                                                    end_window=args.end_window, ss_window=args.ss_window,
                                                    supersets=supersets)
-    if is_not_subset or (args.filter == 'comprehensive'):
+    if is_not_subset or (args.filter in KEEP_SUBSET_NAMED_FILTERS):
         firstpass[iso_name] = isoform
         if len(unique_seq) > 0:
             iso_to_unique_bound[iso_name] = unique_seq

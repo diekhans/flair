@@ -114,7 +114,7 @@
    - ginormous: comprehensive, plus every single-exon subset isoform
    - <N>X, such as 10X: a subset isoform with more than N times the reads of the isoforms it is a subset of
 
-   (default: nosubset)
+   A kept subset isoform is counted only reads reaching past the sequence it shares with the isoforms containing it (default: nosubset)
 
 .. option:: --keep_supplementary
 

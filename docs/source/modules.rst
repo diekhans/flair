@@ -255,8 +255,7 @@ Options
 flair combine
 =============
 
-Combines FLAIR transcriptomes with other FLAIR transcriptomes or annotation
-transcriptomes to generate an accurate combined transcriptome. The transcriptomes to
+Combines FLAIR transcriptomes into one combined transcriptome. The transcriptomes to
 combine are named in one of three mutually exclusive ways: --manifest, --prefixes or
 --isoform_beds.
 
@@ -270,8 +269,12 @@ point to your files though):
     sample1.fusion.isoforms.bed
     sample2.fusion.isoforms.bed
 
-To combine FLAIR transcriptomes with annotated transcripts, convert the annotation gtf
-to a bed file with gtf_to_bed (see Additional Programs) and name that bed here.
+Each input is a flair BED, as flair transcriptome, flair fusion and flair isoalleles
+write it.  Its ``read_support`` (column 16) and ``frac_support`` (column 17) must be
+set, since ``--min_reads`` and ``--min_percent_usage`` filter on them; an isoform
+without them is an error.  An annotation is given with ``-f``, as a GTF; an annotation
+BED, such as gtf_to_bed writes, has neither the support columns nor the other flair
+BED columns, and is rejected.
 
 Isoforms of the same splice junctions and strand from different samples are combined
 into one.  We recommend giving flair combine an annotation GTF (``-f``).  Each combined

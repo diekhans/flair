@@ -43,7 +43,7 @@
 
 .. option:: --min_percent_usage MIN_PERCENT_USAGE
 
-   minimum percent usage required in one sample to keep isoform in combined transcriptome (default: 5)
+   minimum percent usage required in one sample to keep isoform in combined transcriptome; taken from frac_support, column 17 of the input BEDs: an isoform without it is an error (default: 5)
 
 .. option:: --remove_single_exon
 
@@ -55,5 +55,5 @@
 
 .. option:: --min_reads MIN_READS
 
-   min reads from all samples to call isoform (default: 3)
+   min reads from all samples to call isoform; taken from read_support, column 16 of the input BEDs: an isoform without it is an error (default: 3)
 

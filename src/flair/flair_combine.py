@@ -21,7 +21,8 @@ from flair.gene_identification import get_gene_name_firstpass, group_by_splicing
 from flair.convert_synthetic_to_genome_bed import piece_gene
 
 def add_subparser(subparsers):
-    desc = "Combine FLAIR transcriptomes or annotation transcriptomes into one"
+    desc = ("Combine FLAIR transcriptomes into one.  Each input is a flair BED, with the "
+            "read support columns flair transcriptome, flair fusion and flair isoalleles write")
     parser = subparsers.add_parser('combine', help="Combine transcriptomes from multiple samples",
                                    description=desc)
     mutexc = parser.add_mutually_exclusive_group(required=True)
@@ -48,7 +49,9 @@ def add_subparser(subparsers):
     parser.add_argument('--end_window', type=int, default=200,
                         help="window, in bases, for comparing ends of isoforms with the same intron chain (default: %(default)s)")
     parser.add_argument('--min_percent_usage', type=int, default=5,
-                        help="minimum percent usage required in one sample to keep isoform in combined transcriptome (default: %(default)s)")
+                        help="minimum percent usage required in one sample to keep isoform in combined transcriptome; "
+                        "taken from frac_support, column 17 of the input BEDs: an isoform without it is an error "
+                        "(default: %(default)s)")
     parser.add_argument('--remove_single_exon', action='store_true',
                         help='remove all single exon isoforms')
     parser.add_argument('--max_ends', type=int, default=1,
@@ -57,7 +60,8 @@ def add_subparser(subparsers):
                              'max_ends > 1 introduces greater stringency for assigning og to new isoforms, more read support may be dropped '
                              '(default: %(default)s)')
     parser.add_argument('--min_reads', type=int, default=3,
-                        help='min reads from all samples to call isoform (default: %(default)s)')
+                        help='min reads from all samples to call isoform; taken from read_support, column 16 of the '
+                        'input BEDs: an isoform without it is an error (default: %(default)s)')
     parser.set_defaults(entry=combine_cmd)
 
 def combine_cmd(args):

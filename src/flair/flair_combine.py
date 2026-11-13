@@ -521,7 +521,8 @@ def write_combined(combined, genome, output, number_aaseqs=False):
 def write_map_file(combined_map_tsv, new_to_og):
     with CombinedMapWriter(combined_map_tsv) as writer:
         for new_id, sources in new_to_og.items():
-            writer.writeSources(new_id, [','.join(x[0]) + ':' + x[1] for x in sources])
+            # sorted, since sources is a set and an unordered file cannot be diffed
+            writer.writeSources(new_id, sorted(','.join(x[0]) + ':' + x[1] for x in sources))
 
 def write_map_files(output, new_iso_to_og, new_gene_to_og):
     write_map_file(compressed_path(output + '.combined.isoforms.map.tsv'), new_iso_to_og)

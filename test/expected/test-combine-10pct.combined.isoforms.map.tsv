@@ -1,0 +1,16 @@
+new_id	source_ids
+FLT00000001	test-transcriptome-mult-ends:FLT00000001; test-transcriptome-mutant-splice:FLT00000002; test-transcriptome:FLT00000001
+FLT00000002	test-transcriptome-mult-ends:FLT00000002; test-transcriptome-mult-ends:FLT00000003; test-transcriptome-mutant-splice:FLT00000004; test-transcriptome:FLT00000002
+FLT00000003	test-transcriptome-mutant-splice:FLT00000001
+FLT00000004	test-transcriptome-mutant-splice:FLT00000003
+FLT00000005	test-transcriptome-seg1-badannot-multends-chromshifted:FLT00000001
+FLT00000006	test-transcriptome-seg1-badannot-multends-chromshifted:FLT00000002
+FLT00000007	test-transcriptome-seg1-badannot-multends-chromshifted:FLT00000003
+FLT00000008	test-transcriptome-readthrough:FLT00000001
+FLT00000009	test-transcriptome-mult-ends:FLT00000004; test-transcriptome-mult-ends:FLT00000005; test-transcriptome-readthrough:FLT00000002; test-transcriptome:FLT00000003
+FLT00000010	test-transcriptome-seg1-badannot-multends:FLT00000001; test-transcriptome-seg1-badannot-multends:FLT00000002; test-transcriptome-seg1-badannot:FLT00000001
+FLT00000011	test-transcriptome-seg1-badannot-multends:FLT00000003; test-transcriptome-seg1-badannot:FLT00000002
+FLT00000012	test-transcriptome-seg1-badannot-multends:FLT00000004
+FLT00000013	test-transcriptome-mult-ends:FLT00000007; test-transcriptome:FLT00000005
+FLT00000014	test-fusion:FLT00000001
+FLT00000015	test-fusion:FLT00000002

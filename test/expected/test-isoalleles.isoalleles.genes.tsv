@@ -1,0 +1,4 @@
+gene_id	sample	spliced_reads	assigned_spliced_reads	assigned_share	assigned_reads
+FLG00000001	basic	159	134	0.843	134
+FLG00000002	basic	722	545	0.755	545
+FLG00000003	basic	89	72	0.809	72

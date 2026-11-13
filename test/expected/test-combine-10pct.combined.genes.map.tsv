@@ -1,0 +1,8 @@
+new_id	source_ids
+FLG00000001	test-fusion:FLG00000003; test-transcriptome-mult-ends:FLG00000001; test-transcriptome-mutant-splice:FLG00000001; test-transcriptome:FLG00000001
+FLG00000002	test-transcriptome-seg1-badannot-multends-chromshifted:FLG00000001
+FLG00000003	test-transcriptome-readthrough:FLG00000001
+FLG00000004	test-transcriptome-mult-ends:FLG00000002; test-transcriptome-readthrough:FLG00000002; test-transcriptome:FLG00000002
+FLG00000005	test-transcriptome-seg1-badannot-multends:FLG00000001; test-transcriptome-seg1-badannot:FLG00000001
+FLG00000006	test-fusion:FLG00000002; test-transcriptome-mult-ends:FLG00000003; test-transcriptome:FLG00000003
+FLG00000007	test-fusion:FLG00000001

@@ -1,0 +1,37 @@
+##fileformat=VCFv4.2
+##source=FLAIR indels
+##contig=<ID=chr12,length=133275309>
+##contig=<ID=chr17,length=83257441>
+##contig=<ID=chr20,length=64444167>
+##FILTER=<ID=sj,Description="too close to splice junction">
+##FILTER=<ID=hp,Description="homopolymer region">
+##FILTER=<ID=tr,Description="tandem repeat of adjacent sequence">
+##FILTER=<ID=dn,Description="dense repeat region, likely misalignment and/or low complexity region">
+##FILTER=<ID=lq,Description="variant is in a low quality region of supporting reads (near read ends or splice junctions)">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read depth">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths for the ref and alt alleles in the order listed">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	SAMPLE
+chr12	25205716	.	A	T	100	PASS	.	GT:DP:AD	0/1:159:87,72
+chr12	25205728	.	CTT	C	100	hp	.	GT:DP:AD	0/1:162:99,63
+chr12	25205894	.	T	G	100	PASS	.	GT:DP:AD	0/1:160:86,74
+chr12	25206009	.	T	C	100	PASS	.	GT:DP:AD	0/1:161:87,74
+chr12	25206035	.	T	G	100	PASS	.	GT:DP:AD	0/1:160:87,73
+chr12	25206394	.	A	T	100	PASS	.	GT:DP:AD	0/1:140:86,54
+chr12	25206418	.	G	A	100	PASS	.	GT:DP:AD	0/1:157:85,72
+chr12	25206530	.	TA	T	100	PASS	.	GT:DP:AD	0/1:156:85,71
+chr12	25206907	.	T	C	100	PASS	.	GT:DP:AD	0/1:149:84,65
+chr12	25207204	.	T	C	100	PASS	.	GT:DP:AD	1/1:164:0,164
+chr12	25207515	.	C	CA	100	hp	.	GT:DP:AD	0/1:164:76,88
+chr12	25208140	.	G	A	100	dn	.	GT:DP:AD	0/1:159:77,82
+chr12	25208157	.	T	C	100	dn	.	GT:DP:AD	1/1:162:1,161
+chr12	25208167	.	T	TA	100	hp;dn	.	GT:DP:AD	0/1:162:107,55
+chr12	25208208	.	A	G	100	PASS	.	GT:DP:AD	0/1:161:77,84
+chr12	25208712	.	T	C	100	PASS	.	GT:DP:AD	0/1:164:79,85
+chr12	25209283	.	A	G	100	PASS	.	GT:DP:AD	0/1:159:81,78
+chr12	25209531	.	G	A	100	PASS	.	GT:DP:AD	1/1:154:2,152
+chr12	25209618	.	A	C	100	PASS	.	GT:DP:AD	0/1:160:84,76
+chr12	25209843	.	A	G	100	PASS	.	GT:DP:AD	0/1:158:75,83
+chr17	64500016	.	C	T	100	PASS	.	GT:DP:AD	0/1:731:378,353
+chr17	64506317	.	A	G	100	PASS	.	GT:DP:AD	0/1:12:1,11
+chr20	35556975	.	A	G	100	lq;sj	.	GT:DP:AD	0/1:87:47,40

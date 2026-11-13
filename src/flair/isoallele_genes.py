@@ -375,7 +375,10 @@ def _isoform_sequences(ctx, gene_id, name, iso, germline, reads_by_sample, termi
         bed.productivity, bed.aaseq_id = productivity, pid or None
         bed.transcript_class = 'with_vars' if applied else iso.transcript_class
         reads = group_reads[(name, g)]
-        bed.read_support, bed.frac_support = sum(reads.values()), None
+        # frac_support stays the isoform's, its share of its gene's reads, so a filter
+        # on the column treats all of an isoform's alleles the same.  An allele's share
+        # of its isoform's reads would be a separate column and filter.
+        bed.read_support = sum(reads.values())
         bed.samples = [s for s in ctx.output_samples if reads[s]]
         bed.itemRgb = bed._get_rgb()
         fh = io.StringIO()

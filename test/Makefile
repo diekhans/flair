@@ -657,7 +657,8 @@ test-combine-conflict-gtf: mkdirs ${GENOME_FA}
 	$(call cmp_expect,$@.combined.aaseq.tsv)
 
 # isoforms of alleles, from flair isoalleles: combined into their isoforms,
-# without allele information, with a warning; support is per allele, so a lower --min_percent_usage
+# without allele information, with a warning.  read_support is per allele,
+# frac_support the isoform's, so --min_percent_usage treats an isoform's alleles alike
 test-combine-isoalleles: mkdirs ${GENOME_FA}
 	flair combine --isoform_beds $I/combine.isoalleles.bed --genome ${GENOME_FA} --min_percent_usage 1 -o $O/$@ 2> $O/$@.err
 	grep -q 'flair combine drops the allele information' $O/$@.err

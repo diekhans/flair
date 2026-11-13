@@ -285,11 +285,11 @@ error, and isoforms have no protein ids, as each sample numbers its own.
 
 Isoforms of alleles, from flair isoalleles, can be combined, but without their allele
 information: the alleles of an isoform are combined into one isoform, with a warning.
-Their support is per allele, so each allele is a smaller fraction of its gene's reads
-than its isoform is, and ``--min_percent_usage`` should be set lower for them.  Either way, isoforms without an
-annotated gene are grouped into novel genes as flair transcriptome groups them, and
-isoform and gene ids are numbered in genome order, so they don't depend on the order
-of the samples.
+Their ``read_support`` is per allele, while their ``frac_support`` is the isoform's
+share of its gene's reads, so ``--min_percent_usage`` keeps or drops an isoform's
+alleles together.  Either way, isoforms without an annotated gene are grouped into
+novel genes as flair transcriptome groups them, and isoform and gene ids are numbered
+in genome order, so they don't depend on the order of the samples.
 
 Flair combine will generate a counts file, but for the most accurate quantification, we recommend
 running FLAIR quantify using all samples against the combined transcriptome

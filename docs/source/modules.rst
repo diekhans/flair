@@ -68,7 +68,7 @@ Options to consider:
     the read's strand.  ``flair fusion`` requires stranded reads.
 ``--junc-bed annotation.bed``
     Not recommended: minimap2 moves a read's junctions onto the given ones, which
-    hides novel splicing.
+    leaves novel splicing unreported.
 
 For human reads, the analysis set assembly
 `GCA_000001405.15_GRCh38_no_alt_analysis_set <ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz>`__
@@ -722,7 +722,7 @@ For when to count splicing events from reads rather than build isoforms, see
 ``flair spliceevents`` counts alternative splicing events in each sample directly
 from its reads aligned to the genome, without building isoforms first, so it suits
 fragmented or degraded libraries and datasets of variable quality, which flair
-transcriptome handles less well.  Its events resemble ``flair diffsplice``'s, but they are
+transcriptome assembles less well.  Its events resemble ``flair diffsplice``'s, but they are
 counted from reads, while diffsplice derives them from isoforms and their counts, so
 the two are separate analyses, not steps of one.  Reads are corrected against the annotation, and
 optionally short-read junctions, as ``flair transcriptome`` corrects them, and assigned to
@@ -784,7 +784,7 @@ exon for es, and otherwise the outer bounds of its introns, in BED coordinates w
 5' to 3' as ``flair diffsplice`` writes them, so on the minus strand the first number
 is the larger, and its gene, as the ``gene`` column, the genes
 comma-separated if tied, so the events of two genes of one locus, as the ends of a gene
-and a readthrough of it, are told apart.  Each row is one alternative of its event, named by
+and a readthrough of it, are distinguished.  Each row is one alternative of its event, named by
 what sets it apart from the event's other rows: ``inc`` and ``exc`` for es and
 ``exc`` for ces, the exons
 included of a ces's other rows, ``retained`` and ``spliced`` for ir, the introns of
@@ -979,7 +979,7 @@ somatic only if it is none of the normal's germline calls.
 - A read's haplotype is its HP tag, H1 or H2, or ``untagged`` when the phasing
   could not place it.
 - Germline variants: homozygous ones are in every sequence, and phased hets on their
-  haplotype. An unphased het is put on the haplotype holding at least
+  haplotype. An unphased het is put on the haplotype with at least
   ``--carrier_min`` (0.9) of the isoform's tagged reads that have it, of at least
   ``--min_tagged`` (10); otherwise the reference base is kept, with a warning.
 - Somatic sets, in a pair: the somatic variants a read has make its set, numbered

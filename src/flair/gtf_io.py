@@ -275,7 +275,7 @@ def _parse_attribute_match(match: re.Match) -> tuple[str, str | int | float]:
     if quoted_value is not None:
         return key, quoted_value
     else:
-        # It was unquoted - try to convert to number
+        # It was unquoted - attempt to convert to number
         try:
             # Try int first
             if '.' not in unquoted_value:
@@ -517,7 +517,7 @@ def _format_attr_key_val(key, value):
     return attr_strs
 
 def _format_attrs(attrs):
-    """Build list of key=val, handling duplicate keys"""
+    """Build list of key=val, one entry per value of a repeated key"""
     attrs_strs = []
     for key, value in attrs.items():
         attrs_strs += _format_attr_key_val(key, value)

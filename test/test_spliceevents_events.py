@@ -592,7 +592,7 @@ def test_an_events_introns_count_for_its_gene_by_their_reads(tmp_path):
 def test_two_genes_events_of_one_locus_are_named_by_their_genes(tmp_path):
     # G1 and G2, as a gene and its readthrough, the readthrough's reads of a junction more,
     # upstream, share their last exon and its ends at 500 or 900: each has a tts event of
-    # the same locus, told apart by their genes
+    # the same locus, distinguished by their genes
     def reads(gene, juncs, counts):
         return [ReadChain((gene,), juncs, '+', [ReadEnds(50, 500)] * counts[0] + [ReadEnds(50, 900)] * counts[1])]
     g1, g2 = ((200, 300),), ((80, 120), (200, 300))

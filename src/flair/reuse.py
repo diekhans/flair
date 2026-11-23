@@ -22,7 +22,7 @@ PROVENANCE_SUFFIX = '.provenance.json'
 def _file_stamp(path):
     """a file's identity, for a provenance record: its path, its size and the time it
     was last modified.  A file replaced by one of the same size within the same
-    second is not told apart, which is the limit of a stamp of this kind."""
+    second is not distinguished, which is the limit of a stamp of this kind."""
     return [os.path.abspath(path), os.path.getsize(path), int(os.path.getmtime(path))]
 
 

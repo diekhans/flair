@@ -20,7 +20,7 @@ Columns, in order:
   delta_PSI                    sample2 PSI minus sample1 PSI
 
 The sample names are in the column names, so the sign of delta_PSI can be read
-from the file without knowing the order the samples were given in.
+from the file without the order the samples were given in.
 """
 from contextlib import contextmanager
 from flair.pycbio.sys import fileOps

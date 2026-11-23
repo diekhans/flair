@@ -57,7 +57,7 @@ def read_transcripts(gtf_data, fgenes, transcripts, chrom_sizes):
         genename = transcript.gene_id
         if genename not in fgenes:
             continue
-        # the 500 base padding is held within the sequence; a gene near either end has less room than that
+        # the 500 base padding is contained in the sequence; a gene near either end has less room than that
         fgenes[genename] = (transcript.chrom,
                             min([max(0, transcript.start - 500), fgenes[genename][1]]),
                             max([min(chrom_sizes.get(transcript.chrom), transcript.end + 500), fgenes[genename][2]]),

@@ -1,4 +1,4 @@
-"""The amino acid sequence behind each FLP id.
+"""The amino acid sequence of each FLP id.
 
 Columns, in order:
 

@@ -1,6 +1,6 @@
 """Checks that a read id names one read, in the three places a repeat is caught:
 the clipping of the reads being realigned, the reads labelled with their allele, and
-a sample's read map, which is the only one that sees the whole sample."""
+a sample's read map, which is the only one that reads the whole sample."""
 import pysam
 import pytest
 from flair import FlairInputDataError

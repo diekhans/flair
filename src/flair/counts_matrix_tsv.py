@@ -20,7 +20,7 @@ counts matrix (read_grouped_counts): a group of rows compared against each other
 an isoform's share of its gene, and a feature naming each row.  See COUNTS_FORMATS.
 
 A matrix from an earlier FLAIR joined the gene and the isoform into one
-isoform_gene column.  That form is refused rather than split, since splitting it
+isoform_gene column.  That form is rejected rather than split, since splitting it
 needs a heuristic that is wrong for a gene id containing an underscore.
 
 Reading or writing a path ending .gz or .bz2 compresses it, here as in every other

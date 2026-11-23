@@ -31,9 +31,9 @@ def parse_args():
     parser.add_argument('--min_vaf_pct', type=int, default=10,
                         help='Minimum percentage of reads required to call indel (int 1-100, default=10)')
     parser.add_argument('--min_sj_dist', type=int, default=3,
-                        help='Minimum number of basepairs an indel must be from a splice junction in the same read in order to be considered')
+                        help='Minimum number of basepairs an indel must be from a splice junction in the same read to be considered')
     parser.add_argument('--min_read_end_dist', type=int, default=6,
-                        help='Minimum number of basepairs an indel must be from the end of the read in order to be considered')
+                        help='Minimum number of basepairs an indel must be from the end of the read to be considered')
     parser.add_argument('--density_dist', type=int, default=20,
                         help='distance from variant considered for density calculation')
     parser.add_argument('--density_count', type=int, default=4,
@@ -117,7 +117,7 @@ def add_indel_info(cigar, align_start, align_end, region, readseq, genome, intro
     # ref_pos counts 0-based, so at an indel it contains the 1-based position of the
     # anchor base before it, which is what VCF POS requires and what is written.  SNVs
     # key pos_to_var by the 1-based position of the changed base instead, so the two
-    # kinds of entry sit one base apart; get_cov_for_var_pos reconciles them
+    # kinds of entry are one base apart; get_cov_for_var_pos reconciles them
     ref_pos, quer_pos = align_start, 0
     # here is where we can filter out indels that are too close to splice junctions or read ends
     for block in cigar:
@@ -201,7 +201,7 @@ def add_ss_to_ref(introns, donor_counts, acceptor_counts):
 
 
 def check_ss_dist_against_ref(pos, tot_cov, donor_counts, acceptor_counts, min_sj_dist, min_var_reads, min_vaf):
-    # allowing min_var_reads and min_vaf to sub in for sj counts to try to get a sense of the user's error tolerance
+    # allowing min_var_reads and min_vaf to sub in for sj counts to estimate the user's error tolerance
     for i in range(pos - min_sj_dist, pos + min_sj_dist + 1):
         if (i in donor_counts and donor_counts[i] >= min_var_reads and donor_counts[i] / tot_cov > min_vaf) \
                 or (i in acceptor_counts and acceptor_counts[i] >= min_var_reads and acceptor_counts[i] / tot_cov > min_vaf):
@@ -255,7 +255,7 @@ def get_cov_for_var_pos(pos, pos_to_cov):
         tot_cov.append(pos_to_cov[pos + 1])
     if len(tot_cov) == 0:
         # raise ValueError(f'No coverage at indel locus: {pos}')
-        # NOTE: this can happen if there is an insertion in the middle of an intron (strange but minimap does it for some reason)
+        # NOTE: this can happen if there is an insertion in the middle of an intron (unexpected, but minimap does it)
         return [0, 0]
     elif len(tot_cov) == 1:
         return tot_cov[0]

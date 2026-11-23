@@ -1,6 +1,6 @@
 """Reads corrected to junction chains, per sample and region: their genes, the
 fragments of first and last exons among their unspliced reads, and the files
-handing them to event calling.  Used by flair spliceevents"""
+passing them to event calling.  Used by flair spliceevents"""
 
 import os
 import os.path as osp
@@ -60,7 +60,7 @@ ReadEnds = namedtuple('ReadEnds', ('start', 'end'))
 
 
 def read_chains_path(partition, sample):
-    "the file of a sample's corrected reads in a partition, handed from its correction to the region's event calling"
+    "the file of a sample's corrected reads in a partition, passed from its correction to the region's event calling"
     return f'{partition.file_prefix}_{sample}.read_chains.tsv'
 
 

@@ -30,7 +30,7 @@ no poly(A) tail clipped there, or 80% A in its last 20 aligned bases.  Such read
 removed by default, and ``--keep_internally_primed`` keeps them, for libraries whose
 reads were not primed on poly(A).
 
-A read that survives must also pass two tests:
+A read that is kept must also pass two tests:
 
 - ``--single_exon_support`` reads at the same clustered ends, 3 by default
 - a poly(A) consensus across the group giving it a strand, a group that gets none

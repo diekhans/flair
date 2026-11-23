@@ -7,7 +7,7 @@ VERSION = "3.0.0+dev"
 
 # Fixed minimum and maximums size for an intron sizes
 # This could be configurable at some point, especially
-# maximum size, do to crazy bad alignments
+# maximum size, due to misaligned reads
 #
 # Information glean from multiple sources,
 #
@@ -34,7 +34,7 @@ class FlairInputDataError(FlairError, NoStackError):
 
 class FlairToolError(FlairError, NoStackError):
     """A program flair ran reported an error.  The message includes that program's own
-    diagnostics, which report what went wrong, so a Python traceback of the flair code
+    diagnostics, which report what failed, so a Python traceback of the flair code
     that started it adds nothing."""
     pass
 

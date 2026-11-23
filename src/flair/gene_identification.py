@@ -45,7 +45,7 @@ def _group_overlapping_genes(genes, annots):
     return groups
 
 def _pick_group_gene(group, gene_to_juncs, gene_to_sites, five_prime_ss, strand, annots):
-    """Pick one gene from a group of overlapping genes, none of whose matches to
+    """Select one gene from a group of overlapping genes, none of whose matches to
     the isoform contain another's, by the highest score: 2 for each of the
     isoform's junctions the gene has annotated, 1 for each other splice site of
     the isoform it has annotated, and 1 if its matched splice site nearest the
@@ -84,7 +84,7 @@ def get_genes_with_shared_juncs(juncs, strand, annots, extra_sites=()):
     if its matches, junctions and splice sites together, are a proper subset of
     another gene's.  The remaining genes are grouped by genomic overlap of their
     junction spans: each group of overlapping genes, such as a gene cluster sharing
-    exons or a readthrough gene and its parts, gives one gene, chosen by
+    exons or a readthrough gene and its parts, gives one gene, selected by
     _pick_group_gene, while genes that do not overlap each other, as for a
     readthrough isoform without a readthrough annotation, are all returned.
     Returns a tuple of gene ids, empty if no gene shares a junction or splice site.

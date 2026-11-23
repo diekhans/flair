@@ -101,7 +101,7 @@ def count_reads_read(count):
 def report_reads_used(used, what):
     """How many of the reads a run read it reported, which is otherwise only in the
     outputs: a run that reports a quarter of its reads looks like one that reports
-    all of them, and a bad library, a bad threshold and a bad annotation look
+    all of them, and a low-quality library, a wrong threshold and an incomplete annotation look
     alike."""
     read = _reads_read.value
     if read > 0:

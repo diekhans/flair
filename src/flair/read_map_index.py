@@ -82,7 +82,7 @@ def _decompressed(path, temp_dir):
 
 class ReadMapIndex:
     """The offset of each isoform's row in a read map.  Pickles small, so it can be
-    handed to worker processes, each of which opens the file itself (open_reader)."""
+    passed to worker processes, each of which opens the file itself (open_reader)."""
 
     def __init__(self, read_map_tsv, temp_dir):
         self.read_map_tsv = read_map_tsv
@@ -135,7 +135,7 @@ class ReadMapIndex:
 
 
 class ReadMapReader:
-    "reads the rows of chosen isoforms through a ReadMapIndex; one per process"
+    "reads the rows of selected isoforms through a ReadMapIndex; one per process"
 
     def __init__(self, index):
         self.index = index

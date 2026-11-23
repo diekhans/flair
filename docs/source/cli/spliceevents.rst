@@ -102,7 +102,7 @@
 
 .. option:: --no_align_to_annot
 
-   skip the initial alignment to the annotated sequences and correct reads only from the genomic alignment. Slightly faster but less accurate when the annotation is good
+   skip the initial alignment to the annotated sequences and correct reads only from the genomic alignment. Slightly faster but less accurate when the annotation is complete
 
 .. option:: --temp_dir TEMP_DIR
 

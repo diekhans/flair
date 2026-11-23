@@ -92,7 +92,7 @@ def add_subparser(subparsers):
                              'overlapping isoforms has a low MAPQ regardless (default: %(default)s)')
     parser.add_argument('--frac_support', type=float, default=0.05,
                         help='minimum fraction of a fusion\'s reads for a fusion isoform to be reported; '
-                             'a fusion with one dominant isoform hides its minor ones below this.  For the most '
+                             'a fusion with one dominant isoform drops its minor ones below this.  For the most '
                              'recall, give 0 with --filter comprehensive (default: %(default)s)')
     parser.add_argument('--filter', default=DEFAULT_FILTER,
                         metavar='{nosubset,comprehensive,ginormous,<N>X}',
@@ -104,7 +104,7 @@ def add_subparser(subparsers):
     parser.add_argument('--no_transcriptome_alignment', action='store_true',
                         help='find fusions from the chimeric reads of the genome alignment only, without '
                              'aligning reads to annotated transcripts.  About half the time and a third of the '
-                             'memory, and -b can then contain only the chimeric reads, but loses fusion reads whose '
+                             'memory, and -b can then contain only the chimeric reads, but drops fusion reads whose '
                              'partner piece the genome alignment leaves clipped, particularly short 5\' exons')
     parser.add_argument('--keep_intermediate', action='store_true',
                         help='keep the intermediate files: the annotated transcripts, the preliminary fusion '
@@ -186,9 +186,9 @@ def select_junctions(junctions, fusiontobp, crossing):
     a fusion with no such junction across its breakpoint, the junctions across it with
     2 or more reads that are NONCANONICAL_MIN_SHARE of the reads crossing it.  A
     breakpoint inside an exon has no splice site, so its junction needn't be
-    canonical, but the reads should agree on it: in MCF7, TAOK3--RPS2's 21 reads
-    crossed its breakpoint at a dozen non-canonical junctions, and 3 that happened to
-    agree made a fusion isoform."""
+    canonical, but the reads should support the same one: in MCF7, TAOK3--RPS2's 21 reads
+    crossed its breakpoint at a dozen non-canonical junctions, and 3 sharing one
+    made a fusion isoform."""
     junctions = [bed for bed in junctions if bed.score >= 2]
     good_sj, has_canonical_bp = [], set()
     for bed in junctions:

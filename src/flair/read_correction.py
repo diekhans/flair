@@ -10,7 +10,7 @@ from flair.read_processing import should_process_read, add_corrected_read_to_gro
 def _add_corrected_spliced_read(read, readrec, aligned_juncs, genome, sj_to_ends, window, from_annotation):
     """Flag whether correction moved the read's junctions from its alignment's
     introns, and its first or last junction by more than window, and if none
-    moved, whether the alignment is clean around them; then group it"""
+    moved, whether the alignment matches the genome around them; then group it"""
     juncs = tuple((j.start, j.end) for j in sorted(readrec.juncs))
     aligned = tuple((j.start, j.end) for j in sorted(aligned_juncs))
     readrec.junctions_from_annotation = from_annotation

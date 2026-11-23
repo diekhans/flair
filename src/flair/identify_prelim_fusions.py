@@ -132,7 +132,7 @@ def getCorrectGene(chrom_to_gene_pos, gene_to_all_exons, juncs_to_gene, chrom, r
             s, e = exon_blocks[0][0], exon_blocks[-1][1]
             gene_overlaps = []
             for start, end, strand, gene in chrom_to_gene_pos[chrom]:
-                if start > e:  # assumes sorted
+                if start > e:  # requires sorted
                     break
                 if strand == thisdir and min(e, end) > max(start, s):  # require strand match
                     totoverlap = exonic_overlap(exon_blocks, gene_to_all_exons.get(gene, ()))
@@ -514,7 +514,7 @@ def fusion_read_positions(reads, read_to_pieces, num_loci):
 
 
 def outer_bound(positions, low):
-    """the outermost of positions held by 2 or more reads within 300 bases of each other,
+    """the outermost of positions shared by 2 or more reads within 300 bases of each other,
     or the median if further out or none are, padded by LOCUS_PADDING: the lowest if low, else the
     highest"""
     poslist = sorted(positions)
@@ -550,7 +550,7 @@ def tss_check(gene_info, bounds5, median5, max_dist_to_tss):
     the distance to its TSS in max_dist_to_tss.  Returns that and the distance, -1 when no
     start is upstream, with the check off."""
     gene_strand, gene_tss = gene_info[3], gene_info[-1]
-    # the most upstream 5' end, held by 2 or more reads, which with 5' truncated
+    # the most upstream 5' end, shared by 2 or more reads, which with 5' truncated
     # reads is the one near the promoter, or the median one: either counts
     end5 = bounds5[0] - LOCUS_PADDING if bounds5[0] > bounds5[1] else bounds5[0] + LOCUS_PADDING
     tss_dist = fusion_tss_distance((end5, median5), gene_strand, gene_tss)
@@ -563,7 +563,7 @@ def tss_check(gene_info, bounds5, median5, max_dist_to_tss):
 def _largest_cluster_near_zero(gaps):
     """Is the largest cluster of a junction's read gaps, each within 10 bases of the
     next, strictly larger than the others and centred within 10 bases of 0: most
-    reads agree on a junction with their pieces abutting, though others overlap
+    reads support the same junction with their pieces abutting, though others overlap
     more, as SMARCC1--EMCN in MCF7, where 14 of 36 reads' pieces abut and the rest
     have their SMARCC1 piece run on 125 or 400 bases into the sequence the EMCN
     piece aligns"""
@@ -580,7 +580,7 @@ def _largest_cluster_near_zero(gaps):
 
 def breakpoints_consistent(read_gaps):
     """do the reads' pieces have few gaps between them, or very consistent ones, or
-    does the largest cluster of reads agree on pieces that abut, at every junction
+    does the largest cluster of reads have pieces that abut, at every junction
     (_largest_cluster_near_zero).  Gaps are mostly segmentation artifacts, and
     overlaps of more than microhomology mostly paralogs and template switching"""
     spacings = []
@@ -588,7 +588,7 @@ def breakpoints_consistent(read_gaps):
         gaps = sorted(gaps)
         spacing = [gaps[i] - gaps[i - 1] for i in range(1, len(gaps))]
         # a single supporting read gives no consecutive differences,
-        # and median([]) raises.  One read agrees with itself
+        # and median([]) raises.  One read matches itself
         spacings.append(median(spacing) if len(spacing) > 0 else 0)
     return max([abs(median(x)) for x in read_gaps]) <= 10 \
         or (max([abs(min(x)) for x in read_gaps]) <= 10 and max(spacings) <= 3) \
@@ -676,7 +676,7 @@ def id_chimeras(genome_bam, annot, min_support, max_loci=10, max_dist_to_tss=Non
     read_to_genome_pieces = read_pieces('genomic', genome_bam, piece_of, min_mapq, None)
     drop_foldbacks('genomic', read_to_genome_pieces)
 
-    # the genome pieces win unless the transcript ones find a gene they missed
+    # the genome pieces take precedence unless the transcript ones find a gene they missed
     for read, genome_pieces in read_to_genome_pieces.items():
         if read not in read_to_pieces or not _use_transcript_pieces(read_to_pieces[read], genome_pieces):
             read_to_pieces[read] = genome_pieces

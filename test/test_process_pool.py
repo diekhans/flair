@@ -1,6 +1,6 @@
 """
 ProcessPool, the pool of worker processes the parallel subcommands run their tasks
-in: what it does when a worker dies, when a task fails, and with the results.
+in: what it does when a worker exits, when a task fails, and with the results.
 
 Each task function is at module level so the forked workers can call it.
 """
@@ -64,7 +64,7 @@ def test_run_runs_every_task(tmp_path):
     assert sorted(int(p.name) for p in tmp_path.iterdir()) == list(range(1, 26))
 
 def test_a_killed_worker_ends_the_run_rather_than_hanging():
-    # multiprocessing.Pool waits forever for a worker that dies without a result
+    # multiprocessing.Pool waits indefinitely for a worker that exits without a result
     with time_limit(HANG_TIMEOUT):
         with pytest.raises(BrokenProcessPool):
             with ProcessPool(3) as pool:
@@ -85,7 +85,7 @@ def test_a_failed_task_leaves_most_of_the_tasks_unrun(tmp_path):
     assert len(list(tmp_path.iterdir())) < 100
 
 def test_a_file_opened_after_the_pool_is_made_is_not_held_by_a_worker(tmp_path):
-    # a worker holding the pipe to bgzip open leaves it waiting for end of file
+    # a worker with the pipe to bgzip open leaves it waiting for end of file
     path = str(tmp_path / 'out.tsv.gz')
     with time_limit(HANG_TIMEOUT):
         with ProcessPool(3) as pool:

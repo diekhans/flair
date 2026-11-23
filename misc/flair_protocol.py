@@ -180,7 +180,7 @@ def patients_of(samples):
 
 
 def conditions_to_compare(args, samples):
-    "the two conditions diffexp compares, condition_a the reference, as diffexp chooses them"
+    "the two conditions diffexp compares, condition_a the reference, as diffexp selects them"
     counts = collections.Counter(s['condition'] for s in samples)
     if args.condition_a or args.condition_b:
         if not (args.condition_a and args.condition_b):

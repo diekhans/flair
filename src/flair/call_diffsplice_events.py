@@ -31,7 +31,7 @@ class Isoform(namedtuple("Isoform", ("name", "span", "exons"))):
 
 class FlankedJunc(namedtuple("FlankedJunc", ("junc", "prev_exon_start", "next_exon_end"))):
     """A junction with the outer bounds of the exons on either side, which is what
-    tells an alternative splice site from a skipped exon."""
+    distinguishes an alternative splice site from a skipped exon."""
     __slots__ = ()
 
 def event_quant_path(args, event):
@@ -50,7 +50,7 @@ def isoform_retains_junction(isoform, junc):
     if (isoform.span.start > junc.end) or (isoform.span.end < junc.start):
         return False
     # every exon, not exons[1:]: a junction retained inside the first exon of
-    # another isoform was not called, so this and mark_intron_retention disagreed
+    # another isoform was not called, so this and mark_intron_retention differed
     # about the same event
     return any((exon.start < junc.start) and (exon.end > junc.end)
                for exon in isoform.exons)
@@ -66,7 +66,7 @@ def update_altsplice_dict(jdict, chrom, strand, fiveprime, threeprime, exon_star
         jdict[chrom][fiveprime][threeprime]['isos'] = []  # isoform list for this junction
         jdict[chrom][fiveprime][threeprime]['exon_end'] = exon_end  # for detecting exon skipping
     elif (search_threeprime and strand == '+') or (not search_threeprime and strand == '-'):
-        if exon_end < jdict[chrom][fiveprime][threeprime]['exon_end']:  # pick shorter exon end
+        if exon_end < jdict[chrom][fiveprime][threeprime]['exon_end']:  # select shorter exon end
             jdict[chrom][fiveprime][threeprime]['exon_end'] = exon_end
     else:
         if exon_end > jdict[chrom][fiveprime][threeprime]['exon_end']:

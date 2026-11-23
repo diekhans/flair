@@ -1,4 +1,4 @@
-"""The counts matrix handed to DESeq2, one row per feature.
+"""The counts matrix passed to DESeq2, one row per feature.
 
 Columns, in order:
 

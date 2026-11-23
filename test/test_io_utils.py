@@ -31,7 +31,7 @@ def test_sorted_as_written(tmp_path):
     assert read_names(bed_file) == SORTED_NAMES
 
 def test_sorted_compressed(tmp_path):
-    "the suffix chooses the compression, the order is the same"
+    "the suffix selects the compression, the order is the same"
     bed_file = str(tmp_path / 'x.bed.gz')
     write_rows(bed_file)
     assert open(bed_file, 'rb').read(2) == b'\x1f\x8b'

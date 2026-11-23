@@ -63,7 +63,7 @@ run_deseq_analysis <- function(args) {
   resOut <- tsvCompressedPath(file.path(workdir, sprintf("%s_%s_v_%s_results.tsv", prefix, condition_a, condition_b)), args$compress)
   cleanOut <- tsvCompressedPath(sprintf("%s.%s_%s_v_%s.tsv", out_prefix, prefix, condition_a, condition_b), args$compress)
   
-  # check.names=FALSE: make.names() rewrites a sample column whose name holds
+  # check.names=FALSE: make.names() rewrites a sample column whose name contains
   # anything but letters, digits, dot and underscore, or that starts with a digit.
   # The formula matrix row names are never rewritten, so the two stopped matching
   # and SummarizedExperiment rejected the assay

@@ -98,7 +98,7 @@ misc/flair_dev_conda_env.yaml.
 
 Repeat this on Apple ARM (M1, M2, ...) processor systems.
 
-Then run the suite under every python version the package claims to support:
+Then run the suite under every python version the package declares support for:
 ```
 make test-pyversions
 ```
@@ -128,7 +128,7 @@ git push
 ```
 
 Readthedocs occasionally changes their requirements and when that happens the
-build of the FLAIR documentation may start failing. To make sure that it's up
+build of the FLAIR documentation may start failing. To verify that it's up
 and running, log in at readthedocs.org.
 
    https://readthedocs.org/projects/flair/builds/
@@ -136,12 +136,12 @@ and running, log in at readthedocs.org.
 and check that the latest build. Builds are started immediately after every
 push to the master branch.
 
-Review the documentation on ReadTheDocs to make sure you are happy.
+Review the documentation on ReadTheDocs.
 
 
 ## 8. Update version numbers in all relevant files
 
-Make sure tree is committed at this point, it makes undoing problems
+Verify the tree is committed at this point, it makes undoing problems
 with setting version easier.
 
 Version numbers should be increased following the major/minor/patch logic:
@@ -171,7 +171,7 @@ Bump with the appropriate version increase.
 bump-my-version bump <major|minor|patch|release>
 ```
 
-Before you do this, make sure the current version is correctly listed in `.bumpversion.cfg`.
+Before you do this, verify the current version is correctly listed in `.bumpversion.cfg`.
 
 Check that version were updated:
 ```
@@ -261,10 +261,10 @@ If an error occurs, delete the testpypi release.
 
 ## 13. Create pip package, and test
 
-You can only do this once per release, so be sure to doe the testpipy test
+You can only do this once per release, so do the testpipy test
 first.  PyPi does not allow submission of the same release number twice.
 While you can delete a release, you can not reuse the file names. If something
-goes wrong, re-release with a new patch version.
+fails, re-release with a new patch version.
 
 The pypi package name is `flair-brookslab`.
 
@@ -319,7 +319,7 @@ for inspection.
 
 NOTE: If there are NameResolutionErrors in the file, this is due to needing to 
 `--network=host` with Docker, however there is no way to pass it in.
-Just give up and push and let the bot check it.
+Stop and push, and let the bot check it.
 
   
 5. git commit -am 'FLAIR v<version> release'
@@ -329,24 +329,24 @@ Just give up and push and let the bot check it.
    This starts a testing process. Once all checks have passed and a green mark appears, 
    Once the tests have passed, add this comment to the pull request:
 	    @BiocondaBot please add label
-   This should take care of the red 'Review Required' and 'Merging is Blocked' notifications
+   This clears the red 'Review Required' and 'Merging is Blocked' notifications
 
 Note: THESE STEP MIGHT NOT BE NECESSARY
 
 If you do not make any changes to flair's dependencies (scipy, etc) then
 the biocondabot might detect the new release and update the conda package automatically. 
-Simply wait a few days, then check the version at 
+Wait a few days, then check the version at 
 
     https://bioconda.github.io/recipes/flair/README.html
 
 ## 16. Build the docker image and push it to dockerhub
 
-Docker does allow you to resubmit the same version number, it will overwrite the image if you do.
+Docker does let you resubmit the same version number, it will overwrite the image if you do.
 
 Please submit the container both as brookslab/flair:<current version number> and brookslab/flair:latest
 The use of 'latest' is heavily discouraged by Docker because it obscures the actual version. However, 
 when people try pulling without a version number the docker pull command automatically looks for the 'latest' tag.
-Dockerhub is smart enough to just add a second label to the same image, so submitting it twice does not
+Dockerhub adds a second label to the same image, so submitting it twice does not
 take a lot of time.
 
 Dependencies in  `misc/DockerFile` should have already been updated.  The version

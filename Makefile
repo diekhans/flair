@@ -9,7 +9,7 @@ include ${root}/defs.mk
 #   make test-installed
 #
 
-# flake8 walks the tree for *.py itself; PYPROGS adds executable scripts that
+# flake8 traverses the tree for *.py itself; PYPROGS adds executable scripts that
 # have no .py extension.  Symbolic links are not reported by file(1), so the
 # bin/ commands are not checked twice, only their targets in src/flair.
 PYPROGS = $(shell file -F $$'\t' bin/* test/bin/* dev/bin/* | awk -F'\t' '/Python script/{print $$1}')

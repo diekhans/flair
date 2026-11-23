@@ -67,7 +67,7 @@
     passing either is an error that reports it (issue #706).  They let a read count
     toward an isoform it does not support, the first by dropping the requirement that
     the read be full-length on it, the second by dropping the check that it aligns
-    accurately at the splice sites, which the rest of the module's logic assumes.
+    accurately at the splice sites, which the rest of the module's logic requires.
   * flair transcriptome partitions the input into clusters of overlapping reads and
     annotated transcripts, and `--parallel_mode` is removed.  `bychrom` aligned a
     chromosome's reads to every transcript on it and `byregion` aligned a partition's
@@ -115,7 +115,7 @@
   * Command line documentation is generated from the programs themselves, so it
     can no longer drift from what they accept.  flair alleles and isoalleles are
     documented for the first time.
-  * All subcommands now honor the logging options; previously only flair align did.
+  * All subcommands now use the logging options; previously only flair align did.
   * A global option given after the subcommand is reported with the command written
     again, and the correction now keeps the option's value:
     `flair transcriptome --log-level DEBUG` reports
@@ -140,7 +140,7 @@
   * `flair fusion --max_dist_to_tss` rejects a value below -1.  Such a value was
     taken as a real distance, which no fusion can be under, so the run reported no
     fusions and reported nothing; -1 remains the way to leave the distance unchecked.
-  * Bad input is reported as one line rather than a Python traceback: every
+  * Invalid input is reported as one line rather than a Python traceback: every
     installed command now reports errors this way, and the errors for mismatched
     annotation fasta and isoform names, alignments without AS or MD tags, and the
     option and input problems in junctions_from_sam and identify_vars state what to
@@ -194,7 +194,7 @@
   * `--threads` defaults to 12 in every program that takes it.  It was 12 in two
     subcommands, 4 in six programs and 1 in `flair_partition`, so how much of a
     machine a run used depended on which subcommand it was.
-  * `frac_support` is one fraction of one thing: an isoform's reads over the reads
+  * `frac_support` is one fraction of one quantity: an isoform's reads over the reads
     of every isoform of its gene, spliced and single exon together.  A spliced
     isoform's was its share of the gene's spliced reads and a single exon one's its
     share of all of them, so the rows of one gene were on two scales with no column
@@ -214,7 +214,7 @@
   * `flair transcriptome` and `flair quantify` report how many of the reads they read
     they reported: "of 1013 reads read, 757 assigned to a reported isoform (75%)".
   * The BED of `flair spliceevents` scores an event over the 0 to 1000 a genome
-    browser shades, where it was PSI times 100 and every event sat in the bottom
+    browser shades, where it was PSI times 100 and every event was in the bottom
     tenth of the range.
   * The outliers table of `spliceevents_outliers` has two columns, `alternative_reads`
     and `psi_total`, where one column had both numbers joined by a semicolon under
@@ -284,10 +284,10 @@
     `--ss_window 50` used to report the default window's events.
   * Both report at `INFO` what they reuse and what they make again.
   * A run stopped with SIGTERM or SIGINT removes its temporary directory, as a failed
-    run does.  It used to leave the reads and alignments of every partition behind,
+    run does.  It used to keep the reads and alignments of every partition,
     which is what a job scheduler stopping a run leaves.
   * A run reports its progress.  The default logging level is `INFO` rather than
-    `WARNING`, which printed nothing at all until something went wrong: a run that
+    `WARNING`, which printed nothing at all until something failed: a run that
     took hours was silent, and finished, running and hung looked alike.  A run now
     reports its version and command line, each stage as it starts, each partition or
     batch as it finishes, with its region, its size and its time, and what it
@@ -305,7 +305,7 @@
   * An error is reported whatever `--log-level` was given.  A run that failed with
     `--log-level CRITICAL` used to exit 1 with nothing printed, since the error was
     reported at the `ERROR` level (pycbio `cli.ErrorHandler`).
-  * `es_as.py` raises when two isoforms of one gene sit on different
+  * `es_as.py` raises when two isoforms of one gene are on different
     chromosomes or strands, instead of graphing both loci as one gene and
     calling skipped exons that are in neither.
   * A failing R script now fails the flair run.  The DESeq2 and DRIMSeq scripts
@@ -345,12 +345,12 @@
     opposite-strand genes, as SLC7A5--SLC7A5-AS1 and EXOC7--ZACN in MCF7.
   * `flair fusion` accepts a non-canonical junction across a fusion breakpoint
     only if it has at least half the reads crossing the breakpoint.  Any such
-    junction with 2 reads used to do, so a few reads that happened to agree among
+    junction with 2 reads used to do, so a few reads sharing a junction among
     many scattered ones made a fusion isoform, as TAOK3--RPS2 in MCF7 (3 of 21
     reads).  Canonical breakpoint junctions are unchanged.
   * `flair fusion --frac_support` sets the minimum fraction of a fusion's reads for
     a fusion isoform to be reported (default 0.05, as before).  A fusion with one
-    dominant isoform hid its minor ones: in MCF7, BCAS4--BCAS3 has isoforms with
+    dominant isoform excluded its minor ones: in MCF7, BCAS4--BCAS3 has isoforms with
     a BCAS3 exon upstream of the usual junction exon, with 2% of its reads.
   * `flair fusion --quality` (default 10) leaves out chimeric reads with a piece
     below that MAPQ in the genome alignment, whose partner could as well be
@@ -475,7 +475,7 @@
     `--min_support` counting both, each read's pieces from one alignment: those of
     the alignment to transcripts if they find a gene the genome alignment missed, as
     a 3-gene fusion's short middle exon, and explain as much of the read.
-  * `flair fusion` accepts a preliminary fusion whose reads mostly agree on pieces
+  * `flair fusion` accepts a preliminary fusion most of whose reads have pieces
     that abut at the fusion junction, though the rest overlap more: SMARCC1--EMCN
     in MCF7, where 14 of 36 reads' pieces abut and the others' SMARCC1 piece runs
     125 or 400 bases into the sequence their EMCN piece aligns.  Overlaps of more
@@ -483,10 +483,10 @@
     paralogs and pseudogenes the paralog table misses, template switches and RN7SL
     artifacts, and no reference fusions.
   * A run whose worker process is killed, as the OOM killer kills the worker with
-    the largest cluster, now ends with an error rather than waiting forever: the
+    the largest cluster, now ends with an error rather than waiting indefinitely: the
     parallel subcommands run their tasks in a `ProcessPoolExecutor` over a fork
     context rather than a `multiprocessing.Pool`, which has no way to notice a worker
-    that dies without returning a result.  A failed task now ends the run once the
+    that exits without returning a result.  A failed task now ends the run once the
     tasks already running have finished, rather than killing their workers, which left
     the minimap2 and samtools processes those workers had started running on after the
     run was gone.  An input error from a worker, such as a read id naming two reads,
@@ -575,11 +575,11 @@
     terminal intron, whose reads had been discarded, are reported.
   * Isoforms are assigned to genes by junctions and splice sites, and novel genes
     are grouped by shared splicing.  Genes that match an isoform equally go to
-    the one with more annotated transcripts, so a gene wins over a readthrough
+    the one with more annotated transcripts, so a gene takes precedence over a readthrough
     of it, which is usually annotated with one or two.
   * Semi-canonical junction motifs (GC-AG, AT-AC) are weak strand evidence:
     without an annotation, the strand of a read whose junctions all have them
-    comes from gene identification.  `--trust_junctions` trusts every input
+    comes from gene identification.  `--trust_junctions` accepts every input
     junction's strand instead.
   * `--trust_strand` applies to spliced reads too; `--directRNA` declares direct
     RNA input (it implies `--trust_strand` and allows no large UTR deletions).
@@ -681,10 +681,10 @@
   * A tss or tts taken from the reads' starts (tss on +, tts on -) was placed one
     base before them.
   * `--output_read_ends` and its OUTPUT.spliceevents.readends.bed are gone.  Each
-    sample's corrected reads are handed from correction to event calling as a line
+    sample's corrected reads are passed from correction to event calling as a line
     per junction chain with its reads' ends, rather than a line per read with its
     name, a sixth of the size.
-  * Alternative first and last exons (afe, ale) are told from truncated reads over
+  * Alternative first and last exons (afe, ale) are distinguished from truncated reads over
     all samples together: an exon is a first exon only if at most 5% of the reads
     of its junctions have an exon before it (25% for a first exon of
     `--annot_basic`), and its reads are the event's only then.  An internal exon
@@ -693,7 +693,7 @@
   * Reads are given genes by flair transcriptome's gene identification, rather than
     spliceevents' own: by their junction chain, the junctions and splice sites they
     share with genes, then exon overlap, a gene's strand resolving a read of unknown
-    strand.  Overlapping genes are told apart as transcriptome tells them, so on PC9
+    strand.  Overlapping genes are distinguished as transcriptome distinguishes them, so on PC9
     reads of EEF1G and BSCL2 are no longer given an overlapping unnamed gene or a
     readthrough.  A read through two genes is given both, its events those of the
     gene `G1,G2`, and reads of no annotated gene, which were left out, are grouped
@@ -759,7 +759,7 @@
     chr19 and chr17, 6949 events are now 7391: those of rare forms are gone and those
     alike in both samples found.
   * The skipping junctions of an exon skip, and the junctions of a first or last exon
-    event, are picked as the event's alternatives are, alternative or main in the
+    event, are selected as the event's alternatives are, alternative or main in the
     samples of `--event_support` reads.  They needed a PSI away from 0 and 1 in one
     sample, of any reads, so an exon included in every read of one sample and none of
     another was written with no junctions, and a first exon used alone in each sample
@@ -889,7 +889,7 @@
       --iso_read_map_norm to --normal_read_map.  The options of flair alleles went
       with it, and isoalleles' own --allele_vcf, --allele_read_map and
       --allele_read_map_norm with the rewrite
-  * Short options dropped where a letter meant two different things: -w, -p, -q,
+  * Short options dropped where a letter meant two different options: -w, -p, -q,
     -e, -s, -i, -k, -m, -v and -of.  -b is now always the aligned BAM, -r the
     reads, -t threads, -g the genome, -f the annotation and -o the output.
   * Removed options that were accepted and never used: flair align --quiet and

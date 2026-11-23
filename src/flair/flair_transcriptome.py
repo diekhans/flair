@@ -51,7 +51,7 @@ MIN_POLYA_FRAC_DIFF_FOR_SE_STRANDING = 0.1
 # FIXME: add object for all file names
 # FIXME: use real TSVs
 # FIXME: need to document all the files
-# FIXME: it seems overkill to discard a single read based on one unsupported junction.
+# FIXME: discarding a single read for one unsupported junction is too strict.
 #        These can be recovered from other reads. Simple way is to add all reads valid
 #        junctions, although maybe faster to track with introns are support and figure
 #        this out in correct.  Another might have a polymorphic different with the reference
@@ -226,10 +226,10 @@ def add_subparser(subparsers):
     parser.add_argument('--no_align_to_annot', action='store_true',
                         help="skip the initial alignment to the annotated sequences and detect transcripts "
                              "only from the genomic alignment. Slightly faster but less accurate when the "
-                             "annotation is good")
+                             "annotation is complete")
 
     parser.add_argument('--max_ends', type=int, default=1,
-                        help='maximum number of TSS/TES picked per spliced junction chain; make higher for more '
+                        help='maximum number of TSS/TES selected per spliced junction chain; make higher for more '
                              'precise end detection.  Single-exon isoforms are reported at each of their clustered '
                              'ends, however many (default: %(default)s)')
     parser.add_argument('--filter', default=DEFAULT_FILTER,
@@ -609,8 +609,8 @@ def rank_end_variants(isoforms):
     # First by read support, then by length
     # FIXME: the comment above is what was meant; the code multiplies instead, so
     # this is not a two-level sort and a 1-read 10kb candidate outranks a 10-read
-    # 500bp one.  It once also chose the ends of every single-exon isoform, where
-    # sorting by (num_reads, genomic_length) picked the modal end pair, for long
+    # 500bp one.  It once also selected the ends of every single-exon isoform, where
+    # sorting by (num_reads, genomic_length) selected the modal end pair, for long
     # reads a 5' truncation cluster, over the pair reproducing the annotated 3' end
     isoforms.sort(key=lambda x: [x.num_reads * x.genomic_length], reverse=True)
 
@@ -862,7 +862,7 @@ def process_juncs_to_firstpass_isos(args, temp_prefix, sj_to_ends, annots, regio
 def filter_single_exon_iso(args, single_exon, curr_group, all_isoforms):
     """Check if a single-exon isoform passes filtering against its overlap group.
     The end variants of one cluster of reads aren't compared with each other: they
-    were chosen as its ends (_end_variants)."""
+    were selected as its ends (_end_variants)."""
     isoform = all_isoforms[single_exon.name]
     expression_comp_with_superset = []
     is_contained = False
@@ -1043,7 +1043,7 @@ def write_first_pass_isoforms(iso_name, isoform, max_terminal_exons_ends, unique
 
     if unique_bound and iso_name in unique_bound:
         # only boundaries the isoform's own best supported ends reach past, as the
-        # subset check saw them: one past them can only be covered by reads running
+        # subset check read them: one past them can only be covered by reads running
         # on past the isoform's end, as to the gene's furthest end, which isn't its
         # own, so it would only take the isoform's reads from it
         bounds = unique_bounds_past(unique_bound[iso_name], check_exons[0], check_exons[-1], isoform.strand)
@@ -1406,7 +1406,7 @@ def calc_final_iso_support(read_ends_file, final_transcript_objs):
             gene_to_tot[gene][1] += 1
         else:  # this is only kept to catch bugs in count_sam_transcripts transcript assignment
             # the FIXME above states that count_sam_transcripts no longer emits these, so
-            # reaching this means the two disagree about what ends.tsv contains
+            # reaching this means the two differ about what ends.tsv contains
             raise FlairError(f"{read_ends_file}: read '{read}' on transcript '{transcript}' is not "
                              f"full length: junctions {start_sj_index} to {end_sj_index} of "
                              f"{len(final_transcript_objs[transcript].juncs)}")
@@ -1432,7 +1432,7 @@ def promote_backup_subsets(args, removed_subsets, final_transcript_objs, iso_to_
                if isoform.juncs != () and _iso_passes_support_filter(args, name, isoform.gene_id, len(isoform.exons),
                                                                      iso_to_counts, gene_to_tot)[0]}
     assigned = {row.read for row in ReadEndsReader(ends_path)} if os.path.exists(ends_path) else set()
-    # longest chains first, so an isoform's supersets are decided before it: a fragment
+    # longest chains first, so an isoform's supersets are determined before it: a fragment
     # of a promoted subset is still a fragment
     for name, (subset, supersets, unique_seq) in sorted(removed_subsets.items(), key=lambda item: -len(item[1][0].juncs)):
         if (subset.strand, subset.juncs) in passing or any((s.strand, s.juncs) in passing for s in supersets):
@@ -1543,7 +1543,7 @@ def _run_region_reads(*, partition, region, gtf_data, junction_corrector, args):
         # genomic clipping: amount of clipping (from cigar) at ends of reads when aligned to genome
         # generates file with [read{\t}clipping amount] on each line
         # For comparing with amount of clipping after alignment to transcriptome
-        # in order to check whether transcriptome alignment is comparable to or better than genomic alignment,
+        # to check whether transcriptome alignment is comparable to or better than genomic alignment,
         # which can be considered to support isoform.
 
         # never zero reads here: _run_region only calls this when samtools fasta found
@@ -1564,7 +1564,7 @@ def _run_region_reads(*, partition, region, gtf_data, junction_corrector, args):
         logging.debug('correcting and grouping reads, filtering isoforms')
 
         # takes in bam file, for each read attempts to correct splice junctions (removes unsupported ones), then groups reads by junction chains
-        # this also handles read strandedness if necessary
+        # this also corrects read strandedness if necessary
         sj_to_ends = {}
         filter_correct_group_reads(bam_file=bam_file, region=region,
                                    read_to_annot_transcript=read_to_annot_transcript,
@@ -1579,7 +1579,7 @@ def _run_region_reads(*, partition, region, gtf_data, junction_corrector, args):
         # for each junction chain, clusters ends - generates junction chain x ends
         # firstpass objects then does initial filtering by read support and
         # redundant ends also separates single exon isoforms from spliced isoforms
-        # (because they're handled differently in future step for identifying
+        # (because they're processed differently in a future step for identifying
         # annotated gene/isoform names)
         candidates = process_juncs_to_firstpass_isos(args, partition.file_prefix, sj_to_ends, annots, region.name)
 
@@ -1689,7 +1689,7 @@ def get_new_ids(output):
 
 def fix_ids_txt_file(iso_hash_to_id, oldfile, newfile):
     """Rename the ids in the first column, keeping the header.  This is the last
-    thing written to these two files, so it is where they are compressed."""
+    write to these two files, so it is where they are compressed."""
     with fileOps.opengz(oldfile) as in_fh, fileOps.AtomicFileOpen(newfile, 'w') as fh:
         fh.write(in_fh.readline())  # header, whose first field is a column name
         for line in in_fh:
@@ -1719,8 +1719,8 @@ def rename_ids_into_place(iso_hash_to_id, joined, final):
 
 def move_into_place(renamed, joined):
     """Put the file written with the final ids where the joined partition output was.
-    Both names follow the run's compression, so the joined file is only left behind,
-    to be removed here, when compression gave the final file a different name."""
+    Both names follow the run's compression, so the joined file remains, to be
+    removed here, only when compression gave the final file a different name."""
     final = compressed_path(joined)
     os.rename(compressed_path(renamed), final)
     if final != joined:

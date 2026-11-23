@@ -187,7 +187,7 @@ def do_mtc_ttest(rows, gene_to_tot_counts, ref_cols, test_cols, unreported, coun
 def get_sig_from_norm_by_gene(outname, norm_rows, ref_cols, test_cols, unreported, counts_format):
     """
     This function runs t-tests with multiple testing correction on isoform counts normalized by gene
-    This method essentially does differential isoform usage testing, but accounts for differences in gene expression
+    This method does differential isoform usage testing, but accounts for differences in gene expression
     This is better for detecting novel transcripts than DRIM-seq
     """
 
@@ -218,7 +218,7 @@ def separate_tables(counts_rows, thresh, samples, a_cols, b_cols, out_dir):
     for row in counts_rows:
         add_counts_row(genes, isoforms, row)
 
-    # the two conditions' column indexes are chosen by name in calculate_sig; taking
+    # the two conditions' column indexes are selected by name in calculate_sig; taking
     # them from the first and last column made the filter depend on column order, and
     # with an order like A,B,B,A it tested one condition twice
     g1_ind = np.asarray(a_cols)
@@ -231,7 +231,7 @@ def separate_tables(counts_rows, thresh, samples, a_cols, b_cols, out_dir):
     # a row is tested when the reads of at least one condition, summed over its
     # samples, reach the threshold, which is what --min_expression's help states.
     # It was the minimum over the samples of a condition, so one low sample in each
-    # condition dropped the row however many reads the conditions held
+    # condition dropped the row however many reads the conditions had
     filtered_rows = (np.sum(vals[:, g1_ind], axis=1) >= thresh) | (np.sum(vals[:, g2_ind], axis=1) >= thresh)
     filtered_gene_vals = vals[filtered_rows]
     filtered_gene_ids = gene_ids[filtered_rows]
@@ -290,7 +290,7 @@ def r_compress_option():
 
 def run_deseq2(prefix, id_column, workdir, condition_a, condition_b, matrix_file, output, formula_matrix_file):
     # no --batch: neither R script ever read it, and one arbitrary batch label would
-    # not have said anything anyway.  Both take the batch column from the formula matrix
+    # not have reported anything anyway.  Both take the batch column from the formula matrix
     stderr = f"{workdir}/{prefix}.txt"
     try:
         with open(stderr, "w") as stderr_fh:
@@ -355,7 +355,7 @@ def calculate_sig(*, counts_matrix, output, condition_a, condition_b, min_expres
     elif set(groups).intersection(set(batches)):
         raise FlairInputDataError(f"a condition and a batch have the same name, "
                                   f"{', '.join(sorted(set(groups) & set(batches)))}, which the model "
-                                  f"formula cannot tell apart; rename the batch in the sample info of "
+                                  f"formula cannot distinguish; rename the batch in the sample info of "
                                   f"{quant_table_tsv}")
     elif sum([1 if x.isdigit() else 0 for x in groups]) > 0 or sum([1 if x.isdigit() else 0 for x in batches]) > 0:
         raise FlairInputDataError(f"condition and batch names must not be numbers, which are read as "

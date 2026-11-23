@@ -41,7 +41,7 @@ run_DRIMSeq <- function(args) {
   workdir <- args$workdir
 
   # The condition and batch of each sample come from the formula file rather than
-  # from the matrix column names, which carry only the sample id.
+  # from the matrix column names, which contain only the sample id.
   formulaDF <- tsvFread(args$formula, colClasses="character")
   formulaDF <- formulaDF[condition %in% c(args$condition_a, args$condition_b)]
 
@@ -56,7 +56,7 @@ run_DRIMSeq <- function(args) {
   quantDF <- tsvFread(args$matrix)
   # formulaDF$sample_id, not samples: the matrix used to keep every sample column
   # while the pseudocount loop below covered only the selected ones, so the counts
-  # handed to dmDSdata were inflated in some columns and not others
+  # passed to dmDSdata were inflated in some columns and not others
   quantDF <- quantDF[, c("feature_id", "coordinate", formulaDF$sample_id, "isoform_ids"), with=FALSE]
   setnames(quantDF, "coordinate", "gene_id")
 
@@ -100,7 +100,7 @@ run_DRIMSeq <- function(args) {
   res_out_path <- tsvCompressedPath(file.path(workdir, sprintf("%s_%s_v_%s_drimseq_results.tsv", args$prefix, args$condition_a, args$condition_b)), args$compress)
   tsvWriteTable(res, res_out_path, row.names=FALSE)
 
-  # Finalize and write cleaned results
+  # Finalize and write the results
   clean_out_path <- tsvCompressedPath(sprintf("%s.drimseq_%s_%s_v_%s.tsv", args$out_prefix, args$prefix, args$condition_a, args$condition_b), args$compress)
   res <- res[order(res$adj_pvalue),]
   res <- subset(res, adj_pvalue <= 0.05)
@@ -111,7 +111,7 @@ run_DRIMSeq <- function(args) {
   return(clean_out_path)
 }
 
-# Main function to orchestrate tasks
+# Main function, runs the tests in order
 main <- function() {
   args <- parse_arguments()
   outfile <- run_DRIMSeq(args)

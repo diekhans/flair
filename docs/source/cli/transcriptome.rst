@@ -99,11 +99,11 @@
 
 .. option:: --no_align_to_annot
 
-   skip the initial alignment to the annotated sequences and detect transcripts only from the genomic alignment. Slightly faster but less accurate when the annotation is good
+   skip the initial alignment to the annotated sequences and detect transcripts only from the genomic alignment. Slightly faster but less accurate when the annotation is complete
 
 .. option:: --max_ends MAX_ENDS
 
-   maximum number of TSS/TES picked per spliced junction chain; make higher for more precise end detection. Single-exon isoforms are reported at each of their clustered ends, however many (default: 1)
+   maximum number of TSS/TES selected per spliced junction chain; make higher for more precise end detection. Single-exon isoforms are reported at each of their clustered ends, however many (default: 1)
 
 .. option:: --filter {nosubset,comprehensive,ginormous,<N>X}
 

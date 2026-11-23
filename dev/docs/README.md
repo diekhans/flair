@@ -32,7 +32,7 @@ If you get warning like:
 ```
 warning  libmamba Problem type not implemented SOLVER_RULE_STRICT_REPO_PRIORITY
 ```
-and then it fails with conflicts, make sure your conda is current with:
+and then it fails with conflicts, verify that your conda is current with:
 
 ```
 conda update -n base -c conda-forge conda
@@ -46,7 +46,7 @@ conda config --set channel_priority flexible
 ## Running FLAIR program during development
 
 
-The preferred way to run FLAIR is using flair-dev conda environment as
+The recommended way to run FLAIR is using flair-dev conda environment as
 described above, which will have it in the PATH.  By using the `-e`
 (`--editable`) option to `pip`, edits to the source tree will be reflected in
 the conda environment without a need for another install.
@@ -106,7 +106,7 @@ Individual test suites are targets of `test/Makefile`, such as
 `make -C test transcriptome-tests`; `make -C test help` lists them.
 
 To run the suite under every python version `requires-python` in
-`pyproject.toml` claims:
+`pyproject.toml` declares:
 ```
 make test-pyversions
 ```
@@ -115,7 +115,7 @@ with python repinned, FLAIR installed into it with `pip install -e .[dev]`, and
 `test-env-only` run with its output in `test/output-py<version>`.  The versions
 test at the same time, but build their environments one at a time, as conda has
 one package cache for the whole installation and two `conda env create` at once
-lose each other's downloads in it.  The generated inputs under `test/tmp-input`
+overwrite each other's downloads in it.  The generated inputs under `test/tmp-input`
 are the same for every version, so `make test-inputs` builds them first.  The
 per-version logs are left in `pyver-test-logs/`.
 

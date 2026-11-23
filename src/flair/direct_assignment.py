@@ -8,7 +8,7 @@ directly when:
 
   * its chain is the chain of just one kept spliced isoform;
   * junction correction didn't move its junctions from its alignment's introns,
-    and its alignment is clean around them (ReadRec.junctions_moved and
+    and its alignment matches the genome around them (ReadRec.junctions_moved and
     clean_splice_sites, set by read_correction), which also catches a short exon
     the alignment missed; or its junctions came from its annotation match, which
     checked its splice sites against the annotated transcript, and moved none of

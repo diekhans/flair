@@ -2,7 +2,7 @@
 reference that changes are measured against.
 
 Conditions come from the sample info of a counts matrix; see sample_info_tsv.
-This is the one place that chooses the pair, so diffexp and diffsplice choose it
+This is the one place that selects the pair, so diffexp and diffsplice select it
 the same way.
 """
 import logging

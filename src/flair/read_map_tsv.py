@@ -1,4 +1,4 @@
-"""Which reads support a thing, one row per thing.
+"""Which reads support an isoform, one row per isoform.
 
 Columns, in order:
 
@@ -61,7 +61,7 @@ def _repeated_hashes(hashes):
     return frozenset(hashes[:-1][hashes[:-1] == hashes[1:]].tolist())
 
 def _ids_of_hashes(read_map_tsv, hashes):
-    "how often each id of the given hashes is used, two hashes being able to collide"
+    "how often each id of the given hashes is used, two hashes can collide"
     used = {}
     with ReadMapReader(read_map_tsv) as reader:
         for read in (read for row in reader for read in row.reads if hash(read) in hashes):

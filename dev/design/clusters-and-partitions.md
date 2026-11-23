@@ -1,6 +1,6 @@
 # Clusters and partitions
 
-Two different things, often confused because both come out of `flair_partition` as
+Two different objects, often confused because both are written by `flair_partition` as
 ranges on a chromosome.
 
 ## Cluster
@@ -21,8 +21,8 @@ smallest region that contains everything that influences the read.
 ## Partition
 
 A partition is one or more adjacent clusters run as one task.  Merging is for
-scheduling: a task has a fork, an annotation subset and at least one minimap2 run
-behind it, so very small tasks waste those, and very large ones leave threads idle.
+scheduling: a task requires a fork, an annotation subset and at least one
+minimap2 run, so very small tasks waste those, and very large ones leave threads idle.
 
 - flair spliceevents merges clusters itself, up to `--partition_items` input items
   (`_work_units` in `flair_spliceevents.py`)
@@ -44,7 +44,7 @@ Scope one of them to the partition and results move when the partition size or t
 parallel mode changes, or when a run is restricted to a region.  This is not
 theoretical; both cases below were measured on A498 over hg19.
 
-## How this went wrong before
+## How this failed before
 
 `annot_data_from_gtf(gtf_data, region)` keeps every transcript of the `GtfData` it is
 given and uses `region` only as a dict key.  Passing a cluster as `region` therefore
@@ -56,11 +56,11 @@ annots = annot_data_from_gtf(gtf_data.subset_for_region(cluster.name, cluster.st
 
 Until that was done, flair spliceevents reported different events at different
 `--partition_items`: on chr19, four rows of one gene appeared only when the partition
-was large enough to pull a distant transcript into the alignment index.  With the
+was large enough to include a distant transcript in the alignment index.  With the
 annotation and the junction corrector cut to the cluster, 1000 items and 20000 items
 give identical tables, as does one task per cluster, over 91287 event rows genome-wide.
 
-flair transcriptome had the same exposure through `--parallel_mode`: `bychrom` aligned
+flair transcriptome had the same defect through `--parallel_mode`: `bychrom` aligned
 against a whole chromosome's transcripts and `byregion` against a partition's, and the
 two gave different isoforms on chr19 (one isoform of 2559, six read counts).  It now
 partitions by cluster always.
@@ -79,7 +79,7 @@ partitions by cluster always.
 
 ## Regions
 
-`--region` and `--region_bed` are a third thing: what the user asked about.  A region
+`--region` and `--region_bed` are a third kind: what the user asked about.  A region
 is expanded over the items that overlap it until nothing more does
 (`closed_partitions`), which yields clusters again.  Events and transcripts are then
 reported against the region the user gave, not against the cluster.

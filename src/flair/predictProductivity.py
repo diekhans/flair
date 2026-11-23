@@ -150,7 +150,7 @@ def predict_productivity(transcript, start_codon_count, gene_to_cds_starts, tran
         my_prod = my_orf[0]
         my_aaseq = my_orf[5]
         if checked_cds(thickStart, thickEnd, transcript.start, transcript.end) is None:
-            # no usable CDS: reported as no good ORF, rather than failing bedToBigBed
+            # no usable CDS: reported as no ORF, rather than failing bedToBigBed
             logging.debug(f"CDS dropped, thickStart {thickStart} and thickEnd {thickEnd} not within "
                           f"{transcript.chrom}:{transcript.start}-{transcript.end} ({transcript.strand}): {transcript.name}")
             thickStart = thickEnd = transcript.start
@@ -159,5 +159,5 @@ def predict_productivity(transcript, start_codon_count, gene_to_cds_starts, tran
 
 def translate(seq):
     """Protein for a coding sequence, without the trailing stop.  The table and the
-    codon lookup live in isoform_data; this had its own identical copy."""
+    codon lookup are defined in isoform_data; this had its own identical copy."""
     return translate_seq(seq)[:-1]

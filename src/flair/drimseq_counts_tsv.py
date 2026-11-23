@@ -1,4 +1,4 @@
-"""The counts matrix handed to DRIMSeq, one row per isoform.
+"""The counts matrix passed to DRIMSeq, one row per isoform.
 
 Columns, in order:
 

@@ -76,7 +76,7 @@ class AnnotData(object):
         # key format matches BED name field from gtf_to_bed --include_gene
         self.transcript_to_sjc = {}
 
-        # map of Junc -> gene_id (single value, last gene seen wins)
+        # map of Junc -> gene_id (single value, the last gene read replaces earlier ones)
         # used by spliceevents for simple junction-to-gene lookup
         self.junc_to_gene_id = {}
 

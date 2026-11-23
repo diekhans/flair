@@ -250,7 +250,7 @@ class _ThreadSlots:
         self._cond = threading.Condition()
 
     def run(self, nslots, func, *args):
-        # a job wanting more than the whole budget runs alone, rather than waiting
+        # a job requiring more than the whole budget runs alone, rather than waiting
         # for threads that will never be free
         nslots = min(nslots, self._total)
         with self._cond:

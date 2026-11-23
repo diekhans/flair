@@ -131,7 +131,7 @@ def combineIsos(beds, endwindow):
 
 
 def parse_input(manifest, prefixes, input_beds):
-    # assumes that only one input is not None; prefixes and input_beds are their
+    # requires that only one input is not None; prefixes and input_beds are their
     # options' values, one per time the option was given
     if manifest is not None:
         return [row[0] for row in read_manifest_rows(manifest, (1,), "the path of one sample's flair "
@@ -271,7 +271,7 @@ def _ref_genes(bed_list_group):
         samples_genes = '; '.join(sorted(f"{','.join(x[0].samples)}: {_genes_str(x[0].ref_gene_mappings)}"
                                          for x in bed_list_group))
         if _is_fusion(bed_list_group[0]):
-            advice = "These are fusion isoforms, whose genes flair fusion chose, which flair combine can't reconcile."
+            advice = "These are fusion isoforms, whose genes flair fusion selected, which flair combine can't reconcile."
         else:
             advice = ("Give flair combine an annotation (-f) to give each isoform the gene flair transcriptome would, "
                       "or check that all samples were run with the same annotation.")

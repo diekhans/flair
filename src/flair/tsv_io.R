@@ -12,7 +12,7 @@
 # instead.
 
 # what --compress appends; gzip is the one flair writes, though the writer below
-# honours whatever a path it is handed already ends in
+# keeps whatever the given path already ends in
 tsvCompressSuffix <- ".gz"
 
 tsvCompressedPath <- function(path, compress) {
@@ -30,8 +30,8 @@ tsvWriteConnection <- function(path) {
     } else if (grepl("\\.bz2$", path)) {
         bzfile(path, "w")
     } else if (grepl("\\.bgz$", path)) {
-        # gzfile would write ordinary gzip under a name that promises the block
-        # format, which is worse than refusing
+        # gzfile would write ordinary gzip under a name that states the block
+        # format, which is worse than rejecting
         stop(sprintf("cannot write bgzf: %s", path))
     } else {
         file(path, "w")
@@ -40,7 +40,7 @@ tsvWriteConnection <- function(path) {
 
 tsvWriteTable <- function(x, path, ...) {
     # write.table with the tab separated, unquoted conventions flair uses, through
-    # a connection that compresses when the name says to
+    # a connection that compresses when the name states it
     con <- tsvWriteConnection(path)
     on.exit(close(con))
     write.table(x, file = con, sep = "\t", quote = FALSE, ...)

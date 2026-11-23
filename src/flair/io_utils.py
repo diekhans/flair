@@ -158,7 +158,7 @@ def _program_names(cmds):
 
 def _program_failed_msg(cmds, exc):
     """A failed program's message, with its own diagnostics when pipettor captured
-    them.  The cause does not survive a process pool worker, so the diagnostics must
+    them.  The cause is not preserved across a process pool worker, so the diagnostics must
     be in the message itself to be reported at all."""
     diagnostics = (exc.stderr or '').strip()
     where = f'\n{diagnostics}' if diagnostics != '' else ', its diagnostics are above'
@@ -204,7 +204,7 @@ class GenomeFasta(pysam.FastaFile):
 ##
 # Final BED output, sorted by position.
 #
-# A BED that flair hands to the user is sorted by chrom and start, so that a run is
+# A BED that flair writes for the user is sorted by chrom and start, so that a run is
 # comparable with another and so that bedToBigBed and genome browsers get the order
 # they expect.
 #

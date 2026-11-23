@@ -165,7 +165,7 @@ flair quantify
   ``flair diffexp`` and ``flair diffsplice`` read that file.
 - Read maps are ``<output>.isoforms.<sample>.read.map.tsv``.
 - ``<output>.tpm.tsv`` is ``<output>.isoforms.cpm.tsv``, written by every run.  It
-  held counts per million under the name TPM, and is now named for what it contains: a
+  contained counts per million under the name TPM, and is now named for what it contains: a
   long read is not one transcript, since reads are fragmented, so the counts are not
   normalized by isoform length.
 
@@ -307,7 +307,7 @@ Standalone programs
 
 - ``bed_to_gtf``: ``--dontuseCDS`` is ``--no_cds``, ``--add_reference_transcript_id`` is
   gone, and ``--is_flair_bed`` turns the extra BED columns into GTF attributes.  A BED
-  not from FLAIR is refused unless given ``--force``, which uses each name as its gene
+  not from FLAIR is rejected unless given ``--force``, which uses each name as its gene
   id too: names are no longer split into a transcript and gene at an underscore.
   A thick range is now a coding region whenever ``thickStart`` is below ``thickEnd``,
   as the BED convention has it, so a transcript with no UTR keeps its CDS.  FLAIR
@@ -327,7 +327,7 @@ File formats
 ------------
 
 - The counts matrix and the CPM table open with ``gene_id`` and ``isoform_id`` where
-  they had one ``ID`` column holding ``<isoform>_<gene>``. A counts matrix from an
+  they had one ``ID`` column containing ``<isoform>_<gene>``. A counts matrix from an
   earlier FLAIR, whose sample columns are named ``sample_condition_batch``, is still
   read: the fields are taken back out of the column name.
 - Read maps have a header row, ``name`` and ``reads``, where the old
@@ -339,6 +339,6 @@ File formats
   ``productivity``, ``transcript_class``, ``fused_genes``, ``pos_in_fusion``,
   ``samples``, ``source_isoform``, ``allele_group``, ``aaseq_id``. A column that does
   not apply to a row is empty. Anything reading the BED by column number past column
-  12 has to be told which column it requires.
+  12 has to be changed to the new column numbers.
 - The isoform name no longer includes the gene. It is the isoform id alone, with the
   gene in the ``gene_id`` column beside it.

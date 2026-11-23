@@ -5,7 +5,7 @@ annotation of flair transcriptome or the lookups of flair quantify, rather than
 being sent it.
 
 A ProcessPoolExecutor is used rather than multiprocessing.Pool, which waits
-forever for a worker that dies without returning a result, as a worker killed by
+indefinitely for a worker that exits without returning a result, as a worker killed by
 the OOM killer does; the executor raises BrokenProcessPool instead.
 
 Tasks are submitted a few per worker ahead of the workers rather than all at
@@ -33,7 +33,7 @@ def fork_context():
     """The multiprocessing context of the pools and of the state shared with them.
     Fork, so a worker inherits what the parent built: pickling an annotation into
     every task took longer than the tasks.  Python 3.14 makes forkserver the default
-    on Linux, so this is specified rather than assumed."""
+    on Linux, so this is specified rather than left to the default."""
     return mp.get_context('fork')
 
 

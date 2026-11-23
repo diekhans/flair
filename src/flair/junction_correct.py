@@ -10,8 +10,8 @@ from flair.count_sam_transcripts import SPLICE_SITE_FLANK
 
 ##
 # Notes:
-# - We might not want to prefer annotated junction due to possible NAGNAG junctions
-#   where annotations often pick just one.
+# - Ranking annotated junctions first may be wrong, with possible NAGNAG junctions
+#   where annotations often have only one.
 # - A scoring method for junctions based on weighting should be considered
 ##
 
@@ -118,12 +118,12 @@ def _filter_too_close(readrec, new_junctions, intron_hits):
                        intron_hits))
 
 def _find_best_intron_support(start, end, intron_hits):
-    """Pick an intron as `best'  This prefers annotated introns, then
+    """Select an intron as `best'  This ranks annotated introns first, then
     read-support introns with the larger number of reads.
     """
     closest_introns = _collect_closest_hits(start, end, intron_hits)
     if len(closest_introns) > 1:
-        # sort to prefer annotated or then more reads
+        # sort to rank annotated first, then more reads
         closest_introns.sort(key=lambda ci: (ci.annot_supported, ci.read_support_cnt), reverse=True)
     return closest_introns[0]
 

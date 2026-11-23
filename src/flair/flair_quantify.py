@@ -282,7 +282,7 @@ def _overlaps_loci(loci, start, end):
 def direct_assignment_chains(isoform_beds):
     """The isoforms reads can be assigned to without the realignment, by chromosome and
     junction chain: the spliced isoforms, but not a chain more than one isoform has,
-    where the realignment chooses between them by their ends.  Fusions' pieces
+    where the realignment selects between them by their ends.  Fusions' pieces
     aren't genes' isoforms (load_isoform_data)."""
     by_chain = {}
     for bed in isoform_beds:
@@ -307,7 +307,7 @@ def _covers_terminal_exons(read, bed, trust_ends):
 def _has_large_indel(read):
     """Is an indel in the read longer than the realignment tolerates.  Where it falls
     in the transcript determines whether it is tolerated (process_cigar), which the
-    realignment is left to work out."""
+    realignment determines."""
     return any((op in (pysam.CINS, pysam.CDEL)) and (length > LARGE_INDEL_TOLERANCE)
                for op, length in read.cigartuples)
 
@@ -371,7 +371,7 @@ def single_exon_isoform(read, se_index):
 def _batch_alignments(bam_file, batch):
     """The batch's alignments.  A sample's BAM contains some of the isoforms'
     chromosomes, which check_bam_chromosomes allows, and fetch raises on one it
-    does not have, as fusion_candidate_reads also guards against."""
+    does not have, as fusion_candidate_reads also checks for."""
     if batch['chrom'] in bam_file.references:
         return bam_file.fetch(batch['chrom'], batch['start'], batch['end'])
     else:

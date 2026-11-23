@@ -139,7 +139,7 @@ mark_intron_retention
 
 .. include:: cli/mark_intron_retention.rst
 
-Assumes the BED has the correct strand information.
+Requires the BED to have the correct strand information.
 
 **Outputs**
 

@@ -126,7 +126,7 @@ def _read_map(output, sample):
 
 
 def test_read_map_per_sample_matches_its_counts_column(tmp_path):
-    """Each sample gets its own read map, holding that sample's reads and no other's,
+    """Each sample gets its own read map, containing that sample's reads and no other's,
     and the counts column is the number of reads the map names."""
     manifest, genome, bed = _inputs(tmp_path)
     s1_bam = str(tmp_path / 'reads.bam')

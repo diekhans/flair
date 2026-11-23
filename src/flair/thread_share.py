@@ -23,11 +23,12 @@ from flair.process_pool import fork_context
 
 _threads = 1
 _max_weight = 1
-# the lock of this Array is not robust: a worker killed while holding it leaves it
-# held, and every other worker then blocks on it.  Accepted, since the pool reports
-# a killed worker rather than waiting on it, so such a run fails instead of hanging.
-# Making it robust means another mechanism, a lock that can be broken or a counter
-# owned by the parent, not a change inside program_threads.
+# the lock of this Array does not recover from a killed worker: one killed while
+# holding it leaves the lock held, and every other worker then blocks on it.
+# Accepted, since the pool reports a killed worker rather than waiting on it, so
+# such a run fails instead of hanging.  Recovering means another mechanism, a
+# lock that can be broken or a counter owned by the parent, not a change inside
+# program_threads.
 _state = None       # shared [unfinished tasks, borrowed threads]
 _task_weight = 1    # weight of the task running in this process
 

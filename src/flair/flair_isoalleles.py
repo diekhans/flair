@@ -46,7 +46,7 @@ def add_subparser(subparsers):
     desc = ("Each isoform's reads by haplotype, and in a tumor and normal pair by somatic variants, with the "
             'sequence and protein of each, from reads haplotagged by a phasing tool (such as WhatsHap) and the '
             'read map of flair quantify.  One sample: --bam, --read_map and --phased_vcf.  A pair adds '
-            '--normal_bam and --normal_read_map, --phased_vcf being the normal\'s, and one way of choosing the '
+            '--normal_bam and --normal_read_map, --phased_vcf being the normal\'s, and one way of selecting the '
             'somatic variants: --tumor_vcf, --somatic_vcf or --variant')
     parser = subparsers.add_parser('isoalleles', help="Isoform usage by haplotype and somatic variants",
                                    description=desc)

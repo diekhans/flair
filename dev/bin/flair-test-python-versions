@@ -136,7 +136,7 @@ def reuse_env(args, log_fh):
 @contextlib.contextmanager
 def env_build_lock(args, log_fh):
     """conda unpacks downloads into one package cache for the whole installation, and
-    two `conda env create' at once lose each other's partial files there, so the
+    two `conda env create' at once overwrite each other's partial files there, so the
     versions take turns at this stage; the tests that follow are what run in parallel"""
     lock_path = os.path.join(args.log_dir, "env-build.lock")
     with open(lock_path, 'w') as lock_fh:

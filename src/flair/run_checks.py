@@ -48,7 +48,7 @@ _SAMPLE_NAME_REJECTED = (
 
 
 def check_sample_name(sample_name, where='--sample_name'):
-    """A sample name that survives the files it is written into.  A name with a comma
+    """A sample name that remains readable in the files it is written into.  A name with a comma
     was read back as two samples a run later, by whatever read the list it is written
     into, and the error named the wrong cause."""
     for char, what in _SAMPLE_NAME_REJECTED:

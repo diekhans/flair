@@ -1,7 +1,7 @@
 """
 flair fusion passes transcriptome the synthetic-genome junctions with 2 or more
 reads that are canonical, and for a breakpoint with no canonical junction across it,
-a non-canonical one only if most reads crossing the breakpoint agree on it.
+a non-canonical one only if most reads crossing the breakpoint support it.
 """
 import pysam
 from flair.pycbio.hgdata.bed import Bed

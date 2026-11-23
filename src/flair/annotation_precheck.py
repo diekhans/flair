@@ -1,5 +1,5 @@
 """
-Choose the reads that need aligning to the annotated transcripts.
+Select the reads that need aligning to the annotated transcripts.
 
 The alignment to annotated transcripts corrects a read's junctions and ends from
 the transcript it matches.  For many reads that can't change anything, and the

@@ -1,7 +1,7 @@
 """
 flair combine's genes: isoforms without an annotated gene are grouped into novel
 genes as flair transcriptome groups them, from the combined isoforms, so the genes
-don't depend on which isoforms a sample happened to put together, nor on the
+don't depend on which isoforms a sample put together, nor on the
 order of the samples.
 """
 import pytest

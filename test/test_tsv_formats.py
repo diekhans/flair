@@ -1,7 +1,7 @@
 """
 Round trip tests for the TSV format modules: what a writer writes, its reader
 reads back as the same values.  Most of these readers have no caller yet, so
-this is the only thing that runs them.
+this is the only test that runs them.
 """
 import pytest
 from flair.aaseq_tsv import AaSeqReader, write_aaseqs
@@ -30,7 +30,7 @@ from flair.cpm_tsv import CountsRow, CpmReader, cpm_writer
 from flair.transcript_counts_tsv import TranscriptCountsReader, TranscriptCountsWriter
 
 def chained_messages(ex):
-    "every message on an exception chain, for checking why a row was refused"
+    "every message on an exception chain, for checking why a row was rejected"
     messages = []
     while ex is not None:
         messages.append(str(ex))

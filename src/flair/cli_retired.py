@@ -110,7 +110,7 @@ RETIRED_BY_COMMAND = {
         '--isoforms': ("has been removed: the isoforms are given as --isoform_bed with -g, "
                        "--genome, rather than as a FASTA"),
         '--sample_id_only': "has been removed: a counts column always names the sample alone",
-        '--tpm': ("has been removed: <output>.isoforms.cpm.tsv is written by every run, and holds "
+        '--tpm': ("has been removed: <output>.isoforms.cpm.tsv is written by every run, and contains "
                   "the counts per million this option wrote as a tpm file"),
         '--with_gene': "has been removed: the counts matrix always names the gene, in its gene_id column",
         '--quality': "has been removed: it was accepted and never used",
@@ -203,7 +203,7 @@ RETIRED_BY_COMMAND = {
     'count_sam_transcripts': {
         '--quality': ("has been removed: reads are aligned to transcript sequences, where most align "
                       "about equally well to several isoforms and get a mapping quality of 0; "
-                      "choosing between those isoforms is what this program does"),
+                      "selecting between those isoforms is what this program does"),
         '--fusion_dist': "has been removed: it only turned on --trust_ends",
         '--end_norm_dist': ("has been removed: it relaxed the coverage check for single exon "
                             "transcripts, which end normalization never extends"),

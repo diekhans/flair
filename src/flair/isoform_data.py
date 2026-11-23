@@ -287,7 +287,7 @@ class ReadRec:
     """Read alignment with location, junction, and metadata fields.
 
     Stores chrom, start, end, name, score, strand, and juncs directly.
-    Exons are computed on the fly from start, end, and juncs.
+    Exons are computed on demand from start, end, and juncs.
     A Bed record can be produced on demand via to_bed().
 
     Junction tuples are interned via a class-level cache so identical junction
@@ -323,7 +323,7 @@ class ReadRec:
         # set by junction correction: whether the junctions came from an annotation
         # match, whether correction changed them from the alignment's introns, and
         # its first or last one by more than the correction window, and, when none
-        # changed, whether the alignment is clean around them
+        # changed, whether the alignment matches the genome around them
         # (annotation_precheck.splice_sites_cleanly_aligned); None when not checked
         self.junctions_from_annotation = False
         self.junctions_moved = False

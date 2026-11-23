@@ -1,4 +1,4 @@
-"""Column converters and header handling shared by the flair TSV formats.
+"""Column converters and header parsing shared by the flair TSV formats.
 
 A converter is the (parse, format) pair a typeMap entry takes, so a column whose
 text contains several values is a list on the row and is joined again on write.
@@ -10,7 +10,7 @@ from flair.pycbio.sys import fileOps
 
 
 def _joined(values, sep):
-    """The values of a list column, joined.  A plain string is refused rather than
+    """The values of a list column, joined.  A plain string is rejected rather than
     joined character by character, which wrote GENEA as G,E,N,E,A."""
     if isinstance(values, str):
         raise FlairInputDataError(f"a list column was given the string {values!r}; it takes a list or "

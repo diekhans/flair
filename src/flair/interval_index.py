@@ -54,7 +54,7 @@ class IntervalIndex:
         if self._dirty or self._order is None:
             self.build()
         # slack on the query, not on the intersection: + slack on the min widened
-        # whichever end happened to be smaller, so an interval to the left of the
+        # whichever end was smaller, so an interval to the left of the
         # query was never reached while one to the right was
         qstart, qend = start - slack, end + slack
         # an overlapping interval starts before the query ends, and, being at most

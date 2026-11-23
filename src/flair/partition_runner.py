@@ -208,7 +208,7 @@ class PartitionRunner:
     def release(self):
         """Drop the data the workers were forked with, once the last run() is done.
         It is the annotation and the junction corrector, over a gigabyte for a human
-        annotation, which were held to the end of the run."""
+        annotation, which were kept to the end of the run."""
         _shared_data.pop(self.work_dir, None)
 
     def __iter__(self):
@@ -235,8 +235,8 @@ class PartitionRunner:
         Side effects (e.g. writing files to partition.temp_dir) are the
         expected pattern; return values from func are discarded.
         """
-        # largest partitions first, handed out one at a time, so the big ones don't
-        # end up running alone at the end; programs run by the partitions, such as
+        # largest partitions first, assigned one at a time, so the big ones don't
+        # run alone at the end; programs run by the partitions, such as
         # minimap2, borrow threads left idle, more for larger partitions
         # the arguments every task shares reach the forked workers as a global, not
         # pickled into each task, which for a genome cut into hundreds of partitions

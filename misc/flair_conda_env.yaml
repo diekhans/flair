@@ -21,11 +21,11 @@ dependencies:
   - intron-prospector >=1.6,<2.0
   # longshot calls the variants the isoalleles test inputs are phased from.  whatshap,
   # which phases them and haplotags reads before flair isoalleles, is not here: FLAIR
-  # does not run it, and bioconda builds it through python 3.13, which would hold this
+  # does not run it, and bioconda builds it through python 3.13, which would pin this
   # whole environment at that version.  Install it on its own when you need it, see
   # docs/source/installing.rst
   - longshot >=1.0
-  # flair's own ranges, so that conda does not pick a version flair does not accept
+  # flair's own ranges, so that conda does not select a version flair does not accept
   - pysam >=0.24.1,<0.25.0
   - pipettor >=1.2.1
   - pip

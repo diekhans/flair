@@ -135,7 +135,7 @@ def check_batch_modelled(sample_infos, counts_matrix):
     if len(combos) == len(set(conditions)):
         raise FlairInputDataError(f"--batch needs a batch containing samples of more than one condition; in the "
                                   f"sample info beside {counts_matrix} each condition has a batch of its own, "
-                                  "so the batch and the condition cannot be told apart.  Drop --batch")
+                                  "so the batch and the condition cannot be distinguished.  Drop --batch")
 
 def diff_splice(*, isoform_bed, counts_matrix, output, threads, test, min_samps_gene_expr,  # noqa: C901 - FIXME: reduce complexity
                 min_samps_feature_expr, min_gene_expr, min_feature_expr, batch,
@@ -187,7 +187,7 @@ def call_and_test_events(*, isoform_bed, counts_matrix, output, workdir, threads
     # the event tables are written beside the output prefix, as every other
     # subcommand writes its outputs
     filebase = output
-    # the event callers are separate processes, so each is told whether to compress;
+    # the event callers are separate processes, so each is passed the compression setting;
     # the exon skipping one writes to stdout, so this process opens that file
     call_args = [isoform_bed, filebase, counts_matrix]
     if output_compression():
@@ -207,7 +207,7 @@ def call_and_test_events(*, isoform_bed, counts_matrix, output, workdir, threads
     if test or condition_a or batch:
         logging.info('DRIMSeq testing for each AS event type')
         # resolved here, not in the R script, so that diffexp and diffsplice choose
-        # the same way and R is always told both names
+        # the same way and both names are always passed to R
         sample_infos = read_sample_info(counts_matrix)
         condition_a, condition_b = select_condition_pair([si.condition for si in sample_infos],
                                                          condition_a, condition_b, counts_matrix)

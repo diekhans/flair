@@ -39,7 +39,7 @@ their own gene ids, listed in transcript order.
 Derived identifiers
 -------------------
 
-Three things FLAIR names are named for what they are made of, so their ids have
+Three identifiers FLAIR derives are named for what they are made of, so their ids have
 parts, with a separator that the component ids cannot contain:
 
 .. list-table::

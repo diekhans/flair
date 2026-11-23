@@ -129,7 +129,7 @@ def add_subparser(subparsers):
     parser.add_argument('--no_align_to_annot', action='store_true',
                         help="skip the initial alignment to the annotated sequences and correct reads only "
                              "from the genomic alignment. Slightly faster but less accurate when the annotation "
-                             "is good")
+                             "is complete")
     parser.add_argument('--temp_dir',
                         help='directory for temporary files; each run makes its own directory, named for the '
                              'output, in it.  Many small files are written and removed, so a local disk is much '

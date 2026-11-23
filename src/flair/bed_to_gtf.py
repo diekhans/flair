@@ -38,7 +38,7 @@ def main():
 
 def _add_record(records, record):
     """Record a feature, dropping an empty range.  A CDS or UTR piece is empty when the
-    thick boundary sits exactly on an exon edge, and gtf_write_row writes start + 1, so
+    thick boundary is exactly on an exon edge, and gtf_write_row writes start + 1, so
     an empty feature came out as start > end, which is not a GTF record and which
     flair's own parser rejects on re-read."""
     if record[2] < record[3]:

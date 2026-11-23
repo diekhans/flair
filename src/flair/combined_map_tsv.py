@@ -8,7 +8,7 @@ Columns, in order:
                values contain commas, and a list on the row
 
 flair combine numbers afresh, so these files are the only link between an id in
-a combined transcriptome and the per-sample ids behind it; see ids.rst.  One
+a combined transcriptome and the per-sample ids it was built from; see ids.rst.  One
 file for isoforms, one for genes.
 """
 from flair.pycbio.tsv import TsvReader, TsvWriter

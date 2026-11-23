@@ -55,7 +55,7 @@
 
 .. option:: --frac_support FRAC_SUPPORT
 
-   minimum fraction of a fusion's reads for a fusion isoform to be reported; a fusion with one dominant isoform hides its minor ones below this. For the most recall, give 0 with --filter comprehensive (default: 0.05)
+   minimum fraction of a fusion's reads for a fusion isoform to be reported; a fusion with one dominant isoform drops its minor ones below this. For the most recall, give 0 with --filter comprehensive (default: 0.05)
 
 .. option:: --filter {nosubset,comprehensive,ginormous,<N>X}
 
@@ -63,7 +63,7 @@
 
 .. option:: --no_transcriptome_alignment
 
-   find fusions from the chimeric reads of the genome alignment only, without aligning reads to annotated transcripts. About half the time and a third of the memory, and -b can then contain only the chimeric reads, but loses fusion reads whose partner piece the genome alignment leaves clipped, particularly short 5' exons
+   find fusions from the chimeric reads of the genome alignment only, without aligning reads to annotated transcripts. About half the time and a third of the memory, and -b can then contain only the chimeric reads, but drops fusion reads whose partner piece the genome alignment leaves clipped, particularly short 5' exons
 
 .. option:: --keep_intermediate
 

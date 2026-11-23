@@ -1,4 +1,4 @@
-"""Checks on a matrix before it is handed to DRIMSeq.
+"""Checks on a matrix before it is passed to DRIMSeq.
 
 DRIMSeq indexes its rows by feature_id and fails on a repeat, reporting it as a
 failed stopifnot that names neither the file nor a value.  Both commands that run

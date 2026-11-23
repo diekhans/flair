@@ -33,7 +33,7 @@ class Exon(object):
 
 class Gene(object):
     """The isoforms of one gene and the splice site graph built from them.
-    Exons are held 5' to 3', so neighbors in an isoform's exon list are
+    Exons are stored 5' to 3', so neighbors in an isoform's exon list are
     neighbors in transcription order on either strand."""
 
     def __init__(self, gene_id=None, chromosome=None, strand=None):
@@ -110,7 +110,7 @@ class Gene(object):
 
 
 def check_gene_placement(gene, iso, chrom, strand, flair_isoforms):
-    """All isoforms of a gene must sit on the same chromosome and strand.  Skipped
+    """All isoforms of a gene must be on the same chromosome and strand.  Skipped
     exons are found by graphing a gene's isoforms together, and isoforms of two
     different loci graphed as one gene produce events that are in neither."""
     if (gene.chrom, gene.strand) != (chrom, strand):

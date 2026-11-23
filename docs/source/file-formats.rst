@@ -3,7 +3,7 @@
 FLAIR file formats
 ==================
 
-Every file FLAIR reads and writes is one of five things: a BED, a GTF, a FASTA, a
+Every file FLAIR reads and writes is one of five kinds: a BED, a GTF, a FASTA, a
 BAM or VCF of the standard form, or a tab separated table.  This page gives the
 columns of each.  :ref:`modules-label` gives the files each subcommand writes and
 what they are for, and :ref:`ids-label` gives the identifiers in them.
@@ -74,8 +74,9 @@ four fields, the sample id, its condition, its batch and its BAM::
 
 ``flair spliceevents`` also takes the two field form, a sample id and its BAM, and
 then writes no conditions beside its counts.  Every line has the same number of
-fields; a manifest of both forms is an error.  Lines starting with ``#`` and blank
-lines are skipped, and a relative path is read against the directory FLAIR runs in.
+fields; a manifest of both forms is an error.  Lines starting with ``#`` and
+blank lines are skipped, and a relative path is resolved against the directory
+FLAIR runs in.
 
 The sample id, the condition and the batch are written into a counts matrix's
 columns, so none of them may contain an underscore: a matrix of a FLAIR before 3.1
@@ -215,7 +216,7 @@ Read maps and id maps
      - ``aaseq_id`` and ``aaseq``, each protein sequence once, however many
        isoforms translate to it
 
-The isoform FASTA holds one record per isoform, named by its FLT id, or
+The isoform FASTA contains one record per isoform, named by its FLT id, or
 ``FLT00000001|H1`` for an allele of ``flair isoalleles``.
 
 flair spliceevents tables

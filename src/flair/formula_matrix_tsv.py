@@ -1,4 +1,4 @@
-"""The formula matrix: the design handed to the R differential tests.
+"""The formula matrix: the design passed to the R differential tests.
 
 Columns, in order:
 
@@ -7,12 +7,12 @@ Columns, in order:
   batch        the batch it belongs to, written only when batch is modelled
 
 R reads this with row.names = 1, so sample_id is the row name and must be unique.
-DESeq2 chooses its design by whether a batch column is present, condition + batch
+DESeq2 selects its design by whether a batch column is present, condition + batch
 when it is and condition alone when it is not, so the column is written only when
-the batch is to be modelled.  DRIMSeq is told by an option instead and ignores the
+the batch is to be modelled.  DRIMSeq is given an option instead and ignores the
 difference.
 
-This is the same shape as a sample info TSV, but it describes one comparison
+This has the same columns as a sample info TSV, but it describes one comparison
 rather than the samples of a counts matrix: the sample ids are the ones the
 comparison uses, and batch may be absent.
 """

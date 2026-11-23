@@ -25,7 +25,7 @@ def test_round_trip(tmp_path):
     assert read_isoform_ids(counts) == ['iso1', 'iso2']
 
 def test_round_trip_compressed(tmp_path):
-    "the suffix chooses the compression, nothing else changes"
+    "the suffix selects the compression, nothing else changes"
     counts = str(tmp_path / 'x.counts.tsv.gz')
     write_counts_matrix(counts, ['s1', 's2'], ROWS)
     assert open(counts, 'rb').read(2) == b'\x1f\x8b'
@@ -45,7 +45,7 @@ def test_non_numeric_count_is_an_error(tmp_path):
         read_counts_rows(counts)
 
 def test_old_format_refused(tmp_path):
-    "a matrix with one isoform_gene column cannot be split reliably, so it is refused"
+    "a matrix with one isoform_gene column cannot be split reliably, so it is rejected"
     counts = str(tmp_path / 'x.counts.tsv')
     write_old_format(counts)
     with pytest.raises(FlairInputDataError, match="must start with the columns"):

@@ -100,7 +100,7 @@ def event_name(etype, chrom, start, end, strand):
 def named_with_gene(name, gene):
     """an event's name with its gene, gene IDs comma-separated if tied, as the gene
     column, so two genes' events of one locus, as a gene's and a readthrough's ends,
-    are told apart: TYPE|CHROM:START-END(STRAND)|GENE"""
+    are distinguished: TYPE|CHROM:START-END(STRAND)|GENE"""
     return f'{name}|{gene}'
 
 
@@ -124,7 +124,7 @@ def span(ranges):
 #
 # An event is defined by its junctions, so its own extent is the intron: drawn
 # as it stands, the two sides of an event would be a bare gap with nothing to
-# anchor them, and the inclusion and exclusion rows would be hard to tell apart.
+# anchor them, and the inclusion and exclusion rows would be hard to distinguish.
 # Each row therefore starts FLANK_STUB bases before the first junction and ends
 # FLANK_STUB after the last, and contains those two stubs as its outer blocks, so
 # inclusion shows as stub, exon, stub and exclusion as stub, stub with the

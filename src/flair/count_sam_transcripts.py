@@ -273,7 +273,7 @@ def check_splicesites(coveredpos, exonpos, tstart, tend, tname):
     MAX_SPLICE_SITE_MISTAKES in its SPLICE_SITE_FLANK window, or the read covers no
     splice site.  The total, over the wider SPLICE_SITE_RANKING_FLANK window within
     the aligned part of the read, ranks alignments, so a transcript whose splice
-    sites match the read exactly is preferred over a near-identical one whose sites
+    sites match the read exactly is ranked above a near-identical one whose sites
     are a few bases off, wherever the aligner puts the indel that makes up the
     difference."""
     currpos = 0
@@ -346,7 +346,7 @@ def deletion_on_splice_motif(tseq, start, length):
 
 
 def process_cigar(matchvals, cigarblocks, startpos, exoninfo, tseq=None):  # noqa: C901 - FIXME: reduce complexity
-    """Walk the CIGAR operations of a transcript alignment to build a
+    """Iterate over the CIGAR operations of a transcript alignment to build a
     per-transcript-position coverage vector, collect query-side clipping,
     record alignment block positions, and flag large indels outside the
     terminal exons.  Given the transcript's sequence, tseq, a large deletion in a
@@ -402,7 +402,7 @@ def process_cigar(matchvals, cigarblocks, startpos, exoninfo, tseq=None):  # noq
 
 def check_transcript_in_annot(exondict, tname):
     """Look up exon structure for a transcript name, raising a descriptive
-    error if the annotation and FASTA name sets disagree."""
+    error if the annotation and FASTA name sets differ."""
     try:
         exoninfo = exondict[tname]
     except KeyError as ex:
@@ -412,7 +412,7 @@ def check_transcript_in_annot(exondict, tname):
             "bedtools getfasta") from ex
     except Exception as ex:
         # not an input error: reaching here means something other than a missing
-        # transcript went wrong, so the stack is worth keeping
+        # transcript failed, so the stack is worth keeping
         raise FlairError(f"check_splice failed for {tname}") from ex
     return exoninfo
 
@@ -452,7 +452,7 @@ def identify_corrected_ends(exoninfo, startpos, endpos, gtstrand, tname, output_
     left_end_dist, right_end_dist = None, None
     left_clipping, right_clipping = None, None
     if query_clipping:
-        # clipping has already been flipped for strand prior to being passed into here
+        # clipping has already been flipped for strand before being passed into here
         left_clipping, right_clipping = query_clipping
     # Can only correct read ends if assigned to spliced transcript
     if len(exoninfo) > 1:
@@ -510,7 +510,7 @@ def return_best_transcript_stringent(passing_transcripts, genomicclipping, soft_
         passing_transcripts = [x for x in passing_transcripts if x[3] == top_sj_cov]
         # then the least divergence from the transcript at its splice sites, before
         # ends and clipping, so a near-identical transcript with splice sites a few
-        # bases off the read's can't win on a closer end
+        # bases off the read's cannot take precedence for a closer end
         min_divergence = min(x[0] for x in passing_transcripts)
         passing_transcripts = [x for x in passing_transcripts if x[0] == min_divergence]
         passes_end_qual = []
@@ -528,7 +528,7 @@ def return_best_transcript_stringent(passing_transcripts, genomicclipping, soft_
                 logging.debug(f"{rname} transcript alignment dropped: excess soft-clipping: {t[-3]}")
         # sort by end distance, for each end is distance to transcript end plus soft
         # clipping, then by transcript name, so of tied transcripts, such as paralogs,
-        # the same one is chosen for every read, whatever order minimap2 reported them in
+        # the same one is selected for every read, whatever order minimap2 reported them in
         passes_end_qual.sort(key=lambda x: (_end_dist(x[-2]) + x[-2][3] + _end_dist(x[-1]) + x[-1][3], x[6]))
 
         return [passes_end_qual[0][-3:], ]
@@ -617,14 +617,14 @@ def get_best_transcript(tinfo, info, genomicclipping,
                                          query_clipping, matchvals, gtstrand, output_endpos, no_extra_clipping)
 
     if len(passing_transcripts) > 0:
-        # if not stringent, report top transcript, even if there's ties (assume just want SJ + ends correction, don't need exactly correct transcript)
+        # if not stringent, report top transcript, even if there's ties (only SJ + ends correction is needed, not the exactly correct transcript)
         # order passing transcripts by alignment score, amount of query covered,
         # splice junctions covered, clipping, and transcript length.  When splice
         # sites are checked, first by the number of splice junctions covered and
         # then divergence at splice sites (a total over the junctions covered, so
         # only comparable between alignments covering as many), as in the stringent
         # selection.  Without the check, an alignment to a transcript with an extra
-        # short exon the read lacks would win on junctions covered.
+        # short exon the read lacks would be selected on junctions covered.
         if not stringent:
             # x[6], the transcript name, is last, so ties don't depend on the SAM order
             if check_splice:
@@ -661,7 +661,7 @@ def repeated_read_id_error(read_id):
 def read_clipping(trimmedreads):
     """Each read's clipping at the ends of its genome alignment, by read id.  An id
     twice is two reads sharing a name, which would be judged by each other's clipping,
-    so it is an error rather than the last line winning."""
+    so it is an error rather than the last line taking precedence."""
     readstoclipping = {}
     with open(trimmedreads) as fh:
         for line in fh:
@@ -767,7 +767,7 @@ def _write_transcript_counts(transcript_to_reads, countout, mapout, endout):
 def write_output(args, transcript_to_reads):
     """The counts file is the primary output; all three handles are closed here rather
     than left to interpreter shutdown, where an exception in the loop left a partial
-    file behind with no error."""
+    file with no error."""
     with ExitStack() as stack:
         countout = stack.enter_context(TranscriptCountsWriter(args.output))
         mapout = stack.enter_context(ReadMapWriter(args.generate_map)) if args.generate_map else None

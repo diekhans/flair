@@ -26,7 +26,7 @@ def build_transcript(genome, iso, variants):
     insertion adds, so a position in the sequence can be taken back to the genome, for
     the CDS ends.  The exon sizes, 5' to 3', include the variants' indels, for the
     premature stop rule.  A variant isn't applied if it isn't wholly in one exon,
-    overlaps another, or has a ref allele the genome disagrees with."""
+    overlaps another, or has a ref allele that does not match the genome."""
     exons = sorted((b.start, b.end) for b in iso.blocks)
     pieces = [[(base, s + k) for k, base in enumerate(genome.fetch(iso.chrom, s, e).upper())] for s, e in exons]
     skipped, taken = [], []

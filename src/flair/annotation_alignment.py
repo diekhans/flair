@@ -2,7 +2,7 @@
 Aligning reads to transcripts, shared by flair transcriptome and flair spliceevents:
 the reference of a region's annotated transcripts, with each gene's terminal exons
 extended to its transcripts' furthest ends, and the alignment of reads to it, whose
-good matches correct the reads' junctions and ends.
+passing matches correct the reads' junctions and ends.
 """
 import logging
 from flair import thread_share

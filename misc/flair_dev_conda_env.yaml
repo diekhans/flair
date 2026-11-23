@@ -23,12 +23,12 @@ dependencies:
   - intron-prospector >=1.6,<2.0
   # longshot calls the variants the isoalleles test inputs are phased from.  whatshap
   # is not here: FLAIR does not run it, bioconda builds it through python 3.13, which
-  # would hold every environment built from this file at that version, and its
+  # would pin every environment built from this file at that version, and its
   # isoalleles output is committed under test/input.  `make -C test
   # regen-isoalleles-inputs' needs it; install it on its own, see
   # docs/source/installing.rst
   - longshot >=1.0
-  # flair's own ranges, so that conda does not pick a version flair does not accept
+  # flair's own ranges, so that conda does not select a version flair does not accept
   - pysam >=0.24.1,<0.25.0
   - pipettor >=1.2.1
   - pip

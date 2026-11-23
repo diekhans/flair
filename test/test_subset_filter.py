@@ -188,7 +188,7 @@ def test_subset_promoted_only_with_subset_backup_support_unassigned_reads(tmp_pa
 
 
 def test_a_fragment_of_a_promoted_subset_is_not_promoted(tmp_path):
-    # 'frag' is a subset of 'cand', itself promoted; listed first, it is still decided after
+    # 'frag' is a subset of 'cand', itself promoted; listed first, it is still determined after
     final, counts, gene_to_tot, removed = _backup_case(2)
     cand, sup = removed['cand'][0], removed['cand'][1][0]
     frag = _iso('frag', JUNCS[1:], 1350, 1700, 0)

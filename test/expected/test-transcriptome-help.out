@@ -162,7 +162,9 @@ options:
                         read ends, rather than the ends of the reads assigned
                         to it. Each spliced junction chain gives a single
                         isoform, overriding --max_ends
-  --generate_map        generate a txt file of read-isoform assignments
+  --generate_map        write the reads by isoform,
+                        <output>.isoforms.read.map.tsv: a row of an isoform
+                        and its reads, comma-separated, under a header
 
 required named arguments:
   -b, --genome_aligned_bam GENOME_ALIGNED_BAM

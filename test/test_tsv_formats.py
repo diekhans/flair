@@ -150,11 +150,11 @@ def test_iso_usage_change_round_trip(tmp_path):
 def test_iso_usage_round_trip(tmp_path):
     path = tsv_path(tmp_path, 'iso_usage.tsv')
     with iso_usage_writer(path, 'sA', 'sB') as writer:
-        writer.writeRow(['gene1', 'iso1', 'NA', 'NA', 1, 2, 3, 4, 'NA', 'NA', 'NA'])
+        writer.writeRow(['gene1', 'iso1', '', '', 1, 2, 3, 4, '', '', ''])
     rows = list(IsoUsageReader(path))
-    assert rows[0].geneID == 'gene1'
-    assert rows[0].fisher_adj_pval == 'NA'
-    assert rows[0].sA_PSI == 'NA'
+    assert rows[0].gene_id == 'gene1'
+    assert rows[0].fisher_adj_pval == ''
+    assert rows[0].sA_PSI == ''
 
 def test_marked_isoforms_round_trip(tmp_path):
     path = tsv_path(tmp_path, 'marked.bed')

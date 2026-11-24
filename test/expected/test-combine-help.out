@@ -1,0 +1,62 @@
+usage: flair combine [-h] (--manifest MANIFEST | --prefixes PREFIXES |
+                     --isoform_beds ISOFORM_BEDS) -g GENOME [-f GTF]
+                     [-o OUTPUT] [--end_window END_WINDOW]
+                     [--frac_support FRAC_SUPPORT] [--remove_single_exon]
+                     [--max_ends MAX_ENDS] [--min_reads MIN_READS]
+
+Combine FLAIR transcriptomes into one. Each input is a flair BED, with the
+read support columns flair transcriptome, flair fusion and flair isoalleles
+write
+
+options:
+  -h, --help            show this help message and exit
+  --manifest MANIFEST   file naming the flair isoform BEDs to combine, one
+                        path a line, as in path/to/isoforms.bed. Blank lines
+                        and lines starting with '#' are skipped; each BED once
+  --prefixes PREFIXES   prefixes of the FLAIR transcriptomes to combine, each
+                        naming PREFIX.isoforms.bed and including any
+                        directories; give several comma separated, or repeat
+                        the option, or both
+  --isoform_beds ISOFORM_BEDS
+                        paths of the flair isoform BEDs to combine; give
+                        several comma separated, or repeat the option, or both
+  -g, --genome GENOME   genome FASTA, read for the isoform sequences, the
+                        protein predictions and the chromosome sizes of the
+                        bigBed
+  -f, --gtf GTF         an annotation GTF. With it, each combined isoform is
+                        given its gene, reference transcript, CDS,
+                        productivity and protein from this annotation, as
+                        flair transcriptome gives them, whatever annotation
+                        the samples were run with, so samples run with
+                        different annotations or FLAIR versions can be
+                        combined, and the proteins are written to
+                        combined.aaseq.tsv. Fusion isoforms keep the samples'
+                        genes. Without it, the samples' genes, CDS and
+                        productivity are used, isoforms from different samples
+                        with different genes are an error, and isoforms have
+                        no protein ids
+  -o, --output OUTPUT   prefix for output file (default:
+                        flair.combined.isoforms)
+  --end_window END_WINDOW
+                        window, in bases, for comparing ends of isoforms with
+                        the same intron chain (default: 200)
+  --frac_support FRAC_SUPPORT
+                        minimum share of its gene's reads for an isoform, in
+                        one sample, to be kept in the combined transcriptome;
+                        taken from frac_support, column 17 of the input BEDs:
+                        an isoform without it is an error (default: 0.05)
+  --remove_single_exon  remove all single exon isoforms
+  --max_ends MAX_ENDS   how the ends of a splice junction chain are combined:
+                        - 1: the chain gives one isoform, containing the
+                          isoforms of every group of similar ends and their
+                          read support
+                        - above 1: each group of similar ends gives an isoform
+                          of its own, when the group passes --frac_support and
+                          --min_reads on its own, so ends are more precise and
+                          the support of a group that fails them is dropped.
+                          Any value above 1 gives the same result
+                        (default: 1)
+  --min_reads MIN_READS
+                        min reads from all samples to call isoform; taken from
+                        read_support, column 16 of the input BEDs: an isoform
+                        without it is an error (default: 3)

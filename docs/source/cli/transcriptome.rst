@@ -154,7 +154,7 @@
 
 .. option:: --generate_map
 
-   generate a txt file of read-isoform assignments
+   write the reads by isoform, <output>.isoforms.read.map.tsv: a row of an isoform and its reads, comma-separated, under a header
 
 .. rubric:: required named arguments
 

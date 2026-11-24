@@ -17,6 +17,7 @@ they are running, such as minimap2, running after the run has gone.
 """
 import logging
 import multiprocessing as mp
+import signal
 from collections import deque
 from concurrent.futures import ProcessPoolExecutor, FIRST_COMPLETED, wait
 from flair.pycbio import NoStackError
@@ -27,6 +28,34 @@ QUEUED_PER_WORKER = 4
 
 def _fork_workers():
     "the task the workers are forked with, which does nothing else"
+
+
+def _stop_taken_by_parent(signum, frame):
+    "no action: the parent reports the stop and removes the temporary files"
+
+
+def _worker_init(initializer, initargs):
+    """Set up a worker: leave a stop to the parent, then run the initializer the
+    caller gave, if any.
+
+    A terminal and a job scheduler send the stop signal to the process group, so it
+    reaches the workers as well as the parent, and the parent reports it once and
+    removes the temporary files.  A worker that raises FlairStopped instead raises it
+    inside the executor's own queue read, which prints a traceback through
+    multiprocessing for every waiting worker.
+
+    SIGINT is taken by a handler that does nothing, so the worker finishes the task it
+    is running.  SIGTERM is restored to its default, which ends the worker with no
+    message: the executor terminates its workers with SIGTERM when one of them is
+    killed, so a worker that does not stop on SIGTERM leaves the pool waiting for a
+    process that never exits.  A handler rather than SIG_IGN for SIGINT, since exec
+    restores the default for a signal with a handler and keeps SIG_IGN: a program the
+    worker runs, such as minimap2, still stops on either signal.
+    """
+    signal.signal(signal.SIGINT, _stop_taken_by_parent)
+    signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    if initializer is not None:
+        initializer(*initargs)
 
 
 def fork_context():
@@ -69,7 +98,8 @@ class ProcessPool:
     def __init__(self, threads, *, initializer=None, initargs=()):
         self._queued = QUEUED_PER_WORKER * threads
         self._executor = ProcessPoolExecutor(threads, mp_context=fork_context(),
-                                             initializer=initializer, initargs=initargs)
+                                             initializer=_worker_init,
+                                             initargs=(initializer, initargs))
         # the workers are forked here, with a task that does nothing, rather than at
         # the first task: a worker that inherits a file the caller opens after the
         # pool is made keeps it open, and a pipe to a compressing program then never

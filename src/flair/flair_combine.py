@@ -42,7 +42,8 @@ def add_subparser(subparsers):
                         help="paths of the flair isoform BEDs to combine; give several comma "
                         "separated, or repeat the option, or both")
     parser.add_argument('-g', '--genome', required=True,
-                        help='genome FASTA, required to generate an isoform FASTA file and/or a bigBed file')
+                        help='genome FASTA, read for the isoform sequences, the protein predictions and '
+                        'the chromosome sizes of the bigBed')
     parser.add_argument('-f', '--gtf', default=None,
                         help='an annotation GTF.  With it, each combined isoform is given its gene, reference transcript, '
                         'CDS, productivity and protein from this annotation, as flair transcriptome gives them, whatever '

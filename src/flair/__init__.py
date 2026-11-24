@@ -1,9 +1,18 @@
+import os
 import logging
 from collections import namedtuple
 from types import NoneType
 from flair.pycbio import NoStackError
 
 VERSION = "3.0.0+dev"
+
+# OpenBLAS starts a thread a core when numpy is imported, in every process and every
+# pool worker, and the arrays FLAIR builds are small enough that one thread computes
+# them.  On a 192 core machine the threads cost 12.6 CPU seconds a process and are
+# never used.  Set here because this module is imported before any other flair
+# module, and so before the numpy import of any of them; a value already in the
+# environment is left as the caller set it.
+os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')
 
 # Fixed minimum and maximums size for an intron sizes
 # This could be configurable at some point, especially

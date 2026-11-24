@@ -12,6 +12,7 @@ SIMPLE_EVENTS and take them out of LEFT_OUT_EVENTS.
 """
 import argparse
 import logging
+import math
 from flair.cli_help import FlairHelpFormatter
 from collections import defaultdict
 from itertools import product
@@ -38,8 +39,11 @@ FILTERED_MIN_DEVIATIONS = 6
 # an outlier of a complex exon skip or alternative splice site that a simpler event
 # also explains is kept only if its deviation is this much better than that event's
 BETTER_DEVIATION_FRACTION = 0.8
-# no deviation, the samples' PSIs equal but this one's
-NO_DEVIATION = 100000
+# the deviation of a sample whose event has no spread: the other samples' PSIs are
+# identical, so the difference from the median divides by zero.  inf rather than a
+# large number, which a reader would take for a measured ratio, and which sorts and
+# compares as a measured ratio does
+NO_DEVIATION = math.inf
 
 OUTLIER_COLUMNS = list(splicing_outliers_tsv.COLUMNS)
 # the denominator of each PSI, a row of the totals table

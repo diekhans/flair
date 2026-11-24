@@ -44,17 +44,18 @@ event's ``other`` row counts toward the rest but has no row of its own.
 Output file format columns are as follows, where the two sample names are the ones
 given on the command line, so the direction of ``delta_PSI`` can be read from the file:
 
- - gene name
- - isoform name
+ - the gene, ``gene_id``
+ - the isoform, ``isoform_id``
  - p-value, ``fisher_pval``
  - the p-value adjusted for the number of isoforms tested, ``fisher_adj_pval``, by
    Benjamini-Hochberg, so a cutoff on it bounds the false discovery rate.  Filter on
    this one: with thousands of isoforms tested, a raw p-value below 0.05 is expected
-   by chance alone for one in twenty of them.  An isoform that cannot be tested is NA
-   in both
+   by chance alone for one in twenty of them.  An isoform that cannot be tested is
+   empty in both
  - this isoform's count in each of the two samples
  - the gene's other isoforms' counts in each of the two samples
- - each sample's PSI, and the difference between them
+ - each sample's PSI, and the difference between them, empty where a sample has no
+   reads of the gene to take a PSI from
 
 For a large input, ``--min_expression N`` cuts what is tested without biasing the
 adjusted p-values.  It leaves an isoform of fewer than N reads in the two samples

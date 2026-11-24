@@ -53,13 +53,37 @@ _SUPPORT_SPLIT = ("has been split into --sjc_support, for spliced isoforms, "
                   "of its gene's reads an isoform must have")
 _PERCENT_USAGE = ("is now --frac_support, a fraction of its gene's reads where this was a "
                   "percentage of them: 5 becomes 0.05, the default of both")
+_ALIGNED_READS = ("has been removed: flair transcriptome takes the aligned reads as a BAM, "
+                  "-b, --genome_aligned_bam")
+_ALIGN_WITH_MINIMAP2 = ("has been removed with flair align: {what}, and the reads are aligned with "
+                        "minimap2 before FLAIR runs, as the documentation on aligning reads shows")
 _PARALOGS = ("has been removed: a read aligning equally well to several transcripts is assigned "
              "to one of them, the same one for every such read, rather than to all of them")
+
+_ISOALLELES_ONE_SAMPLE = ("has been removed: flair isoalleles takes one sample, --bam with "
+                          "--read_map, and a tumor and normal pair with --normal_bam and "
+                          "--normal_read_map")
+_ISOALLELES_NO_ANNOTATION = ("has been removed: flair isoalleles reads the isoforms of "
+                             "--isoform_bed, with the genes and CDS of the run that wrote them")
 
 # names dropped in one subcommand or one program, by the name it was dropped from
 RETIRED_BY_COMMAND = {
     'transcriptome': {
         '--genomealignedbam': "is now -b, --genome_aligned_bam",
+        '--query': _ALIGNED_READS,
+        '-q': _ALIGNED_READS,
+        '--reads': _ALIGNED_READS,
+        '-r': _ALIGNED_READS,
+        '--mm_index': _ALIGN_WITH_MINIMAP2.format(what="it named a minimap2 index"),
+        '--maxintronlen': _ALIGN_WITH_MINIMAP2.format(
+            what="it set minimap2's -G, the maximum intron length of an alignment"),
+        '--minfragmentsize': _ALIGN_WITH_MINIMAP2.format(
+            what="it set minimap2's -s, the minimum score of an alignment"),
+        '--filtertype': ("has been removed with flair align: --keep_supplementary keeps the "
+                         "supplementary alignments it removed, and flair fusion calls the reads "
+                         "crossing two genes"),
+        '--remove_singleexon': ("has been removed with flair align: single exon isoforms are "
+                                "called, and --single_exon_support sets the reads one needs"),
         '--se_support': "is now --single_exon_support",
         '--keep_sup': "is now --keep_supplementary",
         '--noaligntoannot': "is now --no_align_to_annot",
@@ -177,6 +201,12 @@ RETIRED_BY_COMMAND = {
                                "chain with its reads' ends"),
     },
     'isoalleles': {
+        '-m': _ISOALLELES_ONE_SAMPLE,
+        '--manifest': _ISOALLELES_ONE_SAMPLE,
+        '-i': "is now --isoform_bed, the isoforms as a flair BED rather than a FASTA",
+        '-b': "is now --isoform_bed; the reads of the sample are --bam",
+        '-f': _ISOALLELES_NO_ANNOTATION,
+        '--gtf': _ISOALLELES_NO_ANNOTATION,
         '--norm_bam': "is now --normal_bam",
         '--iso_read_map': "is now --read_map",
         '--iso_read_map_norm': "is now --normal_read_map",

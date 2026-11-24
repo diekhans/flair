@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-import os
 import logging
+# flair is imported before numpy, since it sets OPENBLAS_NUM_THREADS
 from flair.cli_help import FlairHelpFormatter
 from flair.cli_retired import RetiredCheckParser
 from flair.flair_bed import FlairBedReader
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
-import numpy as np  # noqa: E402
-import matplotlib  # noqa: E402
+import numpy as np
+import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import matplotlib.patches as mplpatches  # noqa: E402

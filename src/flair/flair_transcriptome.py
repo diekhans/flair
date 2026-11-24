@@ -282,7 +282,8 @@ def add_subparser(subparsers):
                              'ends, rather than the ends of the reads assigned to it.  Each spliced junction '
                              'chain gives a single isoform, overriding --max_ends')
     parser.add_argument('--generate_map', action='store_true',
-                        help='generate a txt file of read-isoform assignments')
+                        help='write the reads by isoform, <output>.isoforms.read.map.tsv: a row of '
+                             'an isoform and its reads, comma-separated, under a header')
     parser.set_defaults(entry=transcriptome_cmd)
 
 def transcriptome_cmd(args):

@@ -30,7 +30,7 @@ def build_parser():
                         '(Benjamini-Hochberg)')
     parser.add_argument('--min_expression', type=int, default=0,
                         help="an isoform with fewer than this many reads in the two samples together is not tested, "
-                        "its p-values NA, though its reads count toward its gene's other isoforms.  Filtering on "
+                        "its p-values empty, though its reads count toward its gene's other isoforms.  Filtering on "
                         "the total, not on each sample, leaves the adjusted p-values valid, and testing fewer "
                         "isoforms that could never be significant gives more power (default: %(default)s)")
     loggingOps.addCmdOptions(parser, defaultLevel=logging.INFO)
@@ -45,13 +45,13 @@ def sample_column_index(sample_columns, colname, counts_matrix_tsv):
     return sample_columns.index(colname)
 
 def iso_psi(iso_counts, other_counts):
-    """each sample's PSI for one isoform, and the change, NA where it cannot be taken.
-    The change is taken before rounding, so it is the difference of the PSIs rather
-    than of the three places they are written to"""
+    """each sample's PSI for one isoform, and the change, empty where it cannot be
+    taken.  The change is taken before rounding, so it is the difference of the PSIs
+    rather than of the three places they are written to"""
     psis = [iso / (iso + other) if iso + other > 0 else None
             for iso, other in zip(iso_counts, other_counts)]
-    delta_psi = round(psis[1] - psis[0], 3) if None not in psis else 'NA'
-    return [round(psi, 3) if psi is not None else 'NA' for psi in psis] + [delta_psi]
+    delta_psi = round(psis[1] - psis[0], 3) if None not in psis else ''
+    return [round(psi, 3) if psi is not None else '' for psi in psis] + [delta_psi]
 
 def gene_total_counts(gene_counts):
     "the gene's counts in each sample, of all its isoforms"
@@ -77,9 +77,9 @@ def gene_usage_rows(gene, gene_counts, colname1, colname2, unreported=frozenset(
         # an isoform with no expression of its gene in one sample cannot be tested
         if (iso_counts[0] + other_counts[0] == 0 or iso_counts[1] + other_counts[1] == 0
                 or sum(iso_counts) == 0 or sum(other_counts) == 0):
-            rows.append([gene, iso, 'NA'] + iso_counts + other_counts + ['NA', 'NA', 'NA'])
+            rows.append([gene, iso, ''] + iso_counts + other_counts + ['', '', ''])
         elif sum(iso_counts) < min_expression:
-            rows.append([gene, iso, 'NA'] + iso_counts + other_counts + iso_psi(iso_counts, other_counts))
+            rows.append([gene, iso, ''] + iso_counts + other_counts + iso_psi(iso_counts, other_counts))
         else:
             rows.append([gene, iso, sps.fisher_exact(ctable)[1]] + iso_counts +
                         other_counts + iso_psi(iso_counts, other_counts))
@@ -87,12 +87,12 @@ def gene_usage_rows(gene, gene_counts, colname1, colname2, unreported=frozenset(
 
 def add_adjusted_pvalues(rows):
     """put after each row's p-value its Benjamini-Hochberg adjusted one, over the
-    rows tested, NA for a row of none"""
+    rows tested, empty for a row of none"""
     import scipy.stats as sps
-    tested = [i for i, row in enumerate(rows) if row[2] != 'NA']
+    tested = [i for i, row in enumerate(rows) if row[2] != '']
     adjusted = dict(zip(tested, map(float, sps.false_discovery_control([rows[i][2] for i in tested])))) if tested else {}
     for i, row in enumerate(rows):
-        row.insert(3, adjusted.get(i, 'NA'))
+        row.insert(3, adjusted.get(i, ''))
     return rows
 
 def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename,  # noqa: C901 - FIXME: reduce complexity

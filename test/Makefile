@@ -119,6 +119,7 @@ test-base-installed:
 test-help:
 	${MAKE} test-main-help \
 		test-quantify-help test-diffexp-help test-diffsplice-help \
+		test-combine-help \
 		test-diff-iso-usage-help \
 		test-plot-usage-help test-transcriptome-help test-fusion-help \
 		test-spliceevents-help test-isoalleles-help test-doc-cli
@@ -578,10 +579,14 @@ endef
 
 combine-tests: test-combine test-combine-files test-combine-prefixes test-combine-nose test-combine-10pct test-combine-multends test-combine-multends-10pct \
 	test-combine-conflict test-combine-conflict-gtf test-combine-isoalleles test-combine-compress \
-	test-combine-combined
+	test-combine-combined test-combine-help
 
 update-combine-tests:
 	$(call update_expected,test-combine)
+
+test-combine-help: mkdirs
+	flair combine --help > $O/$@.out
+	$(call cmp_expect_help,$@.out)
 
 test-combine: mkdirs ${GENOME_FA}
 	flair combine --manifest $(COMBINE_MANIFEST) --genome ${GENOME_FA} -o $O/$@
@@ -1722,7 +1727,7 @@ ${ERGIC3_KRAS_SIM_FA_GZ}: $I/ERGIC3_KRAS_sim_fusion.badread_20x.stranded.fastq
 spliceevents-tests: test-spliceevents test-spliceevents-extraannot test-spliceevents-outliers test-spliceevents-region test-spliceevents-region-extend \
 		test-spliceevents-region-partition test-spliceevents-smallparts test-spliceevents-nopartition test-spliceevents-restart test-spliceevents-compress \
 		test-spliceevents-temp-dir test-spliceevents-keep-intermediate-with-temp-dir test-spliceevents-reuse-other-options \
-		test-spliceevents-conditions test-spliceevents-help
+		test-spliceevents-conditions test-spliceevents-stop test-spliceevents-help
 
 # a rerun with --keep_intermediate and other correction options corrects the samples
 # again rather than reading the first run's corrected reads, which are not what this
@@ -1751,6 +1756,24 @@ test-spliceevents-conditions: mkdirs ${SPLICEEVENTS_MULTI_BAMS} $O/spliceevents.
 	$(call cmp_expect_named,$@.spliceevents.psi_tot.tsv,test-spliceevents-outliers.spliceevents.psi_tot.tsv)
 	$(call cmp_expect_named,$@.spliceevents.regions.bed,test-spliceevents-outliers.spliceevents.regions.bed)
 	$(call cmp_expect_named,$@.spliceevents.totals.tsv,test-spliceevents-outliers.spliceevents.totals.tsv)
+
+# a run stopped by a signal sent to the process group, as a terminal and a job
+# scheduler send it: the stop is reported once, with no traceback, and the
+# temporary files are removed.  The workers take the signal as well as the parent
+# and leave the reporting to it.  More threads than partitions, so that a worker is
+# waiting for a task when the signal arrives, which is the case that printed a
+# traceback for each waiting worker.
+test-spliceevents-stop: mkdirs ${BASIC_ALIGN_BAM} ${SPLICEEVENTS_MANIFEST}
+	mkdir -p $O/$@.tmp
+	setsid flair spliceevents -m $(SPLICEEVENTS_MANIFEST) -g ${GENOME_FA} -t 8 -f $(BASIC_ANNOTATION) \
+	    --temp_dir $O/$@.tmp -o $O/$@ 2> $O/$@.err & \
+	    pid=$$!; \
+	    for i in $$(seq 600); do grep -q 'correction 1 of' $O/$@.err && break; sleep 0.05; done; \
+	    kill -TERM -$$pid; \
+	    ! wait $$pid
+	test $$(grep -c 'FlairStopped: stopped by SIGTERM' $O/$@.err) -eq 1
+	! grep -q Traceback $O/$@.err
+	test -z "$$(ls $O/$@.tmp)"
 
 test-spliceevents-help: mkdirs
 	flair spliceevents --help > $O/$@.out

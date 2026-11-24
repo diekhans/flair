@@ -3,15 +3,14 @@
 es events.quant.tsv."""
 
 import argparse
-import os
 import sys
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
-import numpy as np  # noqa: E402 - openblas setting must be before numpy import
-from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows  # noqa: E402
-from flair.es_events_tsv import EsEventsReader  # noqa: E402
-from flair.event_quant_tsv import EventQuantWriter  # noqa: E402
-from flair.cli_help import FlairHelpFormatter  # noqa: E402
-from flair.pycbio.sys import cli  # noqa: E402
+# flair is imported before numpy, since it sets OPENBLAS_NUM_THREADS
+from flair.counts_matrix_tsv import read_sample_columns, read_counts_rows
+from flair.es_events_tsv import EsEventsReader
+from flair.event_quant_tsv import EventQuantWriter
+from flair.cli_help import FlairHelpFormatter
+from flair.pycbio.sys import cli
+import numpy as np
 
 def side_counts(data, n_samps, isos):
     "the counts of one side of an event, summed over its isoforms"

@@ -26,7 +26,7 @@
 
 .. option:: -g, --genome GENOME
 
-   genome FASTA, required to generate an isoform FASTA file and/or a bigBed file
+   genome FASTA, read for the isoform sequences, the protein predictions and the chromosome sizes of the bigBed
 
 .. option:: -f, --gtf GTF
 

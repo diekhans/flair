@@ -72,5 +72,5 @@
 
 .. option:: -o, --output OUTPUT
 
-   output directory for tables and plots
+   output file name base: each table and plot is written as <output>.<name>, as every other subcommand writes its outputs
 

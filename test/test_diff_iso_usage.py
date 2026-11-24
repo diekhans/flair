@@ -12,7 +12,7 @@ EVENT = 'es|chr1:101-200(+)|G1'
 
 def _usage(path):
     with IsoUsageReader(path) as reader:
-        return [(r.geneID, r.isoID, r['this_iso_s1_count'], r['other_isos_s1_count'], r['s1_PSI'])
+        return [(r.gene_id, r.isoform_id, r['this_iso_s1_count'], r['other_isos_s1_count'], r['s1_PSI'])
                 for r in reader]
 
 
@@ -38,17 +38,17 @@ def _gene_matrix(tmp_path):
 
 def _rows(path):
     with IsoUsageReader(path) as reader:
-        return {r.isoID: r for r in reader}
+        return {r.isoform_id: r for r in reader}
 
 
 def test_an_isoform_of_fewer_reads_than_min_expression_is_not_tested(tmp_path):
     out = str(tmp_path / 'usage.tsv')
     diff_iso_usage(_gene_matrix(tmp_path), 's1', 's2', out, min_expression=5)
     rows = _rows(out)
-    # i3 is written, with its PSIs, its p-values NA; its read still counts for the others
-    assert (rows['i3'].fisher_pval, rows['i3'].fisher_adj_pval, rows['i3'].s1_PSI) == ('NA', 'NA', '0.036')
+    # i3 is written, with its PSIs, its p-values empty; its read still counts for the others
+    assert (rows['i3'].fisher_pval, rows['i3'].fisher_adj_pval, rows['i3'].s1_PSI) == ('', '', '0.036')
     assert rows['i1']['other_isos_s1_count'] == '8'
-    assert all(rows[iso].fisher_adj_pval != 'NA' for iso in ('i1', 'i2', 'i4'))
+    assert all(rows[iso].fisher_adj_pval != '' for iso in ('i1', 'i2', 'i4'))
 
 
 def test_each_isoforms_other_counts_are_its_genes_total_less_its_own(tmp_path):
@@ -72,7 +72,7 @@ def test_delta_psi_is_the_difference_of_the_psis_not_of_the_values_written(tmp_p
 
 def test_pvalues_are_adjusted_over_the_rows_tested():
     # Benjamini-Hochberg of 0.01, 0.04, 0.03 over three tests: p * 3 / rank, then
-    # the minimum of those at or above it; the untested row stays NA
-    rows = add_adjusted_pvalues([['G1', 'i1', 0.01], ['G1', 'i2', 'NA'], ['G2', 'i3', 0.04], ['G2', 'i4', 0.03]])
-    assert [row[3] if row[3] == 'NA' else round(row[3], 6) for row in rows] == [0.03, 'NA', 0.04, 0.04]
-    assert add_adjusted_pvalues([['G1', 'i1', 'NA']]) == [['G1', 'i1', 'NA', 'NA']]
+    # the minimum of those at or above it; the untested row stays empty
+    rows = add_adjusted_pvalues([['G1', 'i1', 0.01], ['G1', 'i2', ''], ['G2', 'i3', 0.04], ['G2', 'i4', 0.03]])
+    assert [row[3] if row[3] == '' else round(row[3], 6) for row in rows] == [0.03, '', 0.04, 0.04]
+    assert add_adjusted_pvalues([['G1', 'i1', '']]) == [['G1', 'i1', '', '']]

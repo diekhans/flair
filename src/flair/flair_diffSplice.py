@@ -45,7 +45,8 @@ def add_subparser(subparsers):
     required.add_argument('--counts_matrix', type=str, required=True,
                           help='tab-delimited isoform count matrix from flair quantify')
     required.add_argument('-o', '--output', type=str, required=True,
-                          help='output directory for tables and plots')
+                          help='output file name base: each table and plot is written as '
+                               '<output>.<name>, as every other subcommand writes its outputs')
     parser.add_argument('-t', '--threads', type=int, default=12,
                         help='number of threads for parallel DRIMSeq (default: %(default)s)')
     parser.add_argument('--test', action='store_true',

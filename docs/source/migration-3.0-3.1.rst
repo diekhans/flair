@@ -333,7 +333,9 @@ File formats
 - Read maps have a header row, ``name`` and ``reads``, where the old
   ``.isoform.read.map.txt`` started straight in on the data.
 - ``diff_iso_usage`` adds three columns at the end: ``<sample1>_PSI``,
-  ``<sample2>_PSI`` and ``delta_PSI``.
+  ``<sample2>_PSI`` and ``delta_PSI``.  Its first two columns are ``gene_id`` and
+  ``isoform_id``, which were ``geneID`` and ``isoID``, and a p-value or a PSI that
+  cannot be taken is an empty field where it was ``NA``.
 - The isoform BED is BED12 plus 13 columns, in this order: ``gene_id``,
   ``ref_transcript_id``, ``ref_gene_mappings``, ``read_support``, ``frac_support``,
   ``productivity``, ``transcript_class``, ``fused_genes``, ``pos_in_fusion``,

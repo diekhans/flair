@@ -31,7 +31,7 @@
 
 .. option:: --min_expression MIN_EXPRESSION
 
-   an isoform with fewer than this many reads in the two samples together is not tested, its p-values NA, though its reads count toward its gene's other isoforms. Filtering on the total, not on each sample, leaves the adjusted p-values valid, and testing fewer isoforms that could never be significant gives more power (default: 0)
+   an isoform with fewer than this many reads in the two samples together is not tested, its p-values empty, though its reads count toward its gene's other isoforms. Filtering on the total, not on each sample, leaves the adjusted p-values valid, and testing fewer isoforms that could never be significant gives more power (default: 0)
 
 .. option:: --log-stderr
 

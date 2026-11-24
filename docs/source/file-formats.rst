@@ -21,6 +21,11 @@ Conventions
   same as a PSI of 0.
 - Any text file FLAIR reads may be gzipped, and ``--compress`` gzips what it
   writes; see :ref:`compression-label`.
+- A file a later run can reuse has a record beside it, ``<file>.provenance.json``:
+  the input files, the options that change its contents, and the FLAIR version that
+  wrote it.  A run reuses the file only when that record matches its own inputs and
+  options.  The record is written after the file it describes, so a file an
+  interrupted run left has none and is made again.
 - BED coordinates are zero based and half open, as BED is defined.  GTF and VCF
   coordinates are one based and inclusive, as those formats are defined.
 - The event names and coordinate columns of ``flair spliceevents`` are BED
@@ -58,7 +63,8 @@ Input files
    * - ``--isoform_bed``
      - a FLAIR isoform BED, the 25 columns below
    * - ``--manifest``
-     - a sample per line, tab separated; see below
+     - a sample a line, tab separated, for ``flair quantify`` and ``flair
+       spliceevents``; an isoform BED path a line for ``flair combine``; see below
    * - phased VCF
      - a VCF with genotypes, of any caller, as ``flair isoalleles`` takes; its
        reads are a haplotagged BAM
@@ -66,22 +72,35 @@ Input files
 The manifest
 ~~~~~~~~~~~~
 
-``flair quantify``, ``flair combine`` and ``flair spliceevents`` take a manifest of
-four fields, the sample id, its condition, its batch and its BAM::
+``flair quantify`` and ``flair spliceevents`` take a manifest of four fields, the
+sample id, its condition, its batch and its BAM::
 
    sample1	ctl	batch1	mydata/sample1.bam
    sample2	test	batch1	mydata/sample2.bam
 
 ``flair spliceevents`` also takes the two field form, a sample id and its BAM, and
 then writes no conditions beside its counts.  Every line has the same number of
-fields; a manifest of both forms is an error.  Lines starting with ``#`` and
-blank lines are skipped, and a relative path is resolved against the directory
-FLAIR runs in.
+fields; a manifest of both forms is an error.
 
-The sample id, the condition and the batch are written into a counts matrix's
-columns, so none of them may contain an underscore: a matrix of a FLAIR before 3.1
-named each column ``sample_condition_batch``, and those names are split on the
-underscore when such a matrix is read.
+A sample id may not contain a comma, which separates the samples of an isoform BED
+and of a GTF attribute, a tab, which separates the fields of every table, or a
+slash, which would name a directory where a file is named for the sample.  A name
+containing one is an error.  The condition and the batch are columns of their own
+in the sample info file, so they may contain any character.
+
+``flair combine`` takes a manifest of a different kind: one flair isoform BED path
+a line, and no other fields::
+
+   sample1/sample1.isoforms.bed
+   sample2/sample2.isoforms.bed
+
+In both kinds, lines starting with ``#`` and blank lines are skipped, and a
+relative path is resolved against the directory FLAIR runs in.
+
+A counts matrix written by a FLAIR before 3.1 has no sample info file beside it,
+and its conditions and batches are read from its ``sample_condition_batch`` column
+names, split on the underscores.  Such a matrix is read correctly only where those
+three fields contain no underscore of their own.
 
 The FLAIR isoform BED
 ---------------------
@@ -262,7 +281,9 @@ PSItot divides by.  ``.spliceevents.bed`` has a row per alternative, named
 the regions the events were called in.
 
 ``spliceevents_outliers`` writes the samples whose PSI is far from the median of
-the others; see :ref:`spliceevents-outliers-label`.
+the others; see :ref:`spliceevents-outliers-label`.  Its ``dev_from_median`` is
+``inf`` where the other samples' PSIs are identical, so the spread the difference
+is divided by is zero.
 
 flair isoalleles tables
 -----------------------
@@ -301,6 +322,40 @@ it.  A CDS is written ``chrom:start-end``, zero based and half open as a BED giv
 it.  A group is a haplotype, ``H1``, ``H2`` or ``untagged``, and in a tumor and
 normal pair a somatic set with it, ``H2-S1``, or ``H2-S?`` where the set is
 unknown.
+
+flair fusion tables
+-------------------
+
+``<output>.fusions.tsv`` has a row per fusion, the most reads first.  The isoforms
+themselves are the flair BED above, ``<output>.fusions.isoforms.bed``.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Column
+     - Contents
+   * - ``fusion``
+     - the genes it joins by name, in transcript order, separated by ``--``; a gene
+       the annotation gives no name is its FLG id
+   * - ``gene_ids``
+     - the same genes as FLG ids
+   * - ``prelim_reads``
+     - the reads of the preliminary fusions its isoforms were called from
+   * - ``final_reads``
+     - the reads of its final isoforms
+   * - ``isoforms``
+     - how many final isoforms it has
+   * - ``top_breakpoint``
+     - the breakpoints of its best supported isoforms, each written
+       ``chrom:pos(strand)--chrom:pos(strand)``, one based, comma separated where a
+       fusion joins more than two loci
+   * - ``top_breakpoint_reads``
+     - the reads of the isoforms with those breakpoints
+   * - ``top_isoform``
+     - its isoform with the most reads
+   * - ``top_isoform_reads``
+     - that isoform's reads
 
 flair diffexp and flair diffsplice tables
 -----------------------------------------

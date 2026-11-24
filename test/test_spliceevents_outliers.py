@@ -21,7 +21,7 @@ def test_a_sample_far_from_the_median_is_an_outlier():
     named = dict(zip(OUTLIER_COLUMNS, line))
     assert (named['alternative_reads'], named['psi_total']) == (60, 100)
     columns = dict(zip(OUTLIER_COLUMNS, line))
-    assert (columns['medianPSI'], columns['sample_val'], columns['delta_PSI_to_med']) == (0.2, 0.6, 0.4)
+    assert (columns['median_psi'], columns['sample_psi'], columns['delta_psi_to_median']) == (0.2, 0.6, 0.4)
 
 
 def test_a_small_difference_is_not_an_outlier_however_many_deviations():
@@ -51,8 +51,8 @@ def test_a_sample_with_no_reads_has_no_psi_at_event_support_zero():
     assert list(outliers) == ['s5']
 
 
-def _line(event, sample, dev_from_med):
-    return [event, 'inc', 'x', 'G1', 'NAME1', '', '', sample, 0.2, 0.01, 0.6, 6, '60;100', 0.4, dev_from_med]
+def _line(event, sample, dev_from_median):
+    return [event, 'inc', 'x', 'G1', 'NAME1', '', '', sample, 0.2, 0.01, 0.6, 6, '60;100', 0.4, dev_from_median]
 
 
 ES = (frozenset({'chr1:100-200', 'chr1:300-400'}), frozenset(), frozenset({'chr1:100-400'}))

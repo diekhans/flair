@@ -95,7 +95,10 @@
     than summed again per isoform, so genes and events of many isoforms are fast.
     `delta_PSI` is the difference of the two PSIs, taken before they are rounded to
     three places, rather than the difference of the rounded values, which was up to
-    0.001 out: of PSIs 1/3 and 2/3 it is 0.333, not 0.334.
+    0.001 out: of PSIs 1/3 and 2/3 it is 0.333, not 0.334.  Its first two columns
+    are `gene_id` and `isoform_id`, where they were `geneID` and `isoID`, and a
+    p-value or a PSI that cannot be taken is an empty field, where it was `NA`:
+    every FLAIR table writes an unknown value as an empty field.
   * `flair diffexp` and `diff_iso_usage` also read the counts of `flair
     spliceevents`, testing an event's alternatives as an isoform's usage within its
     gene.  diffexp runs DRIMSeq and its t-test alone on them, not DESeq2, and an
@@ -219,6 +222,12 @@
   * The outliers table of `spliceevents_outliers` has two columns, `alternative_reads`
     and `psi_total`, where one column had both numbers joined by a semicolon under
     the name `event_reads;total_locus_reads`, which named neither of them.
+  * The rest of that table's columns are named as the other tables are:
+    `median_psi`, `dev_iqr_half`, `sample_psi`, `samples_with_psi` and
+    `delta_psi_to_median`, where they were `medianPSI`, `dev(IQR/2)`, `sample_val`,
+    `tot_not_NA_samples` and `delta_PSI_to_med`.  `dev_from_median`, which was
+    `dev_from_med`, is `inf` where the other samples' PSIs are identical, in place
+    of the sentinel 100000 that a reader took for a measured ratio.
   * An event's `other` reads are counted whatever their number, so the rows of an
     event sum to it.  They were dropped when no sample had `--feature_support` of
     them, which left the reported rows' PSIs summing to less than 1.

@@ -58,4 +58,6 @@ required named arguments:
                         isoforms in BED format
   --counts_matrix COUNTS_MATRIX
                         tab-delimited isoform count matrix from flair quantify
-  -o, --output OUTPUT   output directory for tables and plots
+  -o, --output OUTPUT   output file name base: each table and plot is written
+                        as <output>.<name>, as every other subcommand writes
+                        its outputs

@@ -13,7 +13,6 @@
 
 
 import logging
-import os
 import os.path as osp
 from collections import Counter
 from statistics import median, mean
@@ -34,8 +33,8 @@ from flair.iso_usage_change_tsv import iso_usage_change_writer
 from flair.output_compress import compressed_path, output_compression
 from flair.sample_info_tsv import read_sample_info
 
-os.environ['OPENBLAS_NUM_THREADS'] = '1'
-import numpy as np  # noqa: E402
+# imported after flair, which sets OPENBLAS_NUM_THREADS
+import numpy as np
 
 
 # an isoform is tested only when the two conditions' median counts differ by more

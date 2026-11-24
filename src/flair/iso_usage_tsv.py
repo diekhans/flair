@@ -2,22 +2,23 @@
 
 Columns, in order:
 
-  geneID                       the gene, or of a spliceevents table, the event
-  isoID                        the isoform, or event|alternative
+  gene_id                      the gene, or of a spliceevents table, the event
+  isoform_id                   the isoform, or event|alternative
   fisher_pval                  Fisher's exact p-value for this isoform against
-                               the rest of its gene, NA when either sample has
+                               the rest of its gene, empty when either sample has
                                no reads to test
   fisher_adj_pval              fisher_pval adjusted for the number of isoforms
                                tested, by Benjamini-Hochberg, so a cutoff on it
-                               bounds the false discovery rate; NA where
+                               bounds the false discovery rate; empty where
                                fisher_pval is
   this_iso_<sample1>_count     reads on this isoform in each sample
   this_iso_<sample2>_count
   other_isos_<sample1>_count   reads on the gene's other isoforms
   other_isos_<sample2>_count
-  <sample1>_PSI                this isoform's share of its gene, each sample
-  <sample2>_PSI
-  delta_PSI                    sample2 PSI minus sample1 PSI
+  <sample1>_PSI                this isoform's share of its gene, each sample,
+  <sample2>_PSI                empty where the gene has no reads in that sample
+  delta_PSI                    sample2 PSI minus sample1 PSI, empty where either
+                               PSI is
 
 The sample names are in the column names, so the sign of delta_PSI can be read
 from the file without the order the samples were given in.
@@ -27,20 +28,20 @@ from flair.pycbio.sys import fileOps
 from flair.pycbio.tsv import TsvReader, TsvWriter
 
 def columns(colname1, colname2):
-    return ('geneID', 'isoID', 'fisher_pval', 'fisher_adj_pval',
+    return ('gene_id', 'isoform_id', 'fisher_pval', 'fisher_adj_pval',
             f'this_iso_{colname1}_count', f'this_iso_{colname2}_count',
             f'other_isos_{colname1}_count', f'other_isos_{colname2}_count',
             f'{colname1}_PSI', f'{colname2}_PSI', 'delta_PSI')
 
 class IsoUsageReader(TsvReader):
-    "values stay strings: a p-value or a PSI can be the string NA"
+    "values stay strings: a p-value or a PSI can be empty"
     def __init__(self, iso_usage_tsv):
         super().__init__(iso_usage_tsv, defaultColType=str)
 
 class IsoUsageWriter(TsvWriter):
     def __init__(self, iso_usage_tsv, colname1, colname2):
-        # every value is written as given: counts, p-values and the NA that marks
-        # an isoform with nothing to test
+        # every value is written as given: counts, p-values and the empty field
+        # that marks an isoform with nothing to test
         super().__init__(iso_usage_tsv, columns=columns(colname1, colname2),
                          defaultColType=str)
 

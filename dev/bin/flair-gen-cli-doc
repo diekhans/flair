@@ -20,6 +20,10 @@ import tomllib
 # deterministic wrapping of the usage line, independent of the terminal
 os.environ['COLUMNS'] = '80'
 
+# argparse colorizes its help, writing ANSI escape sequences into these generated
+# files wherever the terminal running `make doc-cli' takes color
+os.environ['PYTHON_COLORS'] = '0'
+
 ROOT_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../..")
 sys.path.insert(0, os.path.join(ROOT_DIR, "src"))
 

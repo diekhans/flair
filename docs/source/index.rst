@@ -1,7 +1,8 @@
 Welcome to FLAIR's Documentation
 ================================
 
-FLAIR, Full-Length Alternative Isoform analysis of RNA, builds transcripts from long
+FLAIR, **F**\ ull-**L**\ ength **A**\ lternative **I**\ soform **A**\ nalysis of **R**\ NA,
+builds transcripts from long
 reads aligned to a genome, counts them in each sample, and tests expression, isoform
 usage and splicing between conditions.  It is used with nanopore cDNA, nanopore direct
 RNA and PacBio reads.

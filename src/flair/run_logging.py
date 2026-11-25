@@ -61,7 +61,7 @@ def log_run_start():
     a problem with one, would otherwise state nothing about.  The command line is
     quoted as a shell would take it, so it can be run again as it is logged."""
     argv = [os.path.basename(sys.argv[0])] + sys.argv[1:]
-    logging.info('FLAIR %s: %s', VERSION, shlex.join(argv))
+    logging.info(f'FLAIR {VERSION}: {shlex.join(argv)}')
 
 
 def child_log_level_opt():
@@ -105,7 +105,7 @@ def report_reads_used(used, what):
     alike."""
     read = _reads_read.value
     if read > 0:
-        logging.info('of %s read, %d %s (%.0f%%)', plural(read, 'read'), used, what, 100 * used / read)
+        logging.info(f"of {plural(read, 'read')} read, {used} {what} ({100 * used / read:.0f}%)")
 
 
 def start_task_progress(total):
@@ -122,5 +122,5 @@ def report_task_done(what, detail, start_time):
     with _tasks_done.get_lock():
         _tasks_done.value += 1
         done = _tasks_done.value
-    logging.info('%s %d of %d: %s, %.1f s', what, done, _tasks_total.value, detail,
-                 time.time() - start_time)
+    logging.info(f'{what} {done} of {_tasks_total.value}: {detail}, '
+                 f'{time.time() - start_time:.1f} s')

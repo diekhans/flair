@@ -297,21 +297,24 @@ def build_genes(firstpass, annots, region_chrom, sjc_with_overlap_groups):
             # only weakly stranded by its junctions; the strand has to come from a
             # gene, as there can't be isoforms of unknown strand in the output
             gene_id, isoform_id, strand = get_gene_name_unknown_strand(isoform, annots)
-            if gene_id is None:
-                logging.debug(f"isoform dropped: strand unknown and not resolved by gene identification: {iso_key}")
-                firstpass.remove(iso_key)
-                continue
-            isoform.strand = strand
+            if gene_id is not None:
+                isoform.strand = strand
         else:
             gene_id, isoform_id = get_gene_name_firstpass(isoform, annots)
-        isoform.ref_transcript_id = isoform_id
-        if gene_id is not None:
-            # removing this strand correction breaks the unusual junction (due to underlying variant?) test
-            # currently just using first gene in list, ideally would use the most 5' annotated gene for this strand correction, if we want to do strand correction at all
-            isoform.strand = annots.gene_to_strand[gene_id[0]]
-            add_gene_isoform(genes, gene_id, isoform, annots.gene_to_strand[gene_id[0]], is_novel=False)
+        # still unknown: gene identification found no gene on one strand for it
+        if isoform.strand == UNKNOWN_STRAND:
+            logging.debug(f"isoform dropped: strand unknown and not resolved by gene identification: {iso_key}")
+            firstpass.remove(iso_key)
         else:
-            novel_gene_isos_to_group[isoform.strand].append((isoform.start, isoform.end, iso_key))
+            isoform.ref_transcript_id = isoform_id
+            if gene_id is not None:
+                # removing this strand correction breaks the unusual junction (due to underlying variant?) test
+                # currently just using first gene in list, ideally would use the most 5' annotated gene for this
+                # strand correction, if we want to do strand correction at all
+                isoform.strand = annots.gene_to_strand[gene_id[0]]
+                add_gene_isoform(genes, gene_id, isoform, annots.gene_to_strand[gene_id[0]], is_novel=False)
+            else:
+                novel_gene_isos_to_group[isoform.strand].append((isoform.start, isoform.end, iso_key))
 
     for strand in novel_gene_isos_to_group:
         generate_non_gene_iso_groups_strand(genes, novel_gene_isos_to_group, strand, region_chrom, sjc_with_overlap_groups)

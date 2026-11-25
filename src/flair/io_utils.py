@@ -33,7 +33,7 @@ def make_temp_dir(out_prefix):
     try:
         os.makedirs(temp_dir, exist_ok=True)
     except OSError as exc:
-        raise OSError(f"Creation of the directory `{temp_dir}' failed") from exc
+        raise OSError(f"creation of the directory '{temp_dir}' failed") from exc
     return temp_dir + '/'
 
 
@@ -46,7 +46,7 @@ def make_run_temp_dir(out_prefix, temp_dir=None):
         os.makedirs(base, exist_ok=True)
         run_dir = tempfile.mkdtemp(prefix=os.path.basename(out_prefix) + '.', suffix='.intermediate', dir=base)
     except OSError as exc:
-        raise OSError(f"Creation of a temporary directory in `{base}' failed") from exc
+        raise OSError(f"creation of a temporary directory in '{base}' failed") from exc
     return run_dir + '/'
 
 
@@ -59,7 +59,7 @@ def keep_or_remove(run_dir, keep):
         yield run_dir
     finally:
         if keep:
-            logging.info('intermediate files kept in %s', run_dir)
+            logging.info(f'intermediate files kept in {run_dir}')
         else:
             shutil.rmtree(run_dir, ignore_errors=True)
 
@@ -156,26 +156,39 @@ def _program_names(cmds):
     return ' | '.join(os.path.basename(command[0]) for command in commands)
 
 
-def _program_failed_msg(cmds, exc):
-    """A failed program's message, with its own diagnostics when pipettor captured
-    them.  The cause is not preserved across a process pool worker, so the diagnostics must
-    be in the message itself to be reported at all."""
+def program_failed_msg(cmds, exc, *, name=None, doing=None, diagnostics_file=None):
+    """A failed program's message: the program, what it was doing when the caller
+    states it, and where its diagnostics are, captured by pipettor, in a file the
+    caller redirected them to, or on the terminal.  The cause is not preserved across
+    a process pool worker, so the diagnostics must be in the message itself to be
+    reported at all.  name replaces the program's own, for a program started through
+    the interpreter."""
+    what = (name if name is not None else _program_names(cmds)) + ' failed'
+    if doing is not None:
+        what += ' ' + doing
     diagnostics = (exc.stderr or '').strip()
-    where = f'\n{diagnostics}' if diagnostics != '' else ', its diagnostics are above'
-    return f'{_program_names(cmds)} failed{where}'
+    if diagnostics != '':
+        where = f'\n{diagnostics}'
+    elif diagnostics_file is not None:
+        where = f', its diagnostics are in {diagnostics_file}'
+    else:
+        where = ', its diagnostics are above'
+    return what + where
 
 
-def run_program(cmds, **kwargs):
+def run_program(cmds, *, name=None, doing=None, diagnostics_file=None, **kwargs):
     """Run a program, or a pipeline of them, reporting a failure as a tool error with
     the program's own diagnostics, so that a traceback of the flair code that started
     it adds nothing.  With debug logging their stderr is inherited rather than
-    captured, so that what a flair program run this way logs is printed as it runs."""
+    captured, so that what a flair program run this way logs is printed as it runs.
+    name, doing and diagnostics_file are those of program_failed_msg."""
     if debug_logging() and ('stderr' not in kwargs):
         kwargs['stderr'] = None
     try:
         pipettor.run(cmds, **kwargs)
     except pipettor.ProcessException as exc:
-        raise FlairToolError(_program_failed_msg(cmds, exc)) from exc
+        raise FlairToolError(program_failed_msg(cmds, exc, name=name, doing=doing,
+                                                diagnostics_file=diagnostics_file)) from exc
 
 
 class GenomeFasta(pysam.FastaFile):
@@ -197,7 +210,7 @@ class GenomeFasta(pysam.FastaFile):
             raise FlairInputDataError(self._missing_seq_msg(reference)) from exc
 
     def _missing_seq_msg(self, seq_name):
-        return (f"sequence `{seq_name}' is not in the genome FASTA {os.fsdecode(self.filename)}; the genome, "
+        return (f"sequence '{seq_name}' is not in the genome FASTA {os.fsdecode(self.filename)}; the genome, "
                 'the alignments and the isoforms must name their sequences the same way')
 
 

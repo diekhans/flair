@@ -77,45 +77,49 @@ def update_altsplice_dict(jdict, chrom, strand, fiveprime, threeprime, exon_star
     return jdict
 
 
+def _is_alternative_site(fiveprime, tp1, tp2, exon_end, search_threeprime, strand):
+    """is tp2 an alternative site to tp1, both spliced to fiveprime: a site of its own,
+    wiggle or more away, not already tested in the other order, and overlapping tp1's
+    exon, since a site past its end is an exon skip"""
+    if tp1 == tp2 or abs(tp2 - tp1) < wiggle or abs(fiveprime - tp1) > abs(fiveprime - tp2):
+        return False
+    if (search_threeprime and strand == '+') or (not search_threeprime and strand == '-'):
+        return tp2 <= exon_end
+    else:
+        return tp2 >= exon_end
+
+
+def _write_altss_events(juncs_of_site, fiveprime, chrom, writer, search_threeprime):
+    "the alternative site events of one anchoring splice site"
+    all_tp = list(juncs_of_site.keys())
+    strand, chrom_clean = chrom[0], chrom[1:]
+    n = 0
+    for tp1 in all_tp:  # tp1 = three prime SS number 1
+        exon_end = juncs_of_site[tp1]['exon_end']
+        for tp2 in all_tp:  # tp2 is also a 3' SS with the same 5' anchor as tp1
+            if _is_alternative_site(fiveprime, tp1, tp2, exon_end, search_threeprime, strand):
+                inclusion, exclusion = tp1, tp2
+                anchor = site_id(chrom_clean, strand, fiveprime)
+                feature_suffix = anchor if n == 0 else anchor + '-' + str(n)
+                event = (junction_id(chrom_clean, strand, fiveprime, inclusion) + '_' +
+                         junction_id(chrom_clean, strand, fiveprime, exclusion))
+
+                writer.writeSide('inclusion', feature_suffix, event,
+                                 juncs_of_site[inclusion]['counts'],
+                                 sorted(juncs_of_site[inclusion]['isos']))
+                writer.writeSide('exclusion', feature_suffix, event,
+                                 juncs_of_site[exclusion]['counts'],
+                                 sorted(juncs_of_site[exclusion]['isos']))
+                n += 1
+
+
 def find_altss(alljuncs, writer, search_threeprime=True):
     """ If fiveprimeon is True, then alternative 5' SS will be reported instead. """
     for chrom in alljuncs:
         for fiveprime in alljuncs[chrom]:
-            if len(alljuncs[chrom][fiveprime]) == 1:  # if there is only one 3' end, not an alt 3' junction
-                continue
-
-            all_tp = list(alljuncs[chrom][fiveprime].keys())
-
-            n = 0
-            for tp1 in all_tp:  # tp1 = three prime SS number 1
-                exon_end = alljuncs[chrom][fiveprime][tp1]['exon_end']
-                for tp2 in all_tp:  # tp2 is also a 3' SS with the same 5' anchor as tp1
-                    if tp1 == tp2 or abs(tp2 - tp1) < wiggle or abs(fiveprime - tp1) > abs(fiveprime - tp2):
-                        # two sites are the same, too close together, or have already been tested in another order
-                        continue
-                    inclusion = tp1
-                    exclusion = tp2
-                    strand = chrom[0]
-
-                    if (search_threeprime and strand == '+') or (not search_threeprime and strand == '-'):
-                        if tp2 > exon_end:  # exon skipping. tp2 does not overlap tp1's exon
-                            continue
-                    elif tp2 < exon_end:  # exon skipping for alt SS upstream of anchor
-                        continue
-
-                    chrom_clean = chrom[1:]
-                    anchor = site_id(chrom_clean, strand, fiveprime)
-                    feature_suffix = anchor if n == 0 else anchor + '-' + str(n)
-                    event = (junction_id(chrom_clean, strand, fiveprime, inclusion) + '_' +
-                             junction_id(chrom_clean, strand, fiveprime, exclusion))
-
-                    writer.writeSide('inclusion', feature_suffix, event,
-                                     alljuncs[chrom][fiveprime][inclusion]['counts'],
-                                     sorted(alljuncs[chrom][fiveprime][inclusion]['isos']))
-                    writer.writeSide('exclusion', feature_suffix, event,
-                                     alljuncs[chrom][fiveprime][exclusion]['counts'],
-                                     sorted(alljuncs[chrom][fiveprime][exclusion]['isos']))
-                    n += 1
+            # one 3' end is not an alt 3' junction
+            if len(alljuncs[chrom][fiveprime]) > 1:
+                _write_altss_events(alljuncs[chrom][fiveprime], fiveprime, chrom, writer, search_threeprime)
 
 
 def _ir_event_kept(ir_junction, sample_names):
@@ -141,64 +145,84 @@ def main():
         call_events(args)
 
 
-def call_events(args):  # noqa: C901 - FIXME: reduce complexity
+def _read_iso_counts(counts_tsv):
+    "isoform -> its counts by sample, and the sample names; both empty with no counts matrix"
+    if not counts_tsv:
+        return {}, []
+    sample_names = read_sample_columns(counts_tsv)
+    return ({row.isoform_id: [float(x) for x in row.counts] for row in read_counts_rows(counts_tsv)},
+            sample_names)
 
-    iso_counts = {}
-    sample_names = []
-    if args.counts_tsv:
-        sample_names = read_sample_columns(args.counts_tsv)
-        for row in read_counts_rows(args.counts_tsv):
-            iso_counts[row.isoform_id] = [float(x) for x in row.counts]
 
-    isoforms = {}  # ir detection
-    ir_junctions = {}  # ir detection
-    a3_junctions = {}  # alt 3' ss detection
-    a5_junctions = {}  # alt 5' ss detection
-    for bed in BedReader(args.isoforms_bed, fixScores=True):
-        chrom, name, start, end, strand = bed.chrom, bed.name, bed.chromStart, bed.chromEnd, bed.strand
+def _new_ir_junction(nsamples):
+    "the counts and isoforms of a junction's two sides, before any isoform is added"
+    return {side: {'counts': [0] * nsamples, 'isos': []} for side in ('exclusion', 'inclusion')}
 
-        if iso_counts and name not in iso_counts:
-            continue
 
-        exons = tuple(PosRange(blk.start, blk.end) for blk in bed.blocks)
+def _add_isoform_junctions(bed, chrom, exons, tables, sample_names, iso_counts):
+    "one isoform's junctions, in the alternative splice site tables and the IR table"
+    a3_junctions, a5_junctions, ir_chrom = tables
+    for flanked in get_junctions_bed(exons):
+        j = flanked.junc
+        fiveprime, threeprime = j.start, j.end
+        exon_end, exon_start = flanked.next_exon_end, flanked.prev_exon_start
 
-        chrom = strand + chrom  # stranded comparisons
-        if chrom not in isoforms:
-            isoforms[chrom] = {}
-            ir_junctions[chrom] = {}
-            a3_junctions[chrom] = {}
-            a5_junctions[chrom] = {}
+        if bed.strand == '-':
+            fiveprime, threeprime = threeprime, fiveprime
+            exon_end, exon_start = exon_start, exon_end
 
-        isoforms[chrom][name] = Isoform(name, PosRange(start, end), exons)
+        update_altsplice_dict(a3_junctions, chrom, bed.strand, fiveprime, threeprime,
+                              exon_start, exon_end, sample_names, iso_counts, bed.name)
+        update_altsplice_dict(a5_junctions, chrom, bed.strand, threeprime, fiveprime,
+                              exon_end, exon_start, sample_names, iso_counts, bed.name,
+                              search_threeprime=False)
 
-        for flanked in get_junctions_bed(exons):
-            j = flanked.junc
-            fiveprime, threeprime = j.start, j.end
-            exon_end, exon_start = flanked.next_exon_end, flanked.prev_exon_start
+        # IR detection needs the junction alone, without the flanking exons
+        exclusion = ir_chrom.setdefault(j, _new_ir_junction(len(sample_names)))['exclusion']
+        exclusion['isos'] += [bed.name]
+        for c in range(len(sample_names)):
+            exclusion['counts'][c] += iso_counts[bed.name][c]
 
-            if strand == '-':
-                fiveprime, threeprime = threeprime, fiveprime
-                exon_end, exon_start = exon_start, exon_end
 
-            a3_junctions = update_altsplice_dict(a3_junctions, chrom, strand, fiveprime, threeprime,
-                                                 exon_start, exon_end, sample_names, iso_counts, name)
-            a5_junctions = update_altsplice_dict(a5_junctions, chrom, strand, threeprime, fiveprime,
-                                                 exon_end, exon_start, sample_names, iso_counts, name,
-                                                 search_threeprime=False)
+def _collect_isoform_junctions(isoforms_bed, sample_names, iso_counts):
+    """the isoforms and their junctions by stranded chromosome: the isoforms, the
+    junctions for intron retention, and those for alternative 3' and 5' splice sites"""
+    isoforms, ir_junctions, a3_junctions, a5_junctions = {}, {}, {}, {}
+    for bed in BedReader(isoforms_bed, fixScores=True):
+        # an isoform of the BED that the counts matrix has no row for is left out
+        if (not iso_counts) or (bed.name in iso_counts):
+            chrom = bed.strand + bed.chrom  # stranded comparisons
+            if chrom not in isoforms:
+                isoforms[chrom], ir_junctions[chrom] = {}, {}
+                a3_junctions[chrom], a5_junctions[chrom] = {}, {}
+            exons = tuple(PosRange(blk.start, blk.end) for blk in bed.blocks)
+            isoforms[chrom][bed.name] = Isoform(bed.name, PosRange(bed.chromStart, bed.chromEnd), exons)
+            _add_isoform_junctions(bed, chrom, exons, (a3_junctions, a5_junctions, ir_junctions[chrom]),
+                                   sample_names, iso_counts)
+    return isoforms, ir_junctions, a3_junctions, a5_junctions
 
-            # IR detection needs the junction alone, without the flanking exons
-            if j not in ir_junctions[chrom]:  # ir detection
-                ir_junctions[chrom][j] = {}
-                ir_junctions[chrom][j]['exclusion'] = {}
-                ir_junctions[chrom][j]['inclusion'] = {}
-                ir_junctions[chrom][j]['exclusion']['counts'] = [0] * len(sample_names)
-                ir_junctions[chrom][j]['inclusion']['counts'] = [0] * len(sample_names)
-                ir_junctions[chrom][j]['exclusion']['isos'] = []
-                ir_junctions[chrom][j]['inclusion']['isos'] = []
-            ir_junctions[chrom][j]['exclusion']['isos'] += [name]
-            for c in range(len(sample_names)):
-                ir_junctions[chrom][j]['exclusion']['counts'][c] += iso_counts[name][c]
 
+def _add_ir_inclusions(chrom_junctions, chrom_isoforms, sample_names, iso_counts):
+    "the isoforms retaining each junction of one chromosome, with their counts"
+    for j, junction in chrom_junctions.items():
+        for iname, isoform in chrom_isoforms.items():  # every other isoform, to find IR
+            if (iname not in junction['exclusion']['isos']) and isoform_retains_junction(isoform, j):
+                junction['inclusion']['isos'] += [iname]
+                for c in range(len(sample_names)):
+                    junction['inclusion']['counts'][c] += iso_counts[iname][c]
+
+
+def _write_ir_events(writer, chrom, chrom_junctions, sample_names):
+    for j, junction in chrom_junctions.items():
+        if _ir_event_kept(junction, sample_names):
+            _write_ir_event(writer, chrom, j, junction, sample_names)
+
+
+def call_events(args):
+    "the alternative 3' and 5' splice site and intron retention events of the isoforms"
+    iso_counts, sample_names = _read_iso_counts(args.counts_tsv)
+    isoforms, ir_junctions, a3_junctions, a5_junctions = _collect_isoform_junctions(args.isoforms_bed,
+                                                                                    sample_names, iso_counts)
     with event_quant_writer(event_quant_path(args, 'alt3'), sample_names) as writer:
         find_altss(a3_junctions, writer)
 
@@ -206,18 +230,10 @@ def call_events(args):  # noqa: C901 - FIXME: reduce complexity
         find_altss(a5_junctions, writer, search_threeprime=False)
 
     with event_quant_writer(event_quant_path(args, 'ir'), sample_names) as writer:
-        for chrom in ir_junctions:  # noqa: C901 - FIXME: reduce complexity
-            for j in ir_junctions[chrom]:
-                for iname, isoform in isoforms[chrom].items():  # every other isoform, to find IR
-                    is_exclusion = iname in ir_junctions[chrom][j]['exclusion']['isos']
-                    if (not is_exclusion) and isoform_retains_junction(isoform, j):
-                        ir_junctions[chrom][j]['inclusion']['isos'] += [iname]
-                        for c in range(len(sample_names)):
-                            ir_junctions[chrom][j]['inclusion']['counts'][c] += iso_counts[iname][c]
-
-            for j in ir_junctions[chrom]:
-                if _ir_event_kept(ir_junctions[chrom][j], sample_names):
-                    _write_ir_event(writer, chrom, j, ir_junctions[chrom][j], sample_names)
+        for chrom in ir_junctions:
+            _add_ir_inclusions(ir_junctions[chrom], isoforms[chrom], sample_names, iso_counts)
+            _write_ir_events(writer, chrom, ir_junctions[chrom], sample_names)
+            # a chromosome's junctions are not read again, and they are large
             ir_junctions[chrom] = None
 
 

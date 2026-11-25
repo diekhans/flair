@@ -24,15 +24,17 @@ tsvCompressedPath <- function(path, compress) {
     }
 }
 
-tsvWriteConnection <- function(path) {
-    if (grepl("\\.gz$", path)) {
+tsvWriteConnection <- function(path, name = path) {
+    # name is the file the table is written as, which states the compression; path is
+    # what is opened, a temporary file whose own name states nothing
+    if (grepl("\\.gz$", name)) {
         gzfile(path, "w")
-    } else if (grepl("\\.bz2$", path)) {
+    } else if (grepl("\\.bz2$", name)) {
         bzfile(path, "w")
-    } else if (grepl("\\.bgz$", path)) {
+    } else if (grepl("\\.bgz$", name)) {
         # gzfile would write ordinary gzip under a name that states the block
         # format, which is worse than rejecting
-        stop(sprintf("cannot write bgzf: %s", path))
+        stop(sprintf("cannot write bgzf: %s", name))
     } else {
         file(path, "w")
     }
@@ -40,10 +42,18 @@ tsvWriteConnection <- function(path) {
 
 tsvWriteTable <- function(x, path, ...) {
     # write.table with the tab separated, unquoted conventions flair uses, through
-    # a connection that compresses when the name states it
-    con <- tsvWriteConnection(path)
-    on.exit(close(con))
+    # a connection that compresses when the name states it.  The table is written to
+    # a temporary file beside it and renamed when it is complete, as the Python side
+    # writes its outputs, so a failed run leaves no partial table
+    tmp <- paste0(path, ".tmp.", Sys.getpid())
+    con <- tsvWriteConnection(tmp, path)
+    written <- FALSE
+    on.exit({
+        close(con)
+        if (written) file.rename(tmp, path) else unlink(tmp)
+    })
     write.table(x, file = con, sep = "\t", quote = FALSE, ...)
+    written <- TRUE
 }
 
 tsvFread <- function(path, ...) {

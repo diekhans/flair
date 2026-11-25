@@ -102,12 +102,12 @@ def _chain_views(sample_chains, chain_genes, cluster_of, key_strand):
                 gene = chain.genes[0]
                 by['five' if chain.fragment == 'first' else 'three'].setdefault(gene, {})[()] = chain.ends
                 key_strand[gene] = chain.strand
-                continue
-            key = (chain.strand, chain.juncs)
-            genes = chain_genes[key]
-            for view, group in (('cluster', cluster_of[key]), ('five', genes[0]), ('three', genes[-1])):
-                by[view].setdefault(group, {})[chain.juncs] = chain.ends
-                key_strand[group] = chain.strand
+            else:
+                key = (chain.strand, chain.juncs)
+                genes = chain_genes[key]
+                for view, group in (('cluster', cluster_of[key]), ('five', genes[0]), ('three', genes[-1])):
+                    by[view].setdefault(group, {})[chain.juncs] = chain.ends
+                    key_strand[group] = chain.strand
         for view in views:
             views[view].append(by[view])
     return views
@@ -126,12 +126,11 @@ class AnnotatedSplicing:
             self.names = annots.gene_to_name
             for gene, juncs in annots.gene_to_annot_juncs.items():
                 strand = annots.gene_to_strand.get(gene)
-                if strand not in self.intron_genes:
-                    continue
-                for j in juncs:
-                    self.intron_genes[strand].setdefault((j.start, j.end), set()).add(gene)
-                    for site in (j.start, j.end):
-                        self.site_genes[strand].setdefault(site, set()).add(gene)
+                if strand in self.intron_genes:
+                    for j in juncs:
+                        self.intron_genes[strand].setdefault((j.start, j.end), set()).add(gene)
+                        for site in (j.start, j.end):
+                            self.site_genes[strand].setdefault(site, set()).add(gene)
 
     def is_annotated(self, junc, strand):
         return junc in self.intron_genes[strand]

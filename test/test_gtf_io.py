@@ -89,7 +89,7 @@ def test_trans_lookup_all(basic_gtf_data_all):
 def test_trans_error(basic_gtf_data):
     transcript = basic_gtf_data.get_transcript('Fred')
     assert transcript is None
-    with pytest.raises(GtfIdError, match=r"unknown transcript id `Barney'"):
+    with pytest.raises(GtfIdError, match=r"unknown transcript id 'Barney'"):
         basic_gtf_data.fetch_transcript('Barney')
 
 def test_chroms(basic_gtf_data):

@@ -278,9 +278,11 @@ sample.genome_aligned.chim.bam, sample.transcriptome_aligned.chim.bam
     reads or other options makes them again, and reports which it reuses and which
     it makes again
 
-With ``--keep_intermediate``, the synthetic fusion genome (sample.synthetic_fusion_genome.fa),
-its annotation, the reads aligned to it (sample.synthetic_aligned.bam) and the other
-intermediate files are kept as well, for viewing fusion isoforms on the synthetic genome.
+The intermediate files, the synthetic fusion genome (sample.synthetic_fusion_genome.fa),
+its annotation, the reads aligned to it (sample.synthetic_aligned.bam) and the flair
+transcriptome output of that alignment, are written in a directory of the run's own, in
+``--temp_dir`` or ``$TMPDIR``, and removed at the end.  ``--keep_intermediate`` keeps that
+directory and reports where it is, for viewing fusion isoforms on the synthetic genome.
 
 Options
 -------

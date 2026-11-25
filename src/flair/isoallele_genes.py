@@ -91,23 +91,21 @@ def _scan_sample(ctx, sample, region, isoforms, candidates, hets, depth_sites):
     reads, depth, seen = {}, collections.Counter(), set()
     spliced = assigned_spliced = 0
     for read in ctx.bams[sample].fetch(chrom, start, end):
-        if read.is_secondary or read.is_supplementary or read.is_unmapped:
-            continue
-        alleles = ReadAlleles(read)
-        for key in depth_sites:
-            if read.reference_start < key.pos + len(key.ref) and key.pos - 1 < read.reference_end \
-                    and alleles.allele(key) is not None:
-                depth[key] += 1
-        name = read.query_name
-        if read.is_reverse == (strand == '-') and any(op == 3 for op, _ in read.cigartuples) \
-                and any(s < e2 and s2 < e for s, e in read.get_blocks() for s2, e2 in exons):
-            spliced += 1
-            assigned_spliced += name in assigned
-        iso = assigned.get(name)
-        if iso is None or name in seen:
-            continue
-        seen.add(name)
-        reads[name] = ReadInfo(iso, haplotype(read), {k: alleles.allele(k) for k in sites_of[iso]})
+        if not (read.is_secondary or read.is_supplementary or read.is_unmapped):
+            alleles = ReadAlleles(read)
+            for key in depth_sites:
+                if read.reference_start < key.pos + len(key.ref) and key.pos - 1 < read.reference_end \
+                        and alleles.allele(key) is not None:
+                    depth[key] += 1
+            name = read.query_name
+            if read.is_reverse == (strand == '-') and any(op == 3 for op, _ in read.cigartuples) \
+                    and any(s < e2 and s2 < e for s, e in read.get_blocks() for s2, e2 in exons):
+                spliced += 1
+                assigned_spliced += name in assigned
+            iso = assigned.get(name)
+            if (iso is not None) and (name not in seen):
+                seen.add(name)
+                reads[name] = ReadInfo(iso, haplotype(read), {k: alleles.allele(k) for k in sites_of[iso]})
     coverage = (spliced, assigned_spliced, len(assigned))
     return reads, depth, coverage, len(set(assigned) - seen)
 
@@ -142,11 +140,9 @@ def _place_unphased(ctx, key, iso_name, reads_by_sample):
     return None
 
 
-def process_gene(ctx, gene_id, isos, out):  # noqa: C901 - one gene's whole analysis, in its order
-    """One gene's tables, sequences and warnings, added to out (GeneOutput).  ctx is the
-    worker's open files and settings (flair_isoalleles.WorkerContext)."""
-    region = (isos[0].chrom, min(i.chromStart for i in isos), max(i.chromEnd for i in isos))
-    isoforms = {i.name: i for i in isos}
+def _gene_variant_calls(ctx, region):
+    """the gene's germline variants and its somatic candidates; a somatic call is not
+    also reported as germline"""
     phased = fetch(ctx.phased_vcf, ctx.phased_vcf_path, *region)
     if ctx.germline_vcf is None:
         germline = germline_variants(phased)
@@ -155,9 +151,12 @@ def process_gene(ctx, gene_id, isos, out):  # noqa: C901 - one gene's whole anal
     candidates = _somatic_candidates(ctx, region, germline)
     candidate_set = set(candidates)
     # a somatic variant is not also germline, as a --variant the normal calls
-    germline = [g for g in germline if g.key not in candidate_set]
-    hets = [g.key for g in germline if g.kind not in (HOMOZYGOUS, PHASED_HET)]
+    return [g for g in germline if g.key not in candidate_set], candidates
 
+
+def _scan_samples(ctx, region, isoforms, candidates, hets):
+    """every sample's reads by name, the depth of the somatic sites, each sample's
+    coverage, and its reads that the bam does not contain"""
     reads_by_sample, coverage, missing = {}, {}, {}
     depth = collections.Counter()
     for sample in ctx.samples:  # the normal first, in a pair: its depth determines the somatic sites
@@ -166,18 +165,26 @@ def process_gene(ctx, gene_id, isos, out):  # noqa: C901 - one gene's whole anal
             ctx, sample, region, isoforms, candidates, hets, depth_sites)
         reads_by_sample[sample] = reads
         depth.update(sample_depth)
+    return reads_by_sample, depth, coverage, missing
 
-    if ctx.somatic_mode == 'tumor_vcf':
-        somatic = [k for k in candidates if depth[k] >= ctx.min_normal_depth]
-        for key in candidates:
-            if depth[key] < ctx.min_normal_depth:
-                out.excluded.append([gene_id, variant_label(key), depth[key],
-                                     ','.join(n for n, i in isoforms.items() if exonic(i, key)),
-                                     f'tumor-only call with {depth[key]} normal reads (< {ctx.min_normal_depth}): '
-                                     'germline can\'t be ruled out'])
-    else:
-        somatic = candidates
 
+def _somatic_with_normal_depth(ctx, gene_id, candidates, depth, isoforms, out):
+    """the tumor-only calls with enough normal reads to rule germline out; the rest are
+    excluded and reported"""
+    somatic = []
+    for key in candidates:
+        if depth[key] >= ctx.min_normal_depth:
+            somatic.append(key)
+        else:
+            out.excluded.append([gene_id, variant_label(key), depth[key],
+                                 ','.join(n for n, i in isoforms.items() if exonic(i, key)),
+                                 f'tumor-only call with {depth[key]} normal reads (< {ctx.min_normal_depth}): '
+                                 'germline can\'t be ruled out'])
+    return somatic
+
+
+def _report_gene_coverage(ctx, gene_id, coverage, missing, out):
+    "a row of each output sample's spliced and assigned reads, and its reads not in the bam"
     for sample in ctx.output_samples:
         spliced, assigned_spliced, n_assigned = coverage[sample]
         share = round(assigned_spliced / spliced, 3) if spliced else ''
@@ -186,7 +193,10 @@ def process_gene(ctx, gene_id, isos, out):  # noqa: C901 - one gene's whole anal
             out.warnings.append([gene_id, '', 'reads not in bam',
                                  f'{sample}: {missing[sample]} assigned reads not found in the bam'])
 
-    # each isoform's somatic sites that define its sets, and its other terminal ones
+
+def _defining_sites(gene_id, isoforms, somatic, out):
+    """each isoform's somatic sites that define its sets, and its other terminal ones:
+    the guaranteed sites where it has them, the terminal ones where it has none"""
     defining, terminal = {}, {}
     for name, iso in isoforms.items():
         classes = {k: site_class(iso, k) for k in somatic}
@@ -197,26 +207,23 @@ def process_gene(ctx, gene_id, isos, out):  # noqa: C901 - one gene's whole anal
             for key in term:
                 out.terminal_sites.append([gene_id, name, variant_label(key), '', '', '',
                                            'defines sets (the isoform has no guaranteed somatic site)'])
+    return defining, terminal
 
-    def carried(info):
-        "the defining sites a read has, sorted, and whether it misses one"
-        sites = defining[info.isoform]
-        return (tuple(sorted(k for k in sites if info.alleles.get(k) == 'alt')),
-                any(info.alleles.get(k) is None for k in sites))
 
+def _somatic_sets(gene_id, reads_by_sample, carried, out):
+    """the somatic site combinations the reads carry, each given an id in order of the
+    reads supporting it"""
     set_reads = collections.Counter(s for reads in reads_by_sample.values() for info in reads.values()
                                     for s, uncovered in (carried(info),) if s and not uncovered)
     set_ids = {s: f'S{i}' for i, (s, _) in enumerate(sorted(set_reads.items(), key=lambda x: (-x[1], x[0])), 1)}
-    sets_by_id = {sid: s for s, sid in set_ids.items()}
     for s, sid in set_ids.items():
         out.somatic_sets.append([gene_id, sid, ','.join(variant_label(k) for k in s), set_reads[s]])
+    return set_ids, {sid: s for s, sid in set_ids.items()}
 
-    def group(info):
-        sites, uncovered = carried(info)
-        if uncovered:
-            return f'{info.haplotype}-{UNKNOWN_SET}'
-        return f'{info.haplotype}-{set_ids[sites]}' if sites else info.haplotype
 
+def _count_read_groups(ctx, gene_id, reads_by_sample, group, out):
+    """(isoform, group) -> its reads by sample, and the groups each isoform has, with a
+    warning for the reads that do not cover the sites defining their isoform's sets"""
     group_reads = collections.defaultdict(collections.Counter)  # (isoform, group) -> {sample: reads}
     groups_seen = collections.defaultdict(set)
     for sample, reads in reads_by_sample.items():
@@ -236,15 +243,11 @@ def process_gene(ctx, gene_id, isos, out):  # noqa: C901 - one gene's whole anal
                                      'which get no sequence'])
     for (iso, g), counts in sorted(group_reads.items()):
         out.counts.append([iso, f'{iso}|{g}', [counts[s] for s in ctx.output_samples]])
+    return group_reads, groups_seen
 
-    low_depth = [k for k in somatic if ctx.normal is not None and depth[k] < ctx.min_normal_depth]
-    reference_ids = _reference_protein_ids(ctx, isoforms)
-    for name, iso in isoforms.items():
-        if not groups_seen[name]:
-            continue  # no reads: no sequences
-        _isoform_sequences(ctx, gene_id, name, iso, germline, reads_by_sample, terminal, sets_by_id,
-                           groups_seen[name], group, group_reads, low_depth, reference_ids, out)
 
+def _report_variants(ctx, gene_id, isoforms, germline, somatic, set_ids, depth, out):
+    "a row of each germline variant on a haplotype and of each somatic variant"
     for g in germline:
         if g.kind in (HOMOZYGOUS, PHASED_HET):
             in_isos = [n for n, i in isoforms.items() if exonic(i, g.key)]
@@ -258,32 +261,74 @@ def process_gene(ctx, gene_id, isos, out):  # noqa: C901 - one gene's whole anal
                              f'normal reads {depth[key]}' if ctx.normal is not None else ''])
 
 
+def process_gene(ctx, gene_id, isos, out):
+    """One gene's tables, sequences and warnings, added to out (GeneOutput).  ctx is the
+    worker's open files and settings (flair_isoalleles.WorkerContext)."""
+    region = (isos[0].chrom, min(i.chromStart for i in isos), max(i.chromEnd for i in isos))
+    isoforms = {i.name: i for i in isos}
+    germline, candidates = _gene_variant_calls(ctx, region)
+    hets = [g.key for g in germline if g.kind not in (HOMOZYGOUS, PHASED_HET)]
+
+    reads_by_sample, depth, coverage, missing = _scan_samples(ctx, region, isoforms, candidates, hets)
+    if ctx.somatic_mode == 'tumor_vcf':
+        somatic = _somatic_with_normal_depth(ctx, gene_id, candidates, depth, isoforms, out)
+    else:
+        somatic = candidates
+    _report_gene_coverage(ctx, gene_id, coverage, missing, out)
+
+    defining, terminal = _defining_sites(gene_id, isoforms, somatic, out)
+
+    def carried(info):
+        "the defining sites a read has, sorted, and whether it misses one"
+        sites = defining[info.isoform]
+        return (tuple(sorted(k for k in sites if info.alleles.get(k) == 'alt')),
+                any(info.alleles.get(k) is None for k in sites))
+
+    set_ids, sets_by_id = _somatic_sets(gene_id, reads_by_sample, carried, out)
+
+    def group(info):
+        sites, uncovered = carried(info)
+        if uncovered:
+            return f'{info.haplotype}-{UNKNOWN_SET}'
+        return f'{info.haplotype}-{set_ids[sites]}' if sites else info.haplotype
+
+    group_reads, groups_seen = _count_read_groups(ctx, gene_id, reads_by_sample, group, out)
+
+    low_depth = [k for k in somatic if ctx.normal is not None and depth[k] < ctx.min_normal_depth]
+    reference_ids = _reference_protein_ids(ctx, isoforms)
+    for name, iso in isoforms.items():
+        if groups_seen[name]:  # an isoform with no reads gets no sequence
+            _isoform_sequences(ctx, gene_id, name, iso, germline, reads_by_sample, terminal, sets_by_id,
+                               groups_seen[name], group, group_reads, low_depth, reference_ids, out)
+
+    _report_variants(ctx, gene_id, isoforms, germline, somatic, set_ids, depth, out)
+
+
 def _haplotype_alleles(ctx, gene_id, name, iso, germline, reads_by_sample, out):
     """The isoform's germline variants on each haplotype, untagged reads' sequences
     having only the homozygous ones, and the phase blocks of its phased hets"""
     alleles = {'H1': [], 'H2': [], UNTAGGED: []}
     blocks = set()
     for g in germline:
-        if not exonic(iso, g.key):
-            continue
-        if g.kind == HOMOZYGOUS:
-            for hap in alleles:
-                alleles[hap].append(g.key)
-        elif g.kind == PHASED_HET:
-            if g.haplotype in alleles:
-                alleles[g.haplotype].append(g.key)
-            if g.phase_set is not None:
-                blocks.add(g.phase_set)
-        else:
-            placed = _place_unphased(ctx, g.key, name, reads_by_sample)
-            if placed in alleles:
-                alleles[placed].append(g.key)
-                out.variants.append([gene_id, name, variant_label(g.key), 'germline unphased het, placed by reads',
-                                     placed, ''])
+        if exonic(iso, g.key):
+            if g.kind == HOMOZYGOUS:
+                for hap in alleles:
+                    alleles[hap].append(g.key)
+            elif g.kind == PHASED_HET:
+                if g.haplotype in alleles:
+                    alleles[g.haplotype].append(g.key)
+                if g.phase_set is not None:
+                    blocks.add(g.phase_set)
             else:
-                out.warnings.append([gene_id, name, 'unplaced het',
-                                     f'{variant_label(g.key)}: the reads can\'t place it, the reference allele is used'])
-                out.variants.append([gene_id, name, variant_label(g.key), 'germline unphased het, not placed', '', ''])
+                placed = _place_unphased(ctx, g.key, name, reads_by_sample)
+                if placed in alleles:
+                    alleles[placed].append(g.key)
+                    out.variants.append([gene_id, name, variant_label(g.key), 'germline unphased het, placed by reads',
+                                         placed, ''])
+                else:
+                    out.warnings.append([gene_id, name, 'unplaced het',
+                                         f'{variant_label(g.key)}: the reads can\'t place it, the reference allele is used'])
+                    out.variants.append([gene_id, name, variant_label(g.key), 'germline unphased het, not placed', '', ''])
     if len(blocks) > 1:
         out.warnings.append([gene_id, name, 'several phase blocks',
                              f'phase blocks {",".join(map(str, sorted(blocks)))}: H1 and H2 are only consistent '

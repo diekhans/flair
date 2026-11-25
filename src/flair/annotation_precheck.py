@@ -98,26 +98,33 @@ def splice_sites_cleanly_aligned(read, introns, genome,
     seq = read.query_sequence
     for start, end in introns:
         for lo, hi in ((start - window, start), (end, end + window)):
-            covered = mismatches = 0
-            for op, bstart, bend, bquery in blocks:
-                if op == pysam.CREF_SKIP:
-                    continue
-                if op == pysam.CINS:
-                    if lo <= bstart <= hi:
-                        return False
-                    continue
-                ov_lo, ov_hi = max(bstart, lo), min(bend, hi)
-                if ov_lo >= ov_hi:
-                    continue
+            aligned = _window_alignment(blocks, read, genome, seq, lo, hi)
+            if aligned is None:
+                return False
+            covered, mismatches = aligned
+            if covered < hi - lo or mismatches > max_mismatches:
+                return False
+    return True
+
+
+def _window_alignment(blocks, read, genome, seq, lo, hi):
+    """the bases of the read aligned across [lo, hi) and the mismatches among them, or
+    None where an insertion or a deletion falls in the window"""
+    covered = mismatches = 0
+    for op, bstart, bend, bquery in blocks:
+        if op == pysam.CINS:
+            if lo <= bstart <= hi:
+                return None
+        elif op != pysam.CREF_SKIP:
+            ov_lo, ov_hi = max(bstart, lo), min(bend, hi)
+            if ov_lo < ov_hi:
                 if op == pysam.CDEL:
-                    return False
+                    return None
                 ref = genome.fetch(read.reference_name, ov_lo, ov_hi).upper()
                 qoff = bquery + ov_lo - bstart
                 mismatches += sum(1 for k in range(ov_hi - ov_lo) if seq[qoff + k].upper() != ref[k])
                 covered += ov_hi - ov_lo
-            if covered < hi - lo or mismatches > max_mismatches:
-                return False
-    return True
+    return covered, mismatches
 
 
 def needs_annotation_alignment(read, junc_index, genome):
@@ -137,8 +144,7 @@ def reads_skipping_annotation_alignment(bam_file, region, annots, genome, window
     junc_index = AnnotJunctionIndex(annots)
     skip = set()
     for read in fetch_reads(bam_file, region.name, region.start, region.end, windows):
-        if read.is_unmapped or read.is_secondary or read.is_supplementary:
-            continue
-        if not needs_annotation_alignment(read, junc_index, genome):
-            skip.add(read.query_name)
+        if not (read.is_unmapped or read.is_secondary or read.is_supplementary):
+            if not needs_annotation_alignment(read, junc_index, genome):
+                skip.add(read.query_name)
     return skip

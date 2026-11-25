@@ -3,10 +3,9 @@
 import os
 import os.path as osp
 import sys
-import pipettor
 import logging
-from flair import FlairInputDataError, FlairToolError
-from flair.io_utils import keep_or_remove, make_run_temp_dir
+from flair import FlairInputDataError
+from flair.io_utils import keep_or_remove, make_run_temp_dir, run_program
 from flair.run_checks import (check_option_ranges, count_records, precheck,
                               report_result_count)
 from flair.conditions import select_condition_pair
@@ -17,7 +16,7 @@ from flair.sample_info_tsv import read_sample_info, write_sample_info
 from flair.pycbio.hgdata.bed import BedReader
 from flair.pycbio.sys import fileOps
 from flair.pycbio.tsv import TsvWriter
-from flair.output_compress import compressed_path, output_compression
+from flair.output_compress import compressed_path, output_compression, output_paths
 
 pkgdir = osp.dirname(osp.realpath(__file__))
 diffSplice_drimSeq = osp.join(pkgdir, "diffSplice_drimSeq.R")
@@ -34,6 +33,12 @@ EVENT_TYPES = ('es', 'alt5', 'alt3', 'ir')
 # the programs a run executes, checked before it starts
 PROGRAMS = ('Rscript',)
 
+# what a run writes under a name of its own, so that an input that is one of them is
+# rejected before the run starts (precheck).  The DRIMSeq tables are named for the two
+# conditions, which are selected from the counts matrix after this check, so they are
+# not here
+OUTPUT_TEXT_SUFFIXES = tuple(f'.{event}.events.quant.tsv' for event in EVENT_TYPES)
+
 
 def add_subparser(subparsers):
     desc = "Call alternative splicing events from isoforms and test them for differential usage"
@@ -41,9 +46,13 @@ def add_subparser(subparsers):
                                    description=desc)
     required = parser.add_argument_group('required named arguments')
     required.add_argument('--isoform_bed', type=str, required=True,
-                          help='isoforms in BED format')
+                          help='the isoforms the events are called in, a FLAIR isoform BED (the 25 columns '
+                               'of flair transcriptome, flair combine and flair fusion); its isoform ids '
+                               'must be those of the counts matrix')
     required.add_argument('--counts_matrix', type=str, required=True,
-                          help='tab-delimited isoform count matrix from flair quantify')
+                          help='the isoform counts of the samples, the counts matrix flair quantify writes, '
+                               'plain or gzipped; a matrix of genes rather than isoforms has no events to '
+                               'call')
     required.add_argument('-o', '--output', type=str, required=True,
                           help='output file name base: each table and plot is written as '
                                '<output>.<name>, as every other subcommand writes its outputs')
@@ -96,7 +105,7 @@ def diffsplice_cmd(args):
                                      'min_feature_expr'),
                         positive=('threads',))
     precheck(files={'isoform models BED': args.isoform_bed, 'counts matrix': args.counts_matrix},
-             programs=PROGRAMS)
+             programs=PROGRAMS, outputs=output_paths(args.output, OUTPUT_TEXT_SUFFIXES))
     diff_splice(isoform_bed=args.isoform_bed, counts_matrix=args.counts_matrix,
                 output=args.output, threads=args.threads, test=args.test,
                 min_samps_gene_expr=args.min_samps_gene_expr,
@@ -138,13 +147,11 @@ def check_batch_modelled(sample_infos, counts_matrix):
                                   f"sample info beside {counts_matrix} each condition has a batch of its own, "
                                   "so the batch and the condition cannot be distinguished.  Drop --batch")
 
-def diff_splice(*, isoform_bed, counts_matrix, output, threads, test, min_samps_gene_expr,  # noqa: C901 - FIXME: reduce complexity
+def diff_splice(*, isoform_bed, counts_matrix, output, threads, test, min_samps_gene_expr,
                 min_samps_feature_expr, min_gene_expr, min_feature_expr, batch,
                 condition_a, condition_b, temp_dir=None, keep_intermediate=False):
-    if not os.path.exists(counts_matrix):
-        raise FlairInputDataError(f'counts matrix file does not exist: {counts_matrix}')
-    if not os.path.exists(isoform_bed):
-        raise FlairInputDataError(f'isoform bed file does not exist: {isoform_bed}')
+    # the two files are checked by the precheck of the subcommand, which states the
+    # kind of file and what to do, so a check here would only differ in its wording
     check_isoform_ids(isoform_bed, counts_matrix)
 
     # the event tables DRIMSeq is given and its diagnostics, in a directory of this
@@ -165,7 +172,7 @@ def report_event_counts(filebase):
     open."""
     counts = {event: max(count_records(compressed_path(f'{filebase}.{event}.events.quant.tsv')) - 1, 0)
               for event in EVENT_TYPES}
-    logging.info('events called: %s', ', '.join(f'{event} {count}' for event, count in counts.items()))
+    logging.info('events called: ' + ', '.join(f'{event} {count}' for event, count in counts.items()))
     report_result_count('splicing event', sum(counts.values()),
                         remedy='check that the isoform BED is the one the counts matrix was made from, '
                         'and that its genes have more than one isoform')
@@ -194,12 +201,13 @@ def call_and_test_events(*, isoform_bed, counts_matrix, output, workdir, threads
     if output_compression():
         call_args.append('--compress')
     call_events(call_diffsplice_events, call_args)
-    es_events_tsv = filebase + '.es.events.tsv'
+    # the exon skipping events are the input of the counting below and no output of
+    # the run, so they go in the run's own directory rather than beside the output
+    es_events_tsv = os.path.join(workdir, 'es.events.tsv')
     with open(es_events_tsv, 'w') as es_fh:
         call_events(es_as, [isoform_bed], stdout=es_fh)
-    with fileOps.opengz(compressed_path(filebase + '.es.events.quant.tsv'), 'w') as quant_fh:
+    with fileOps.AtomicFileOpen(compressed_path(filebase + '.es.events.quant.tsv'), 'w') as quant_fh:
         call_events(es_as_inc_excl_to_counts, [counts_matrix, es_events_tsv], stdout=quant_fh)
-    os.unlink(es_events_tsv)
 
     report_event_counts(filebase)
 
@@ -244,10 +252,7 @@ def call_events(program, args, stdout=None):
     """Run one of the event callers.  Its own message is already on stderr, so an
     unhandled ProcessException would only add a traceback of the flair code that
     started it."""
-    try:
-        pipettor.run([sys.executable, program] + args, stdout=stdout)
-    except pipettor.ProcessException as exc:
-        raise FlairToolError(f"{osp.basename(program)} failed, see the error above") from exc
+    run_program([sys.executable, program] + args, stdout=stdout, name=osp.basename(program))
 
 def drimseq_result_path(output, event, condition_a, condition_b):
     "the result file for one event type, as diffSplice_drimSeq.R names it"
@@ -274,11 +279,8 @@ def run_drimseq_event(ds_command, event, filebase, workdir, ds_stderr,
     else:
         check_feature_ids_unique(matrixfile)
         cur_command = ds_command + ['--matrix', matrixfile, '--prefix', event]
-        try:
-            pipettor.run(cur_command, stderr=ds_stderr)
-        except pipettor.ProcessException as exc:
-            raise FlairToolError(f"DRIMSeq failed on `{event}' event. "
-                                 f'Check {workdir}/ds.stderr.txt for details') from exc
+        run_program(cur_command, stderr=ds_stderr, doing=f'on the {event} events',
+                    diagnostics_file=f'{workdir}/ds.stderr.txt')
 
 def empty_matrix(event_quant_tsv):
     "true when an event type called no events, leaving a file of only its header"

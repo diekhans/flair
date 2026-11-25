@@ -41,7 +41,7 @@ and only the first part's header is kept when they are joined.
 from flair.pycbio.tsv import TsvReader, TsvWriter
 from flair.tsv_column_types import commaListType
 
-GENE_COLUMNS = ('gene', 'gene_name', 'additional_genes', 'additional_gene_names')
+GENE_COLUMNS = ('gene_id', 'gene_name', 'additional_genes', 'additional_gene_names')
 COORDINATE_COLUMNS = ('junctions_included', 'junctions_excluded', 'outer_junctions', 'exons',
                       'novel_junctions')
 EVENT_COLUMNS = ('event', 'alternative', 'event_type', *GENE_COLUMNS, *COORDINATE_COLUMNS)

@@ -8,7 +8,7 @@ SAMPLES = ['s1', 's2', 's3', 's4', 's5', 's6']
 
 
 def _row(counts, totals, event='es|chr1:101-200(+)', alternative='inc', etype='es', gene='G1'):
-    return {'event': event, 'alternative': alternative, 'event_type': etype, 'gene': [gene], 'gene_name': ['NAME1'],
+    return {'event': event, 'alternative': alternative, 'event_type': etype, 'gene_id': [gene], 'gene_name': ['NAME1'],
             'additional_genes': [], 'additional_gene_names': [],
             'counts': dict(zip(SAMPLES, counts)), 'totals': dict(zip(SAMPLES, totals))}
 
@@ -181,10 +181,10 @@ def test_filtered_outliers_are_more_than_six_deviations_out():
     assert [line[OUTLIER_COLUMNS.index('sample')] for line in kept] == ['s6']
 
 
-COUNTS_HEADER = ['event', 'alternative', 'event_type', 'gene', 'gene_name', 'additional_genes', 'additional_gene_names',
+COUNTS_HEADER = ['event', 'alternative', 'event_type', 'gene_id', 'gene_name', 'additional_genes', 'additional_gene_names',
                  'junctions_included', 'junctions_excluded',
                  'outer_junctions', 'exons', 'novel_junctions'] + SAMPLES
-TOTALS_HEADER = ['event', 'event_type', 'gene', 'gene_name', 'additional_genes', 'additional_gene_names', 'total'] + SAMPLES
+TOTALS_HEADER = ['event', 'event_type', 'gene_id', 'gene_name', 'additional_genes', 'additional_gene_names', 'total'] + SAMPLES
 
 
 def _write_tables(tmp_path, counts_rows, totals_rows):

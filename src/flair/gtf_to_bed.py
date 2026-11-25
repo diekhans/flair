@@ -85,13 +85,12 @@ def iso_info_from_gtf_data(gtf_data):
     "get_iso_info's maps, from an already parsed GTF (GtfData)"
     iso_to_cds, iso_to_exons, iso_to_info = {}, {}, {}
     for transcript in gtf_data.transcripts:
-        if len(transcript.exons) == 0:
-            continue
-        iso_to_info[transcript.transcript_id] = (transcript.chrom, transcript.strand, transcript.gene_id)
-        iso_to_exons[transcript.transcript_id] = [(exon.start, exon.end) for exon in transcript.exons]
-        if len(transcript.cds_recs) > 0:
-            iso_to_cds[transcript.transcript_id] = [min(cds.start for cds in transcript.cds_recs),
-                                                    max(cds.end for cds in transcript.cds_recs)]
+        if len(transcript.exons) > 0:
+            iso_to_info[transcript.transcript_id] = (transcript.chrom, transcript.strand, transcript.gene_id)
+            iso_to_exons[transcript.transcript_id] = [(exon.start, exon.end) for exon in transcript.exons]
+            if len(transcript.cds_recs) > 0:
+                iso_to_cds[transcript.transcript_id] = [min(cds.start for cds in transcript.cds_recs),
+                                                        max(cds.end for cds in transcript.cds_recs)]
     return iso_to_info, iso_to_exons, iso_to_cds
 
 

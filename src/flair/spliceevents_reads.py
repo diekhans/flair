@@ -19,7 +19,9 @@ from flair import read_chains_tsv
 from flair.read_chains_tsv import read_chains_writer
 
 
-def correct_sample_reads(args, region, work_dir, bamfile_name, genome, annots, junction_corrector, windows=None):
+def correct_sample_reads(region, work_dir, bamfile_name, genome, annots, junction_corrector, *,
+                         no_align_to_annot, trust_strand, trust_junctions, quality, keep_supplementary,
+                         windows=None):
     """The sample's reads in region, corrected as flair transcriptome corrects them,
     grouped by junction chain: aligned to the annotated transcripts, then their
     junctions corrected, the unspliced reads under no junctions.  Given windows,
@@ -38,18 +40,18 @@ def correct_sample_reads(args, region, work_dir, bamfile_name, genome, annots, j
             generate_genomic_alignment_read_to_clipping_file(temp_prefix, bam_file, region.name, region.start,
                                                              region.end, windows)
             read_to_transcript = identify_good_match_to_annot(
-                temp_prefix, region, annots, genome, bam_file, no_align_to_annot=args.no_align_to_annot,
-                directRNA=False, trust_strand=args.trust_strand, fusion_breakpoints=None,
+                temp_prefix, region, annots, genome, bam_file, no_align_to_annot=no_align_to_annot,
+                directRNA=False, trust_strand=trust_strand, fusion_breakpoints=None,
                 windows=windows)
             filter_correct_group_reads(bam_file=bam_file, region=region,
                                        read_to_annot_transcript=read_to_transcript,
                                        annots=annots, junction_corrector=junction_corrector,
                                        genome=genome,
-                                       quality=args.quality, keep_sup=args.keep_supplementary,
+                                       quality=quality, keep_sup=keep_supplementary,
                                        sj_to_ends=sj_to_ends,
                                        allow_outside_range=True,
-                                       keep_single_exon=True, trust_strand=args.trust_strand,
-                                       check_motifs=not args.trust_junctions, windows=windows)
+                                       keep_single_exon=True, trust_strand=trust_strand,
+                                       check_motifs=not trust_junctions, windows=windows)
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
     return sj_to_ends
@@ -134,15 +136,18 @@ def fragment_chains(reads, fragment_exons, trust_strand):
     return [ReadChain((gene,), (), strand, ends, kind) for (kind, gene, strand), ends in sorted(by_fragment.items())]
 
 
-def sample_read_chains(args, region, work_dir, bamfile_name, genome, junction_corrector, annots, terminal_exons,
+def sample_read_chains(region, work_dir, bamfile_name, genome, junction_corrector, annots, terminal_exons, *,
+                       no_align_to_annot, trust_strand, trust_junctions, quality, keep_supplementary,
                        windows=None):
     """A sample's reads in region, corrected and grouped into junction chains with
     their annotated genes, and the unspliced reads that are fragments of one gene's
     first or last exons, terminal_exons; the chains of no annotated gene get novel
     genes in event calling, over all samples.  The alignment's intermediates go in
     work_dir"""
-    sj_to_ends = correct_sample_reads(args, region, work_dir, bamfile_name, genome, annots, junction_corrector,
-                                      windows)
+    sj_to_ends = correct_sample_reads(region, work_dir, bamfile_name, genome, annots, junction_corrector,
+                                      no_align_to_annot=no_align_to_annot, trust_strand=trust_strand,
+                                      trust_junctions=trust_junctions, quality=quality,
+                                      keep_supplementary=keep_supplementary, windows=windows)
     fragment_exons = AnnotatedFragmentExons(terminal_exons, annots)
     chains = []
     for (_, juncs), isoform in sj_to_ends.items():
@@ -150,10 +155,10 @@ def sample_read_chains(args, region, work_dir, bamfile_name, genome, junction_co
             genes, strand = annotated_genes(isoform, annots)
             if strand is None:
                 logging.debug(f'reads dropped: strand unknown and not given by a gene: {juncs}')
-                continue
-            chains.append(ReadChain(genes, tuple((j.start, j.end) for j in juncs), strand, isoform.reads))
+            else:
+                chains.append(ReadChain(genes, tuple((j.start, j.end) for j in juncs), strand, isoform.reads))
         else:
-            chains.extend(fragment_chains(isoform.reads, fragment_exons, args.trust_strand))
+            chains.extend(fragment_chains(isoform.reads, fragment_exons, trust_strand))
     return chains
 
 
@@ -241,15 +246,14 @@ class AnnotatedFragmentExons:
         gene, gene_strand = best[0]
         found = set()
         for exon in self.terminal.overlap(start, end, slack=FRAGMENT_SPLICE_SITE_WINDOW):
-            if exon.gene != gene:
-                continue
-            # a first exon is upstream of its splice site, a last exon downstream
-            if lies_left(exon.kind == 'first', exon.strand):  # the splice site is the exon's end
-                at_site = exon.start < end <= exon.end + FRAGMENT_SPLICE_SITE_WINDOW
-            else:
-                at_site = exon.start - FRAGMENT_SPLICE_SITE_WINDOW <= start < exon.end
-            if at_site:
-                found.add(exon.kind)
+            if exon.gene == gene:
+                # a first exon is upstream of its splice site, a last exon downstream
+                if lies_left(exon.kind == 'first', exon.strand):  # the splice site is the exon's end
+                    at_site = exon.start < end <= exon.end + FRAGMENT_SPLICE_SITE_WINDOW
+                else:
+                    at_site = exon.start - FRAGMENT_SPLICE_SITE_WINDOW <= start < exon.end
+                if at_site:
+                    found.add(exon.kind)
         if len(found) != 1:
             return None
         return found.pop(), gene, gene_strand

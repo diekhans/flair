@@ -10,19 +10,6 @@ write
 
 options:
   -h, --help            show this help message and exit
-  --manifest MANIFEST   file naming the flair isoform BEDs to combine, one
-                        path a line, as in path/to/isoforms.bed. Blank lines
-                        and lines starting with '#' are skipped; each BED once
-  --prefixes PREFIXES   prefixes of the FLAIR transcriptomes to combine, each
-                        naming PREFIX.isoforms.bed and including any
-                        directories; give several comma separated, or repeat
-                        the option, or both
-  --isoform_beds ISOFORM_BEDS
-                        paths of the flair isoform BEDs to combine; give
-                        several comma separated, or repeat the option, or both
-  -g, --genome GENOME   genome FASTA, read for the isoform sequences, the
-                        protein predictions and the chromosome sizes of the
-                        bigBed
   -f, --gtf GTF         an annotation GTF. With it, each combined isoform is
                         given its gene, reference transcript, CDS,
                         productivity and protein from this annotation, as
@@ -35,8 +22,7 @@ options:
                         productivity are used, isoforms from different samples
                         with different genes are an error, and isoforms have
                         no protein ids
-  -o, --output OUTPUT   prefix for output file (default:
-                        flair.combined.isoforms)
+  -o, --output OUTPUT   prefix for output file (default: flair)
   --end_window END_WINDOW
                         window, in bases, for comparing ends of isoforms with
                         the same intron chain (default: 200)
@@ -60,3 +46,18 @@ options:
                         min reads from all samples to call isoform; taken from
                         read_support, column 16 of the input BEDs: an isoform
                         without it is an error (default: 3)
+
+required named arguments:
+  --manifest MANIFEST   file naming the flair isoform BEDs to combine, one
+                        path a line, as in path/to/isoforms.bed. Blank lines
+                        and lines starting with '#' are skipped; each BED once
+  --prefixes PREFIXES   prefixes of the FLAIR transcriptomes to combine, each
+                        naming PREFIX.isoforms.bed and including any
+                        directories; give several comma separated, or repeat
+                        the option, or both
+  --isoform_beds ISOFORM_BEDS
+                        paths of the flair isoform BEDs to combine; give
+                        several comma separated, or repeat the option, or both
+  -g, --genome GENOME   genome FASTA, read for the isoform sequences, the
+                        protein predictions and the chromosome sizes of the
+                        bigBed

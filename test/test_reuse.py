@@ -3,7 +3,7 @@ produced it are this run's."""
 import logging
 import os
 import pytest
-from flair.reuse import provenance, record_provenance, reusable, reuse_file
+from flair.reuse import provenance, record_provenance, reuse_file
 
 
 @pytest.fixture
@@ -20,13 +20,13 @@ def made_file(tmp_path):
 
 def test_the_same_inputs_and_options_are_reused(made_file):
     _, made, prov = made_file
-    assert reusable(made, prov)
+    assert reuse_file(made, prov, what='the chimeric reads')
 
 
 def test_other_options_are_not_reused(made_file):
     source, made, _ = made_file
     other = provenance(files=(str(source),), options={'min_fragment_size': 20})
-    assert not reusable(made, other)
+    assert not reuse_file(made, other, what='the chimeric reads')
 
 
 def test_another_input_file_is_not_reused(made_file, tmp_path):
@@ -34,7 +34,7 @@ def test_another_input_file_is_not_reused(made_file, tmp_path):
     other_source = tmp_path / 'other.bam'
     other_source.write_text('other reads')
     other = provenance(files=(str(other_source),), options={'min_fragment_size': 40})
-    assert not reusable(made, other)
+    assert not reuse_file(made, other, what='the chimeric reads')
 
 
 def test_an_input_written_again_is_not_reused(made_file):
@@ -44,19 +44,19 @@ def test_an_input_written_again_is_not_reused(made_file):
         fh.write('other reads, of another length')
     os.utime(source, (0, 0))
     remade = provenance(files=(source,), options={'min_fragment_size': 40})
-    assert not reusable(made, remade)
+    assert not reuse_file(made, remade, what='the chimeric reads')
 
 
 def test_a_file_of_an_interrupted_run_is_not_reused(made_file):
     "the record is written after the file, so a file without one was never finished"
     _, made, prov = made_file
     os.remove(made + '.provenance.json')
-    assert not reusable(made, prov)
+    assert not reuse_file(made, prov, what='the chimeric reads')
 
 
 def test_a_file_that_is_not_there_is_not_reused(made_file, tmp_path):
     _, _, prov = made_file
-    assert not reusable(str(tmp_path / 'nothing.bam'), prov)
+    assert not reuse_file(str(tmp_path / 'nothing.bam'), prov, what='the chimeric reads')
 
 
 def test_the_reuse_is_reported(made_file, caplog):

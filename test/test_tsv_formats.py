@@ -211,7 +211,7 @@ def test_splicing_totals_round_trip(tmp_path):
     with SplicingTotalsReader(path) as reader:
         assert reader.sample_columns == ['s1', 's2']
         rows = list(reader)
-    assert (rows[0].total, rows[0].gene, rows[0].s1, rows[0].s2) == ('event_reads', ['G1'], 40, 0)
+    assert (rows[0].total, rows[0].gene_id, rows[0].s1, rows[0].s2) == ('event_reads', ['G1'], 40, 0)
 
 def test_splicing_outliers_round_trip(tmp_path):
     path = tsv_path(tmp_path, 'outliers.tsv')
@@ -220,7 +220,7 @@ def test_splicing_outliers_round_trip(tmp_path):
                          0.5, 0.1, 0.9, 3, 7, 20, 0.4, 4.0])
     rows = list(SplicingOutliersReader(path))
     assert (rows[0].alternative_reads, rows[0].psi_total) == (7, 20)
-    assert (rows[0].gene, rows[0].sample) == (['G1'], 's1')
+    assert (rows[0].gene_id, rows[0].sample) == (['G1'], 's1')
 
 def test_read_chains_round_trip(tmp_path):
     path = tsv_path(tmp_path, 'read_chains.tsv')

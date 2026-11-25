@@ -61,6 +61,14 @@ def open_fasta_output(path):
     "Writable FASTA, bgzip compressed when the run asked for compression (open_seekable_output)"
     return open_seekable_output(path)
 
+def output_paths(output, text_suffixes, binary_suffixes=()):
+    """Every file a run with this --output writes, the text ones under the name
+    compressed_path gives them.  A subcommand names its suffixes so that an input
+    that is one of its outputs is rejected before the run starts
+    (run_checks.check_inputs_not_outputs)."""
+    return ([compressed_path(output + suffix) for suffix in text_suffixes]
+            + [output + suffix for suffix in binary_suffixes])
+
 def resolved_input_path(path):
     """The file a derived input path names, when flair builds the name rather than
     being given it: the path itself, or its compressed form when only that exists.

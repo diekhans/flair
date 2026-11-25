@@ -62,11 +62,6 @@ def record_provenance(path, prov):
             fh.write('\n')
 
 
-def reusable(path, prov):
-    "whether a file an earlier run left was produced from these inputs and options"
-    return os.path.exists(path) and (_recorded_provenance(path) == prov)
-
-
 def reuse_file(path, prov, *, what):
     """Whether to reuse the file an earlier run left, reporting what is reused and
     what is made again: a run whose result is partly an earlier run's states which
@@ -74,8 +69,8 @@ def reuse_file(path, prov, *, what):
     if not os.path.exists(path):
         return False
     if _recorded_provenance(path) != prov:
-        logging.info('%s: from other inputs or options, or from an interrupted run, '
-                     'so made again: %s', what, path)
+        logging.info(f'{what}: from other inputs or options, or from an interrupted run, '
+                     f'so made again: {path}')
         return False
-    logging.info('reusing %s of an earlier run: %s', what, path)
+    logging.info(f'reusing {what} of an earlier run: {path}')
     return True

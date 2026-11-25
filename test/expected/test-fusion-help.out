@@ -7,7 +7,8 @@ usage: flair fusion [-h] -g GENOME -f GTF -b GENOME_ALIGNED_BAM
                     [--max_partners MAX_PARTNERS] [--quality QUALITY]
                     [--frac_support FRAC_SUPPORT]
                     [--filter {nosubset,comprehensive,ginormous,<N>X}]
-                    [--no_transcriptome_alignment] [--keep_intermediate]
+                    [--no_transcriptome_alignment] [--temp_dir TEMP_DIR]
+                    [--keep_intermediate]
 
 Identify gene fusions and generate a fusion transcriptome. Reads must be
 stranded, each oriented 5' to 3' as its RNA: the 5' and 3' genes of a fusion
@@ -90,13 +91,19 @@ options:
                         reads, but drops fusion reads whose partner piece the
                         genome alignment leaves clipped, particularly short 5'
                         exons
-  --keep_intermediate   keep the intermediate files: the annotated
-                        transcripts, the preliminary fusion reads, and the
-                        synthetic fusion genome with its annotation,
-                        breakpoints, alignments and flair transcriptome
-                        output, where the fusion isoforms can be viewed. The
+  --temp_dir TEMP_DIR   directory for temporary files; each run makes its own
+                        directory, named for the output, in it, with the
+                        annotated transcripts, the preliminary fusion reads
+                        and the synthetic fusion genome with its annotation,
+                        breakpoints, alignments and flair transcriptome output
+                        (default: $TMPDIR or the system temporary directory)
+  --keep_intermediate   keep intermediate and temporary files for debugging,
+                        in the run's own directory, whose path the run
+                        reports: it is in --temp_dir when that is given and in
+                        $TMPDIR otherwise. The fusion isoforms can be viewed
+                        on the synthetic fusion genome it contains. The
                         chimeric reads bams and OUTPUT.fusions.prelim.bed are
-                        always kept
+                        beside the output and always kept
 
 required named arguments:
   -g, --genome GENOME   FASTA of reference genome

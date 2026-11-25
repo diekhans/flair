@@ -7,7 +7,7 @@ from flair import SeqRange
 from flair.junction_correct import junction_corrector_factory
 from collections import namedtuple
 from flair.io_utils import GenomeFasta, make_run_temp_dir, make_temp_dir, read_manifest_rows
-from flair.output_compress import compressed_path
+from flair.output_compress import compressed_path, output_paths
 from flair.reuse import provenance, record_provenance, reuse_file
 from flair.sample_info_tsv import SampleInfo, sample_info_path, write_sample_info
 from flair.run_logging import plural
@@ -16,7 +16,7 @@ from flair.run_checks import (check_annotation, check_bam_indexes, check_option_
                               report_result_count, count_records)
 from flair.gtf_io import gtf_data_parser, GtfAttrsSet, TRANSCRIPT_EXON_FEATURES
 from flair.annotation_data import annot_data_from_gtf
-from flair.spliceevents_events import thresholds_of
+from flair.spliceevents_events import Thresholds
 from flair.spliceevents_genes import AnnotatedSplicing, gene_junctions, novel_genes_of_chains, process_region_events
 from flair.spliceevents_reads import (annotated_terminal_exons, annotated_terminal_splice_sites,
                                       read_chains_path, read_read_chains, sample_read_chains, write_read_chains)
@@ -63,7 +63,7 @@ def add_subparser(subparsers):
                                'beside the counts')
     required.add_argument('-g', '--genome', required=True, type=str,
                           help='FASTA of reference genome, can be minimap2 indexed')
-    required.add_argument('-f', '--gtf', dest='annot', metavar='GTF', required=True,
+    required.add_argument('-f', '--gtf', dest='annot_gtf', metavar='GTF', required=True,
                           help='GTF annotation file, used for correcting reads and assigning them to genes')
     parser.add_argument('-o', '--output', default='flair',
                         help='output file name base (default: %(default)s)')
@@ -143,20 +143,28 @@ def add_subparser(subparsers):
     parser.set_defaults(entry=spliceevents_cmd)
 
 
+# what a run writes, so that an input that is one of them is rejected before the run
+# starts (precheck)
+OUTPUT_TEXT_SUFFIXES = ('.spliceevents.bed', '.spliceevents.counts.tsv', '.spliceevents.psi_junc.tsv',
+                        '.spliceevents.psi_tot.tsv', '.spliceevents.totals.tsv',
+                        '.spliceevents.regions.bed')
+
+
 def spliceevents_cmd(args):
     resolve_deprecated_option(args, deprecated="junction_tab", current="junction_star")
     if args.keep_intermediate and args.temp_dir is not None:
-        logging.info('--keep_intermediate keeps the files in %s.intermediate, where a rerun finds them, '
-                     'so --temp_dir is not used', args.output)
+        logging.info(f'--keep_intermediate keeps the files in {args.output}.intermediate, where a rerun '
+                     'finds them, so --temp_dir is not used')
     check_option_ranges(args, fraction=('event_frac_of_tot', 'junc_frac_of_event'),
                         count=('junction_support', 'ss_window', 'partition_items', 'feature_support',
                                'event_support', 'quality'),
                         positive=('threads',))
-    precheck(files={'manifest': args.manifest, 'annotation GTF': args.annot,
+    precheck(files={'manifest': args.manifest, 'annotation GTF': args.annot_gtf,
                     'basic annotation GTF': args.annot_basic or None,
                     'junction BED': args.junction_bed, 'STAR junction': args.junction_star,
                     'region BED': args.region_bed},
-             programs=PROGRAMS, genome=args.genome)
+             programs=PROGRAMS, genome=args.genome,
+             outputs=output_paths(args.output, OUTPUT_TEXT_SUFFIXES))
     spliceevents(args)
 
 
@@ -180,15 +188,17 @@ def _correct_cluster_sample(args, cluster, work_dir, bamfile, genome, junction_c
     # the junctions of the cluster, as the partition's would make a read's correction
     # depend on how many clusters the partition contains
     cluster_juncs = junction_corrector.subset_for_region(cluster.name, cluster.start, cluster.end)
-    return sample_read_chains(args, cluster, work_dir, bamfile, genome, cluster_juncs, annots,
-                              cluster_terminal, windows)
+    return sample_read_chains(cluster, work_dir, bamfile, genome, cluster_juncs, annots, cluster_terminal,
+                              no_align_to_annot=args.no_align_to_annot, trust_strand=args.trust_strand,
+                              trust_junctions=args.trust_junctions, quality=args.quality,
+                              keep_supplementary=args.keep_supplementary, windows=windows)
 
 
 def _correction_provenance(args, bamfile):
     """What a sample's corrected reads in a partition are produced from, so that a
     rerun with --keep_intermediate reuses them only where they are what it would
     correct.  The partition's region is part of the file's name, so it is not here."""
-    return provenance(files=(bamfile, args.genome, args.annot, args.annot_basic or None,
+    return provenance(files=(bamfile, args.genome, args.annot_gtf, args.annot_basic or None,
                              args.junction_bed, args.junction_star),
                       options={opt: getattr(args, opt)
                                for opt in ('ss_window', 'junction_support', 'quality',
@@ -228,7 +238,9 @@ def _run_region(*, partition, gtf_data, junction_corrector, args, allsamples, re
             return
     sample_chains = [read_read_chains(read_chains_path(partition, sample)) for sample in samples]
     novel_gene = novel_genes_of_chains(region.name, sample_chains)
-    process_region_events(partition.file_prefix, region.name, samples, sample_chains, novel_gene, thresholds_of(args),
+    thresholds = Thresholds(args.feature_support, args.event_frac_of_tot, args.junc_frac_of_event,
+                            args.event_support)
+    process_region_events(partition.file_prefix, region.name, samples, sample_chains, novel_gene, thresholds,
                           annot_afe_ss.get(region.name, {}), annot_ale_ss.get(region.name, {}),
                           region_reports[region_key(region)], gene_junctions(sample_chains, novel_gene, annots),
                           AnnotatedSplicing(annots))
@@ -336,9 +348,9 @@ def plan_correction(args, report_regions, bamfiles, restricted, temp_dir):
     what partitioning over them does"""
     region_bed = (write_regions_bed(report_regions, os.path.join(temp_dir, 'report-regions.bed'))
                   if restricted else None)
-    clusters, counts = run_flair_partition(bamfiles, args.annot, args.threads, region_bed=region_bed)
+    clusters, counts = run_flair_partition(bamfiles, args.annot_gtf, args.threads, region_bed=region_bed)
     units = _work_units(clusters, counts, args.partition_items)
-    gtf_data = load_gtf(args.annot, clusters if restricted else None)
+    gtf_data = load_gtf(args.annot_gtf, clusters if restricted else None)
     check_annotation(gtf_data, args.genome, region_filtered=restricted)
     return _plan_of(units, report_regions, gtf_data)
 
@@ -360,7 +372,7 @@ def spliceevents(args):
     # contain; otherwise it is a directory of this run's own and is removed
     temp_dir = (make_temp_dir(args.output) if args.keep_intermediate
                 else make_run_temp_dir(args.output, args.temp_dir))
-    logging.info('temporary files in %s', temp_dir)
+    logging.info(f'temporary files in {temp_dir}')
     try:
         run_spliceevents(args, temp_dir)
     finally:
@@ -383,7 +395,6 @@ def run_spliceevents(args, temp_dir):
     with GenomeFasta(args.genome) as genome:
         report_regions = regions if regions is not None else chromosomes(genome, genome.references)
     plan = plan_correction(args, report_regions, bamfiles, regions is not None, temp_dir)
-    write_regions_bed(plan.regions, args.output + '.spliceevents.regions.bed', compress=True)
 
     logging.info('building intron support database')
     junction_corrector = junction_corrector_factory(args.ss_window, args.junction_support, annot_gtf_data=plan.gtf_data,
@@ -391,10 +402,10 @@ def run_spliceevents(args, temp_dir):
     terminal_exons, annot_afe_ss, annot_ale_ss = load_terminal_exons(args, plan.gtf_data,
                                                                      plan.regions if regions is not None else None)
 
-    logging.info("correcting reads of %s in %s of %s, then finding events, with %s",
-                 plural(len(allsamples), 'sample'), plural(len(plan.regions), 'partition'),
-                 plural(sum(len(c) for c in plan.clusters.values()), 'cluster'),
-                 plural(args.threads, 'thread'))
+    clusters = plural(sum(len(c) for c in plan.clusters.values()), 'cluster')
+    logging.info(f"correcting reads of {plural(len(allsamples), 'sample')} in "
+                 f"{plural(len(plan.regions), 'partition')} of {clusters}, then finding events, "
+                 f"with {plural(args.threads, 'thread')}")
     runner = PartitionRunner(plan.regions, temp_dir, gtf_data=plan.gtf_data, junction_corrector=junction_corrector,
                              threads=args.threads, weights=plan.weights)
     runner.run(_correct_region_sample, items=allsamples, what='correction', args=args,
@@ -406,6 +417,9 @@ def run_spliceevents(args, temp_dir):
 
     combine_region_tables(args.output, [p.file_prefix for p in runner])
     write_counts_sample_info(args.output, sample_infos)
+    # written with the other outputs rather than before the run, so a stopped run
+    # leaves no part of the set
+    write_regions_bed(plan.regions, args.output + '.spliceevents.regions.bed', compress=True)
     report_result_count('splicing event', count_records(compressed_path(args.output + '.spliceevents.bed')),
                         remedy='lower --feature_support, --event_support, --event_frac_of_tot or '
                         '--junc_frac_of_event, which an event must pass to be reported')

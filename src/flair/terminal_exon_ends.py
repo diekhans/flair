@@ -66,8 +66,9 @@ class GeneTerminalExonEnds:
 class TerminalExonEnds:
     """Furthest terminal exon ends by gene."""
     def __init__(self):
-        # FIXME: this is temporary.  The code groups by (gene_id, strand)
-        # for reasons that are suspected to be bugs in stranding.
+        # FIXME: the grouping is by (gene_id, strand) rather than by gene_id, which
+        # covers a gene whose transcripts are given both strands; that is a defect in
+        # stranding elsewhere, and the strand goes out of the key once it is found.
         self._by_gene = {}  # (gene_id, strand) -> GeneTerminalExonEnds
         self._gene_id_to_strand = {}
 

@@ -1,4 +1,4 @@
-event	event_type	gene	gene_name	additional_genes	additional_gene_names	total	s1	s2	s3	s4	s5	s6
+event	event_type	gene_id	gene_name	additional_genes	additional_gene_names	total	s1	s2	s3	s4	s5	s6
 tts|chr12:25206932-25205246(-)|ENSG00000133703.12	tts	ENSG00000133703.12	KRAS			event_reads	101	97	101	108	60	60
 tts|chr12:25206932-25205246(-)|ENSG00000133703.12	tts	ENSG00000133703.12	KRAS			locus_reads	101	97	101	108	60	60
 es|chr12:25215560-25215436(-)|ENSG00000133703.12	es	ENSG00000133703.12	KRAS			event_reads	86	86	83	90	52	57

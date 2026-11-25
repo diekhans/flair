@@ -119,7 +119,7 @@ def test_isoform_bed_errors(tmp_path):
 def test_plain_bed12_is_not_a_flair_isoform_bed(tmp_path):
     path = tmp_path / 'plain.bed'
     path.write_text('chr1\t100\t400\tT1\t0\t+\t100\t100\t0\t2\t100,100,\t0,200,\n')
-    with pytest.raises(FlairInputDataError, match='is not a FLAIR isoform bed, of the 25 columns'):
+    with pytest.raises(FlairInputDataError, match='is not a FLAIR isoform BED, of the 25 columns'):
         load_isoform_data(str(path))
 
 

@@ -33,17 +33,16 @@ def build_transcript(genome, iso, variants):
     for key in sorted(variants, key=lambda k: -k[1]):  # from the right, so earlier positions don't shift
         _, pos, ref, alt = key
         i = exon_index(exons, pos, ref)
+        offset = None if i is None else pos - 1 - exons[i][0]
         if i is None or any(t[1] < pos + len(ref) and pos < t[1] + len(t[2]) for t in taken):
             skipped.append(key)
-            continue
-        offset = pos - 1 - exons[i][0]
-        if ''.join(b for b, _ in pieces[i][offset:offset + len(ref)]) != ref.upper():
+        elif ''.join(b for b, _ in pieces[i][offset:offset + len(ref)]) != ref.upper():
             skipped.append(key)
-            continue
-        # the alt's bases take the ref's positions where it has them; the rest of a longer alt is inserted
-        new = [(b, pos - 1 + k if k < len(ref) else None) for k, b in enumerate(alt.upper())]
-        pieces[i] = pieces[i][:offset] + new + pieces[i][offset + len(ref):]
-        taken.append(key)
+        else:
+            # the alt's bases take the ref's positions where it has them; the rest of a longer alt is inserted
+            new = [(b, pos - 1 + k if k < len(ref) else None) for k, b in enumerate(alt.upper())]
+            pieces[i] = pieces[i][:offset] + new + pieces[i][offset + len(ref):]
+            taken.append(key)
     bases = [x for piece in pieces for x in piece]
     sizes = [len(piece) for piece in pieces]
     if iso.strand == '-':
@@ -130,7 +129,53 @@ def _aligned(ref, alt, frameshift_at):
     return [(op, i1 + shared, i2 + shared, j1 + shared, j2 + shared) for op, i1, i2, j1, j2 in ops]
 
 
-def protein_change(ref, alt, frameshift_at=None):  # noqa: C901 - a case per kind of HGVS change
+def _frameshift_change(ref, alt, i1, frameshift_at):
+    """the frameshift, named for the first residue that differs from frameshift_at on;
+    nothing after it is described"""
+    k = next((i for i in range(max(i1, frameshift_at), len(ref)) if i >= len(alt) or ref[i] != alt[i]),
+             len(ref))
+    return f'p.{ref[k]}{k + 1}fs' if k < len(ref) else f'p.*{len(ref) + 1}ext'
+
+
+def _deletion_change(ref, span, i1, i2):
+    "a deletion, placed as far toward the C terminus as it goes, as HGVS does"
+    while i2 < len(ref) and ref[i1] == ref[i2]:  # shift right
+        i1, i2 = i1 + 1, i2 + 1
+    return f'p.{span(i1, i2 - 1)}del'
+
+
+def _insertion_change(ref, span, i1, ins):
+    """an insertion, placed as far toward the C terminus as it goes: a duplication
+    where it repeats the residues before it"""
+    while i1 < len(ref) and ref[i1] == ins[0]:
+        ins, i1 = ins[1:] + ref[i1], i1 + 1
+    n = len(ins)
+    if i1 >= n and ref[i1 - n:i1] == ins:
+        return f'p.{span(i1 - n, i1 - 1)}dup'
+    elif 0 < i1 < len(ref):
+        return f'p.{ref[i1 - 1]}{i1}_{ref[i1]}{i1 + 1}ins{ins}'
+    else:
+        return f'p.ins{ins}'
+
+
+def _aligned_changes(ref, alt, span, op, i1, i2, j1, j2):
+    "the changes of one aligned difference between the two proteins"
+    if op == 'replace' and i2 - i1 == j2 - j1:  # substitutions
+        return [f'p.{ref[i]}{i + 1}{alt[j]}'
+                for i, j in zip(range(i1, i2), range(j1, j2)) if ref[i] != alt[j]]
+    elif op == 'delete' and i2 == len(ref) and j1 == len(alt):  # the variant protein stops early
+        return [f'p.{ref[i1]}{i1 + 1}*']
+    elif op == 'insert' and i1 == len(ref):  # it reads past the reference stop
+        return [f'p.*{len(ref) + 1}ext']
+    elif op == 'delete':
+        return [_deletion_change(ref, span, i1, i2)]
+    elif op == 'insert':
+        return [_insertion_change(ref, span, i1, alt[j1:j2])]
+    else:
+        return [f'p.{span(i1, i2 - 1)}delins{alt[j1:j2]}']
+
+
+def protein_change(ref, alt, frameshift_at=None):
     """The changes from a reference protein to a variant one, in HGVS-like terms,
     ';' joined: p.G12A (missense), p.R196* (a new stop), p.E746_A750del,
     p.N771_H773dup, p.V600_K601insX, p.X10_Y12delinsZ, p.*1211ext (the stop is lost),
@@ -151,37 +196,11 @@ def protein_change(ref, alt, frameshift_at=None):  # noqa: C901 - a case per kin
 
     changes = []
     for op, i1, i2, j1, j2 in _aligned(ref, alt, frameshift_at):
-        if op == 'equal':
-            continue
-        if frameshift_at is not None and i2 > frameshift_at:
-            k = next((i for i in range(max(i1, frameshift_at), len(ref)) if i >= len(alt) or ref[i] != alt[i]),
-                     len(ref))
-            changes.append(f'p.{ref[k]}{k + 1}fs' if k < len(ref) else f'p.*{len(ref) + 1}ext')
-            break
-        if op == 'replace' and i2 - i1 == j2 - j1:  # substitutions
-            changes += [f'p.{ref[i]}{i + 1}{alt[j]}' for i, j in zip(range(i1, i2), range(j1, j2)) if ref[i] != alt[j]]
-            continue
-        if op == 'delete' and i2 == len(ref) and j1 == len(alt):  # the variant protein stops early
-            changes.append(f'p.{ref[i1]}{i1 + 1}*')
-        elif op == 'insert' and i1 == len(ref):  # it reads past the reference stop
-            changes.append(f'p.*{len(ref) + 1}ext')
-        elif op == 'delete':
-            while i2 < len(ref) and ref[i1] == ref[i2]:  # shift right
-                i1, i2 = i1 + 1, i2 + 1
-            changes.append(f'p.{span(i1, i2 - 1)}del')
-        elif op == 'insert':
-            ins = alt[j1:j2]
-            while i1 < len(ref) and ref[i1] == ins[0]:
-                ins, i1 = ins[1:] + ref[i1], i1 + 1
-            n = len(ins)
-            if i1 >= n and ref[i1 - n:i1] == ins:
-                changes.append(f'p.{span(i1 - n, i1 - 1)}dup')
-            elif 0 < i1 < len(ref):
-                changes.append(f'p.{ref[i1 - 1]}{i1}_{ref[i1]}{i1 + 1}ins{ins}')
-            else:
-                changes.append(f'p.ins{ins}')
-        else:
-            changes.append(f'p.{span(i1, i2 - 1)}delins{alt[j1:j2]}')
+        if op != 'equal':
+            if frameshift_at is not None and i2 > frameshift_at:
+                changes.append(_frameshift_change(ref, alt, i1, frameshift_at))
+                break
+            changes += _aligned_changes(ref, alt, span, op, i1, i2, j1, j2)
     return ';'.join(changes) or 'none'
 
 

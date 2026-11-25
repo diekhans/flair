@@ -26,8 +26,8 @@ def _coord(value):
 
 
 def _bad_region(spec, problem):
-    return FlairInputDataError(f"invalid --region `{spec}': {problem}; write it as one-based, "
-                               f"closed `chr1:1,000-2,000' or zero-based, half-open `chr1 999 2000'")
+    return FlairInputDataError(f"invalid --region '{spec}': {problem}; write it as one-based, "
+                               f"closed 'chr1:1,000-2,000' or zero-based, half-open 'chr1 999 2000'")
 
 
 def _make_region(spec, match, base):
@@ -82,6 +82,6 @@ def write_regions_bed(regions, bed_file, *, compress=False):
     With compress, which a run's own output passes and a temporary file does not, the
     path is the one compressed_path gives."""
     path = compressed_path(bed_file) if compress else bed_file
-    with fileOps.opengz(path, 'w') as fh:
+    with fileOps.AtomicFileOpen(path, 'w') as fh:
         write_regions(regions, fh)
     return path

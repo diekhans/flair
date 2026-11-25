@@ -156,7 +156,7 @@ class IntronSupport:
     def _no_introns_loaded_error(file_name, file_desc, chrom_filter=None):
         msg = f"no introns loaded from {file_desc} file {file_name}"
         if chrom_filter is not None:
-            msg += f" for chromosome `{chrom_filter}'"
+            msg += f" for chromosome '{chrom_filter}'"
         raise FlairInputDataError(msg + "; it must contain at least one intron, named by the "
                                   "chromosomes of the genome the reads are aligned to")
 
@@ -169,7 +169,7 @@ class IntronSupport:
 
     @staticmethod
     def _bed_strand_error(bed):
-        raise FlairInputDataError(f"strand `{bed.strand}' in BED must be one of: " +
+        raise FlairInputDataError(f"strand '{bed.strand}' in BED must be one of: " +
                                   ", ".join([f"'{s}'" for s in _VALID_STRANDS]))
 
     def _load_intron_bed(self, bed, chrom_filter):
@@ -187,7 +187,10 @@ class IntronSupport:
         cnt = 0
         line_num = 0
         try:
-            for bed in BedReader(bed_file):
+            # rawScores: the score is a read count, not a browser shade, so a
+            # junction with more than 1000 reads keeps its count rather than the
+            # 1000 the BED convention clamps it to
+            for bed in BedReader(bed_file, rawScores=True):
                 line_num += 1
                 if self._load_intron_bed(bed, chrom_filter):
                     cnt += 1

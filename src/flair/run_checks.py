@@ -66,6 +66,20 @@ def check_input_files(files):
                 raise FlairInputDataError(f'{what} file does not exist: {path}')
 
 
+def check_inputs_not_outputs(outputs, files):
+    """no input of a run is one of the files it writes, which would destroy it.  An
+    output prefix that is also where an input was written makes this reachable:
+    combining a combined transcriptome in the directory holding it, or a mistyped
+    --output.  outputs is every path the run writes; files maps what an input is, for
+    the message, to its path or to several, as check_input_files takes them"""
+    written = {os.path.realpath(path) for path in outputs}
+    for what, paths in files.items():
+        for path in ((paths,) if isinstance(paths, str) else (paths or ())):
+            if os.path.realpath(path) in written:
+                raise FlairInputDataError(f'{what} file is one this run writes: {path}; '
+                                          'give --output a prefix that is not an input')
+
+
 def check_programs(programs):
     """every program a subcommand runs is installed, rather than the run stopping at
     the first one it executes, which may be after the alignment"""
@@ -147,14 +161,20 @@ def check_annotation(gtf_data, genome, *, region_filtered=False):
 
 
 def precheck(*, files=None, programs=(), genome=None, alignments=(), indexed_alignments=(),
-             isoform_beds=(), vcfs=()):
+             isoform_beds=(), vcfs=(), outputs=()):
     """The checks a subcommand makes before it starts work: files, what a file is
     mapped to its path, exist; programs, the external programs it runs, are
     installed; genome, the FASTA, is compressed and indexed as the sequence reader
     needs; alignments, BAMs, indexed_alignments, the BAMs read by region, isoform_beds
     and vcfs name the genome's sequences; and each of indexed_alignments has its index.
+    outputs, the paths this run writes, are none of the inputs.
     A None path is an option that was not given, and is skipped."""
-    check_input_files(dict(files or {}, **({'genome FASTA': genome} if genome is not None else {})))
+    input_files = dict(files or {}, **({'genome FASTA': genome} if genome is not None else {}))
+    check_input_files(input_files)
+    check_inputs_not_outputs(outputs, dict(input_files,
+                                           **{'aligned reads BAM': _given(alignments) + _given(indexed_alignments),
+                                              'isoform models BED': _given(isoform_beds),
+                                              'VCF': _given(vcfs)}))
     check_programs(programs)
     check_bam_indexes(_given(indexed_alignments))
     if genome is not None:
@@ -174,9 +194,9 @@ def report_result_count(what, count, *, remedy, plural_what=None):
     singular noun of what was produced, plural_what its plural where adding s is
     wrong, and remedy states what to do about an empty result."""
     if count == 0:
-        logging.warning('no %s; %s', plural_noun(0, what, plural_what), remedy)
+        logging.warning(f'no {plural_noun(0, what, plural_what)}; {remedy}')
     else:
-        logging.info('%s', plural(count, what, plural_what))
+        logging.info(plural(count, what, plural_what))
 
 
 def count_records(path):

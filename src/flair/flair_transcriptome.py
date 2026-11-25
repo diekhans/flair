@@ -35,7 +35,7 @@ from flair.aaseq_tsv import write_aaseqs
 from flair.isoform_counts_tsv import IsoformCountsReader, IsoformCountsWriter
 from flair.read_ends_tsv import ReadEndsReader, ReadEndsWriter
 from flair.read_map_tsv import ReadMapReader, ReadMapWriter
-from flair.output_compress import compressed_path, open_fasta_output, open_output
+from flair.output_compress import compressed_path, open_fasta_output, open_output, output_paths
 from flair.pycbio.sys import fileOps
 from flair.terminal_exon_ends import TerminalExonEnds
 from flair.interval_index import IntervalIndex
@@ -286,6 +286,15 @@ def add_subparser(subparsers):
                              'an isoform and its reads, comma-separated, under a header')
     parser.set_defaults(entry=transcriptome_cmd)
 
+
+# what a run writes, so that an input that is one of them is rejected before the run
+# starts (precheck).  The bigBed is the one that does not take the compression suffix
+OUTPUT_TEXT_SUFFIXES = ('.isoforms.bed', '.isoforms.gtf', '.isoforms.fa', '.isoforms.counts.tsv',
+                        '.isoforms.read.map.tsv', '.aaseq.tsv', '.regions.bed', '.firstpass.bed',
+                        '.firstpass.unfiltered.bed', '.firstpass.reallyunfiltered.bed')
+OUTPUT_BINARY_SUFFIXES = ('.isoforms.bb',)
+
+
 def transcriptome_cmd(args):
     resolve_deprecated_option(args, deprecated="junction_tab", current="junction_star")
     check_sample_name(args.sample_name)
@@ -294,13 +303,14 @@ def transcriptome_cmd(args):
                         count=('junction_support', 'ss_window', 'end_window', 'sjc_support',
                                'single_exon_support', 'subset_backup_support', 'quality'),
                         positive=('max_ends', 'threads'))
+    output = args.output if args.output is not None else args.sample_name
     precheck(files={'aligned reads BAM': args.genome_aligned_bam, 'annotation GTF': args.annot_gtf,
                     'junction BED': args.junction_bed, 'STAR junction': args.junction_star,
                     'region BED': args.region_bed},
-             programs=PROGRAMS, genome=args.genome, indexed_alignments=(args.genome_aligned_bam,))
+             programs=PROGRAMS, genome=args.genome, indexed_alignments=(args.genome_aligned_bam,),
+             outputs=output_paths(output, OUTPUT_TEXT_SUFFIXES, OUTPUT_BINARY_SUFFIXES))
     flair_transcriptome(genome_aligned_bam=args.genome_aligned_bam, genome=args.genome,
-                        sample_name=args.sample_name,
-                        output=args.output if args.output is not None else args.sample_name,
+                        sample_name=args.sample_name, output=output,
                         annot_gtf=args.annot_gtf, junction_star=args.junction_star,
                         junction_bed=args.junction_bed, junction_support=args.junction_support,
                         ss_window=args.ss_window, end_window=args.end_window,
@@ -366,7 +376,8 @@ def get_best_ends(curr_group, end_window):
                                        ((end_window - abs(read_info1.end - read_info2.end)) / end_window))
             best_ends.append((weighted_score, read_info1.start, read_info1.end))
     best_ends.sort(reverse=True)
-    # FIXME: DO I WANT TO ADD CORRECTION TO NEARBY ANNOTATED TSS/TTS????
+    # FIXME: the selected ends are not moved to a nearby annotated TSS or TTS; what
+    # that would change in the isoforms needs a measurement against the annotation
     return best_ends[0]
 
 def group_reads_by_ends(read_info_list, sort_index, end_window):
@@ -607,13 +618,13 @@ def max_terminal_exons_ends_from_iso_infos(iso_to_info):
 def rank_end_variants(isoforms):
     """Sort a junction chain's or single-exon cluster's end variants, best first;
     with max_ends above 1, the best max_ends of those with the support are kept"""
-    # First by read support, then by length
-    # FIXME: the comment above is what was meant; the code multiplies instead, so
-    # this is not a two-level sort and a 1-read 10kb candidate outranks a 10-read
-    # 500bp one.  It once also selected the ends of every single-exon isoform, where
-    # sorting by (num_reads, genomic_length) selected the modal end pair, for long
-    # reads a 5' truncation cluster, over the pair reproducing the annotated 3' end
-    isoforms.sort(key=lambda x: [x.num_reads * x.genomic_length], reverse=True)
+    # the rank is read support times length, so a 1-read 10kb variant outranks a
+    # 10-read 500bp one.  A two-level sort, (num_reads, genomic_length), was tried
+    # when this also selected the ends of every single-exon isoform: it selected the
+    # modal end pair, for long reads a 5' truncation cluster, over the pair
+    # reproducing the annotated 3' end.  Which ranking is right takes a measurement
+    # on real data: BrooksLabUCSC/flair#734
+    isoforms.sort(key=lambda x: x.num_reads * x.genomic_length, reverse=True)
 
 def _densest_end_clustered(positions, window, outer):
     """densest_end, and whether it is a cluster of read ends: another read end
@@ -717,7 +728,8 @@ def _generate_candidate_isos(args, isoform, candidates, iso_fh, iso_unfilt_fh):
 def correct_se_strand_polyA(read_group, se_support):
     # strand correction for single exon genes based on location of polyA tail sequence
 
-    # FIXME: shouldnt this check for poly(T)
+    # FIXME: only poly(A) is read, not poly(T); whether checking poly(T) corrects
+    # more single exon reads needs a measurement
     left_polyA = [read.polyA[0] for read in read_group]
     right_polyA = [read.polyA[1] for read in read_group]
     num_reads = len(read_group)
@@ -868,10 +880,9 @@ def filter_single_exon_iso(args, single_exon, curr_group, all_isoforms):
     expression_comp_with_superset = []
     is_contained = False
     for exon in curr_group:
-        if isoform.end_variant_cluster is not None and exon.name != '' and \
-                all_isoforms[exon.name].end_variant_cluster == isoform.end_variant_cluster:
-            continue
-        if exon != single_exon:
+        same_cluster = (isoform.end_variant_cluster is not None and exon.name != ''
+                        and all_isoforms[exon.name].end_variant_cluster == isoform.end_variant_cluster)
+        if (not same_cluster) and exon != single_exon:
             if ((exon.start - SINGLE_EXON_OVERLAP_MARGIN) <= single_exon.start and
                     single_exon.end <= (exon.end + SINGLE_EXON_OVERLAP_MARGIN)):
                 if exon.name == '' or args.filter == 'nosubset':  # is exon from spliced transcript
@@ -1258,7 +1269,7 @@ def _gene_spliced_reads(firstpass, lines_by_iso):
 
 def read_ends_fields(ends_path):
     """The rows of an ends file as the string fields this module passes around, with
-    a missing distance spelled None, as count_sam_transcripts' own lines had it"""
+    a missing distance written as None, as count_sam_transcripts' own lines had it"""
     return [[row.read, row.transcript] + [str(v) for v in (row.start_sj_index, row.start_sj_dist,
                                                            row.start_tend_dist, row.end_sj_index,
                                                            row.end_sj_dist, row.end_tend_dist)]
@@ -1318,20 +1329,21 @@ def assign_final_ends(firstpass, ends_path, map_path, *, normalize_ends, max_end
         if len(reads) == 0 or normalize_ends:
             final[isoform.name] = isoform
             out_lines.extend(lines)
-            continue
-        line_by_read = {f[0]: f for f in lines}
-        variants = _end_variants(isoform, reads, max_ends=max_ends, end_window=end_window, support=sjc_support)
-        # stringent assignments always have both distances; any line without them
-        # goes to the first variant
-        others = {f[0] for f in lines} - {read.name for read in reads}
-        variant_counts = [len(variant_reads) + (len(others) if i == 0 else 0) for i, (variant, variant_reads) in enumerate(variants)]
-        if _variants_all_unsupported(variant_counts, passes_support, isoform):
-            variants = [(_one_end_variant(isoform, reads), reads)]
-        for i, (variant, variant_reads) in enumerate(variants):
-            variant.unpadded_ends = (variant.start, variant.end)
-            final[variant.name] = variant
-            names = [read.name for read in variant_reads] + (sorted(others) if i == 0 else [])
-            out_lines.extend([f[0], variant.name] + f[2:] for f in (line_by_read[n] for n in names))
+        else:
+            line_by_read = {f[0]: f for f in lines}
+            variants = _end_variants(isoform, reads, max_ends=max_ends, end_window=end_window, support=sjc_support)
+            # stringent assignments always have both distances; any line without them
+            # goes to the first variant
+            others = {f[0] for f in lines} - {read.name for read in reads}
+            variant_counts = [len(variant_reads) + (len(others) if i == 0 else 0)
+                              for i, (variant, variant_reads) in enumerate(variants)]
+            if _variants_all_unsupported(variant_counts, passes_support, isoform):
+                variants = [(_one_end_variant(isoform, reads), reads)]
+            for i, (variant, variant_reads) in enumerate(variants):
+                variant.unpadded_ends = (variant.start, variant.end)
+                final[variant.name] = variant
+                names = [read.name for read in variant_reads] + (sorted(others) if i == 0 else [])
+                out_lines.extend([f[0], variant.name] + f[2:] for f in (line_by_read[n] for n in names))
     _rewrite_ends_and_map(out_lines, ends_path, map_path)
     return final
 
@@ -1410,7 +1422,8 @@ def calc_final_iso_support(read_ends_file, final_transcript_objs):
             # reaching this means the two differ about what ends.tsv contains
             raise FlairError(f"{read_ends_file}: read '{read}' on transcript '{transcript}' is not "
                              f"full length: junctions {start_sj_index} to {end_sj_index} of "
-                             f"{len(final_transcript_objs[transcript].juncs)}")
+                             f"{len(final_transcript_objs[transcript].juncs)}; this is an internal "
+                             "error, please report it with the input that produced it")
     return iso_to_counts, gene_to_tot
 
 def promote_backup_subsets(args, removed_subsets, final_transcript_objs, iso_to_counts, gene_to_tot, ends_path):
@@ -1435,17 +1448,25 @@ def promote_backup_subsets(args, removed_subsets, final_transcript_objs, iso_to_
     assigned = {row.read for row in ReadEndsReader(ends_path)} if os.path.exists(ends_path) else set()
     # longest chains first, so an isoform's supersets are determined before it: a fragment
     # of a promoted subset is still a fragment
-    for name, (subset, supersets, unique_seq) in sorted(removed_subsets.items(), key=lambda item: -len(item[1][0].juncs)):
-        if (subset.strand, subset.juncs) in passing or any((s.strand, s.juncs) in passing for s in supersets):
-            continue
-        # truncated reads of the isoforms it is a subset of, which don't reach its
-        # own sequence, aren't its reads
-        check_exons = subset_check_exons(subset)
-        bounds = parse_unique_bounds(unique_bounds_past(unique_seq, check_exons[0], check_exons[-1], subset.strand))
-        reads = [read for read in subset.reads
-                 if read.name not in assigned and covers_unique_bounds(subset, bounds, read.start, read.end)]
-        if len(reads) < max(args.sjc_support, args.subset_backup_support):
-            continue
+    for name, (subset, supersets, unique_seq) in sorted(removed_subsets.items(),
+                                                        key=lambda item: -len(item[1][0].juncs)):
+        if not ((subset.strand, subset.juncs) in passing
+                or any((s.strand, s.juncs) in passing for s in supersets)):
+            _promote_subset(args, name, subset, unique_seq, assigned, passing, final_transcript_objs,
+                            iso_to_counts, gene_to_tot)
+
+
+def _promote_subset(args, name, subset, unique_seq, assigned, passing, final_transcript_objs,
+                    iso_to_counts, gene_to_tot):
+    """keep a subset isoform whose supersets all failed support, where its own reads
+    reach sjc_support and subset_backup_support"""
+    # truncated reads of the isoforms it is a subset of, which don't reach its
+    # own sequence, aren't its reads
+    check_exons = subset_check_exons(subset)
+    bounds = parse_unique_bounds(unique_bounds_past(unique_seq, check_exons[0], check_exons[-1], subset.strand))
+    reads = [read for read in subset.reads
+             if read.name not in assigned and covers_unique_bounds(subset, bounds, read.start, read.end)]
+    if len(reads) >= max(args.sjc_support, args.subset_backup_support):
         # a copy of the subset, with its gene, strand and reference transcript
         promoted = _one_end_variant(subset, reads)
         promoted.unpadded_ends = (promoted.start, promoted.end)
@@ -1530,6 +1551,107 @@ def _run_region(*, partition, gtf_data, junction_corrector, args):
         generate_empty_intermediate_files(partition.file_prefix, ['.firstpass.bed', '.isoforms.counts.tsv', '.isoforms.read.map.tsv', '.isoforms.bed', '.isoforms.fa', '.firstpass.reallyunfiltered.bed', '.firstpass.unfiltered.bed'])
 
 
+def _annot_matches(partition, region, annots, genome, bam_file, args):
+    """each read's good match to an annotated transcript, after recording the reads'
+    clipping in the genome alignment"""
+    # genomic clipping: amount of clipping (from cigar) at ends of reads when aligned to genome
+    # generates file with [read{\t}clipping amount] on each line
+    # For comparing with amount of clipping after alignment to transcriptome
+    # to check whether transcriptome alignment is comparable to or better than genomic alignment,
+    # which can be considered to support isoform.
+
+    # never zero reads here: _run_region only calls this when samtools fasta found
+    # reads, and both skip secondary and supplementary alignments
+    reads_read, clipping_file = generate_genomic_alignment_read_to_clipping_file(
+        partition.file_prefix, bam_file, region.name, region.start, region.end)
+    count_reads_read(reads_read)
+
+    # aligning to reference transcriptome, then identifying reads that match well to reference transcripts
+    # with filter_transcriptome_align
+    if not args.no_align_to_annot:
+        logging.debug('aligning to transcriptome reference')
+    return identify_good_match_to_annot(
+        partition.file_prefix, region, annots, genome, bam_file, no_align_to_annot=args.no_align_to_annot,
+        directRNA=args.directRNA, trust_strand=args.trust_strand,
+        fusion_breakpoints=args.fusion_breakpoints)
+
+
+def _directly_assigned(args, partition, firstpass, sj_to_ends):
+    """the reads matching a firstpass isoform exactly, assigned without the realignment,
+    and the reads no firstpass isoform can take, which aren't realigned either (see
+    direct_assignment).  With fusion_breakpoints, count_sam_transcripts checks that
+    reads cover the breakpoint, so every read is realigned"""
+    if args.fusion_breakpoints:
+        return {}, set()
+    spliced_reads = [read for (chrom, juncs), isoform in sj_to_ends.items() if juncs != () for read in isoform.reads]
+    direct = direct_assignments(spliced_reads, firstpass.values(),
+                                read_unique_bounds(partition.output_path('firstpass.uniquebound.tsv')))
+    unassignable = unassignable_reads(spliced_reads, firstpass.values(), args.ss_window)
+    logging.debug(f'{len(direct)} reads assigned to firstpass isoforms without realignment, '
+                  f'{len(unassignable)} not realigned as no firstpass isoform can take them')
+    return direct, unassignable
+
+
+def _realign_and_count(args, partition, firstpass, se_reads, direct, unassignable):
+    "the other spliced reads aligned to the spliced firstpass isoforms and counted"
+    read_map_file = partition.output_path('countsam.read.map.tsv') if args.generate_map else None
+    num_realigned = _write_reads_subset(partition.output_path('reads.fasta'), partition.output_path('realign.reads.fasta'),
+                                        {read.name for read in se_reads} | direct.keys() | unassignable)
+    if num_realigned > 0 and any(isoform.juncs != () for isoform in firstpass.values()):
+        transcriptome_align_and_count(partition.output_path('realign.reads.fasta'),
+                                      partition.output_path('firstpass.fa'),
+                                      partition.output_path('firstpass.bed'),
+                                      partition.output_path('isoforms.counts.tsv'),
+                                      read_map_file, False,  # not annot, requires stringent, returns different end values
+                                      partition.output_path('reads.genomicclipping.tsv'),
+                                      unique_bound=partition.output_path('firstpass.uniquebound.tsv'),
+                                      directRNA=args.directRNA, trust_strand=args.trust_strand,
+                                      fusion_breakpoints=args.fusion_breakpoints,
+                                      secondary_alignments=(KEEP_SUBSET_SECONDARY_ALIGNMENTS
+                                                            if keeps_subset_isoforms(args.filter)
+                                                            else MINIMAP2_SECONDARY_ALIGNMENTS))
+    else:
+        generate_empty_intermediate_files(partition.file_prefix, ['.isoforms.counts.tsv', '.countsam.read.map.tsv', '.isoforms.ends.tsv'])
+
+
+def _count_firstpass_reads(args, partition, region, firstpass, sj_to_ends, se_reads, iso_to_unique_bound,
+                           annots, genome):
+    """the reads of the firstpass isoforms, written to the region's ends and read map
+    files: the annotated names and normalized ends of the isoforms first, since the
+    assignment is made against them"""
+    # this section identifies annotated gene and isoform names (primarily based on splice junction matching, secondarily by exon overlap)
+    # also adjusts isoform strand, determines novel isoform and gene names
+    # also normalizes transcript ends (temporarily extends ends so that transcript end alignment does not drive transcript assignment during transcriptome alignment)
+    # writes out bed and fa files
+    logging.debug('realigning to firstpass and getting final isoforms')
+    write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome, unique_bound=iso_to_unique_bound)
+
+    direct, unassignable = _directly_assigned(args, partition, firstpass, sj_to_ends)
+    _realign_and_count(args, partition, firstpass, se_reads, direct, unassignable)
+    with open(partition.output_path('isoforms.ends.tsv'), 'a') as ends_fh:
+        write_direct_assignments(direct, ReadEndsWriter(None, outFh=ends_fh, writeHeader=False))
+
+
+def _write_region_isoforms(args, partition, firstpass, se_reads, removed_subsets, annots, genome):
+    "the region's isoforms with their final ends and support, from the counted reads"
+    # every spliced isoform's ends, from the reads assigned to it; this also writes
+    # the read map, for every way spliced reads were assigned, from the ends
+    final_transcript_objs = assign_final_ends(firstpass, partition.output_path('isoforms.ends.tsv'),
+                                              partition.output_path('countsam.read.map.tsv') if args.generate_map else None,
+                                              normalize_ends=args.normalize_ends,
+                                              max_ends=args.max_ends, end_window=args.end_window,
+                                              sjc_support=args.sjc_support, frac_support=args.frac_support)
+    iso_to_counts, gene_to_tot = calc_final_iso_support(partition.output_path('isoforms.ends.tsv'), final_transcript_objs)
+    # single-exon isoforms after the spliced reads are counted, which their support is a fraction of
+    single_exon = assign_single_exon_isoforms([isoform for isoform in final_transcript_objs.values() if isoform.juncs == ()],
+                                              iso_to_counts, gene_to_tot,
+                                              se_support=args.single_exon_support, frac_support=args.frac_support)
+    final_transcript_objs = _with_single_exon_isoforms(final_transcript_objs, single_exon)
+    promote_backup_subsets(args, removed_subsets, final_transcript_objs, iso_to_counts, gene_to_tot,
+                           partition.output_path('isoforms.ends.tsv'))
+    write_final_isoform_output(partition, args, final_transcript_objs, iso_to_counts, gene_to_tot, annots, genome, args.generate_map)
+
+
 def _run_region_reads(*, partition, region, gtf_data, junction_corrector, args):
     # FIXME confusing name if taking gtf_data,
     # FIXME: should only have region, so why take region arg
@@ -1541,26 +1663,7 @@ def _run_region_reads(*, partition, region, gtf_data, junction_corrector, args):
     # then align reads to transcriptome and run count_sam_transcripts
     with GenomeFasta(args.genome) as genome, \
          pysam.AlignmentFile(args.genome_aligned_bam, 'rb') as bam_file:
-        # genomic clipping: amount of clipping (from cigar) at ends of reads when aligned to genome
-        # generates file with [read{\t}clipping amount] on each line
-        # For comparing with amount of clipping after alignment to transcriptome
-        # to check whether transcriptome alignment is comparable to or better than genomic alignment,
-        # which can be considered to support isoform.
-
-        # never zero reads here: _run_region only calls this when samtools fasta found
-        # reads, and both skip secondary and supplementary alignments
-        reads_read, clipping_file = generate_genomic_alignment_read_to_clipping_file(
-            partition.file_prefix, bam_file, region.name, region.start, region.end)
-        count_reads_read(reads_read)
-
-        # aligning to reference transcriptome, then identifying reads that match well to reference transcripts
-        # with filter_transcriptome_align
-        if not args.no_align_to_annot:
-            logging.debug('aligning to transcriptome reference')
-        read_to_annot_transcript = identify_good_match_to_annot(
-            partition.file_prefix, region, annots, genome, bam_file, no_align_to_annot=args.no_align_to_annot,
-            directRNA=args.directRNA, trust_strand=args.trust_strand,
-            fusion_breakpoints=args.fusion_breakpoints)
+        read_to_annot_transcript = _annot_matches(partition, region, annots, genome, bam_file, args)
 
         logging.debug('correcting and grouping reads, filtering isoforms')
 
@@ -1588,68 +1691,14 @@ def _run_region_reads(*, partition, region, gtf_data, junction_corrector, args):
         removed_subsets = {}
         firstpass, iso_to_unique_bound = filter_firstpass_isos(args, candidates, annots, removed_subsets=removed_subsets)
 
-        if len(firstpass.keys()) > 0:
-            # this section identifies annotated gene and isoform names (primarily based on splice junction matching, secondarily by exon overlap)
-            # also adjusts isoform strand, determines novel isoform and gene names
-            # also normalizes transcript ends (temporarily extends ends so that transcript end alignment does not drive transcript assignment during transcriptome alignment)
-            # writes out bed and fa files
-            logging.debug('realigning to firstpass and getting final isoforms')
-            write_firstpass(partition.file_prefix, region.name, firstpass, annots, genome, unique_bound=iso_to_unique_bound)
-
-            # reads matching a firstpass isoform exactly are assigned without the realignment,
-            # and reads it can't assign aren't realigned (see direct_assignment); with
-            # fusion_breakpoints, count_sam_transcripts checks that reads cover the breakpoint
-            direct, unassignable = {}, set()
-            if not args.fusion_breakpoints:
-                spliced_reads = [read for (chrom, juncs), isoform in sj_to_ends.items() if juncs != () for read in isoform.reads]
-                direct = direct_assignments(spliced_reads, firstpass.values(),
-                                            read_unique_bounds(partition.output_path('firstpass.uniquebound.tsv')))
-                unassignable = unassignable_reads(spliced_reads, firstpass.values(), args.ss_window)
-                logging.debug(f'{len(direct)} reads assigned to firstpass isoforms without realignment, '
-                              f'{len(unassignable)} not realigned as no firstpass isoform can take them')
-
-            # aligns the other spliced reads to the spliced firstpass isoforms, identifies best read -> isoform
-            # alignment for each read, then gets read counts per isoform
-            read_map_file = partition.output_path('countsam.read.map.tsv') if args.generate_map else None
-            num_realigned = _write_reads_subset(partition.output_path('reads.fasta'), partition.output_path('realign.reads.fasta'),
-                                                {read.name for read in se_reads} | direct.keys() | unassignable)
-            if num_realigned > 0 and any(isoform.juncs != () for isoform in firstpass.values()):
-                transcriptome_align_and_count(partition.output_path('realign.reads.fasta'),
-                                              partition.output_path('firstpass.fa'),
-                                              partition.output_path('firstpass.bed'),
-                                              partition.output_path('isoforms.counts.tsv'),
-                                              read_map_file, False,  # not annot, requires stringent, returns different end values
-                                              partition.output_path('reads.genomicclipping.tsv'),
-                                              unique_bound=partition.output_path('firstpass.uniquebound.tsv'),
-                                              directRNA=args.directRNA, trust_strand=args.trust_strand,
-                                              fusion_breakpoints=args.fusion_breakpoints,
-                                              secondary_alignments=(KEEP_SUBSET_SECONDARY_ALIGNMENTS
-                                                                    if keeps_subset_isoforms(args.filter)
-                                                                    else MINIMAP2_SECONDARY_ALIGNMENTS))
-            else:
-                generate_empty_intermediate_files(partition.file_prefix, ['.isoforms.counts.tsv', '.countsam.read.map.tsv', '.isoforms.ends.tsv'])
-            with open(partition.output_path('isoforms.ends.tsv'), 'a') as ends_fh:
-                write_direct_assignments(direct, ReadEndsWriter(None, outFh=ends_fh, writeHeader=False))
+        if len(firstpass) > 0:
+            _count_firstpass_reads(args, partition, region, firstpass, sj_to_ends, se_reads,
+                                   iso_to_unique_bound, annots, genome)
         else:
             logging.debug('no firstpass isoforms found')
             generate_empty_intermediate_files(partition.file_prefix, ['.firstpass.fa', '.firstpass.bed', '.isoforms.counts.tsv', '.countsam.read.map.tsv', '.isoforms.ends.tsv'])
 
-        # every spliced isoform's ends, from the reads assigned to it; this also writes
-        # the read map, for every way spliced reads were assigned, from the ends
-        final_transcript_objs = assign_final_ends(firstpass, partition.output_path('isoforms.ends.tsv'),
-                                                  partition.output_path('countsam.read.map.tsv') if args.generate_map else None,
-                                                  normalize_ends=args.normalize_ends,
-                                                  max_ends=args.max_ends, end_window=args.end_window,
-                                                  sjc_support=args.sjc_support, frac_support=args.frac_support)
-        iso_to_counts, gene_to_tot = calc_final_iso_support(partition.output_path('isoforms.ends.tsv'), final_transcript_objs)
-        # single-exon isoforms after the spliced reads are counted, which their support is a fraction of
-        single_exon = assign_single_exon_isoforms([isoform for isoform in final_transcript_objs.values() if isoform.juncs == ()],
-                                                  iso_to_counts, gene_to_tot,
-                                                  se_support=args.single_exon_support, frac_support=args.frac_support)
-        final_transcript_objs = _with_single_exon_isoforms(final_transcript_objs, single_exon)
-        promote_backup_subsets(args, removed_subsets, final_transcript_objs, iso_to_counts, gene_to_tot,
-                               partition.output_path('isoforms.ends.tsv'))
-        write_final_isoform_output(partition, args, final_transcript_objs, iso_to_counts, gene_to_tot, annots, genome, args.generate_map)
+        _write_region_isoforms(args, partition, firstpass, se_reads, removed_subsets, annots, genome)
 
 
 TSV_SUFFIXES = ('.isoforms.counts.tsv', '.isoforms.read.map.tsv')
@@ -1864,7 +1913,7 @@ def flair_transcriptome(*, genome_aligned_bam, genome, sample_name, output, anno
         bed_to_gtf(compressed_path(args.output + '.isoforms.bed'),
                    compressed_path(args.output + '.isoforms.gtf'), is_flair_bed=True)
 
-        make_big_bed(genome_fa, temp_dir + 'chrom.sizes', args.output + '.isoforms')
+        make_big_bed(genome_fa, args.output + '.isoforms')
 
         report_result_count('isoform', count_records(compressed_path(args.output + '.isoforms.bed')),
                             remedy='lower --sjc_support, --single_exon_support or --frac_support, or check that '

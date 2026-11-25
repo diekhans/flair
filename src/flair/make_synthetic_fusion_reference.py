@@ -55,21 +55,21 @@ def read_transcripts(gtf_data, fgenes, transcripts, chrom_sizes):
     codons, in genomic order"""
     for transcript in gtf_data.transcripts:
         genename = transcript.gene_id
-        if genename not in fgenes:
-            continue
-        # the 500 base padding is contained in the sequence; a gene near either end has less room than that
-        fgenes[genename] = (transcript.chrom,
-                            min([max(0, transcript.start - 500), fgenes[genename][1]]),
-                            max([min(chrom_sizes.get(transcript.chrom), transcript.end + 500), fgenes[genename][2]]),
-                            transcript.strand)
-        features = [(exon.start, exon.end, 'exon') for exon in transcript.exons]
-        if transcript.start_codon is not None:
-            features.append((transcript.start_codon.start, transcript.start_codon.end, 'start_codon'))
-        # in genomic order whatever the order of the GTF: minus strand exons were put in
-        # genomic order by reversing their file order, which only works for an annotation
-        # listing them in transcript order, as GENCODE does.  A position-sorted GTF gave
-        # transcripts ending before they started, and flair transcriptome failed on them
-        transcripts[genename][transcript.transcript_id] = sorted(features)
+        if genename in fgenes:
+            # the 500 base padding is contained in the sequence; a gene near either end has less room than that
+            fgenes[genename] = (transcript.chrom,
+                                min([max(0, transcript.start - 500), fgenes[genename][1]]),
+                                max([min(chrom_sizes.get(transcript.chrom), transcript.end + 500),
+                                     fgenes[genename][2]]),
+                                transcript.strand)
+            features = [(exon.start, exon.end, 'exon') for exon in transcript.exons]
+            if transcript.start_codon is not None:
+                features.append((transcript.start_codon.start, transcript.start_codon.end, 'start_codon'))
+            # in genomic order whatever the order of the GTF: minus strand exons were put in
+            # genomic order by reversing their file order, which only works for an annotation
+            # listing them in transcript order, as GENCODE does.  A position-sorted GTF gave
+            # transcripts ending before they started, and flair transcriptome failed on them
+            transcripts[genename][transcript.transcript_id] = sorted(features)
 
 
 def locus_bounds(order, numloci, gene, leftbound, rightbound, fgenes, chrom_size):

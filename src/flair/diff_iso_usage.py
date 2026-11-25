@@ -70,20 +70,23 @@ def gene_usage_rows(gene, gene_counts, colname1, colname2, unreported=frozenset(
     rows = []
     gene_total = gene_total_counts(gene_counts)
     for iso, iso_counts in gene_counts.items():
-        if iso in unreported:
-            continue
-        other_counts = other_isoform_counts(gene_total, iso_counts)
-        ctable = [iso_counts, other_counts]
-        # an isoform with no expression of its gene in one sample cannot be tested
-        if (iso_counts[0] + other_counts[0] == 0 or iso_counts[1] + other_counts[1] == 0
-                or sum(iso_counts) == 0 or sum(other_counts) == 0):
-            rows.append([gene, iso, ''] + iso_counts + other_counts + ['', '', ''])
-        elif sum(iso_counts) < min_expression:
-            rows.append([gene, iso, ''] + iso_counts + other_counts + iso_psi(iso_counts, other_counts))
-        else:
-            rows.append([gene, iso, sps.fisher_exact(ctable)[1]] + iso_counts +
-                        other_counts + iso_psi(iso_counts, other_counts))
+        if iso not in unreported:
+            rows.append(_usage_row(sps, gene, iso, iso_counts, gene_total, min_expression))
     return rows
+
+
+def _usage_row(sps, gene, iso, iso_counts, gene_total, min_expression):
+    "one isoform's row: its counts in the two samples, its gene's other isoforms', and the test"
+    other_counts = other_isoform_counts(gene_total, iso_counts)
+    # an isoform with no expression of its gene in one sample cannot be tested
+    if (iso_counts[0] + other_counts[0] == 0 or iso_counts[1] + other_counts[1] == 0
+            or sum(iso_counts) == 0 or sum(other_counts) == 0):
+        return [gene, iso, ''] + iso_counts + other_counts + ['', '', '']
+    elif sum(iso_counts) < min_expression:
+        return [gene, iso, ''] + iso_counts + other_counts + iso_psi(iso_counts, other_counts)
+    else:
+        return ([gene, iso, sps.fisher_exact([iso_counts, other_counts])[1]] + iso_counts
+                + other_counts + iso_psi(iso_counts, other_counts))
 
 def add_adjusted_pvalues(rows):
     """put after each row's p-value its Benjamini-Hochberg adjusted one, over the
@@ -95,7 +98,7 @@ def add_adjusted_pvalues(rows):
         row.insert(3, adjusted.get(i, ''))
     return rows
 
-def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename,  # noqa: C901 - FIXME: reduce complexity
+def diff_iso_usage(counts_matrix_tsv, colname1, colname2, outfilename,
                    min_expression=0):
     grouped = read_grouped_counts(counts_matrix_tsv)
     col1 = sample_column_index(grouped.sample_columns, colname1, counts_matrix_tsv)

@@ -126,7 +126,7 @@ def identify_good_match_to_annot(temp_prefix, region, annots, genome, bam_file, 
     return read_to_transcript
 
 
-def transcriptome_align_and_count(input_reads, align_ref_fasta, ref_bed, output_name, map_file, is_annot, clipping_file,  # noqa: C901 - FIXME: reduce complexity
+def transcriptome_align_and_count(input_reads, align_ref_fasta, ref_bed, output_name, map_file, is_annot, clipping_file,
                                   *, unique_bound=None, directRNA, trust_strand, fusion_breakpoints,
                                   secondary_alignments=MINIMAP2_SECONDARY_ALIGNMENTS):
     """Align reads to transcripts with minimap2 and assign each to its best

@@ -1,7 +1,6 @@
 #! /usr/bin/env python3
 
 import os
-import glob
 import pysam
 import logging
 from collections import namedtuple
@@ -19,13 +18,13 @@ from flair.bed_to_gtf import bed_to_gtf
 from flair.isoform_data import make_big_bed
 from flair.fusion_table import write_fusion_table, write_table
 from flair.flair_transcriptome import DEFAULT_FILTER, parse_filter
-from flair.io_utils import GenomeFasta, run_program
+from flair.io_utils import GenomeFasta, keep_or_remove, make_run_temp_dir, run_program
 from flair.pycbio.sys import fileOps
 from flair.reuse import provenance, record_provenance, reuse_file
 from flair.run_checks import (check_annotation, check_option_ranges, check_sample_name, precheck,
                               report_result_count,
                               count_records)
-from flair.output_compress import compressed_path, open_output, open_fasta_output
+from flair.output_compress import compressed_path, open_output, open_fasta_output, output_paths
 
 # the programs a run executes, checked before it starts; it runs flair transcriptome
 # on the synthetic fusion genome, so that subcommand's programs are here too
@@ -41,7 +40,7 @@ def add_subparser(subparsers):
     required = parser.add_argument_group('required named arguments')
     required.add_argument('-g', '--genome', type=str, required=True,
                           help='FASTA of reference genome')
-    required.add_argument('-f', '--gtf', type=str, required=True,
+    required.add_argument('-f', '--gtf', dest='annot_gtf', metavar='GTF', type=str, required=True,
                           help='GTF annotation file, used for renaming FLAIR isoforms to annotated isoforms and adjusting TSS/TESs')
     required.add_argument('-b', '--genome_aligned_bam', type=str, required=True,
                           help='BAM file of reads aligned to the genome with minimap2 -ax splice.  All reads, '
@@ -106,12 +105,29 @@ def add_subparser(subparsers):
                              'aligning reads to annotated transcripts.  About half the time and a third of the '
                              'memory, and -b can then contain only the chimeric reads, but drops fusion reads whose '
                              'partner piece the genome alignment leaves clipped, particularly short 5\' exons')
+    parser.add_argument('--temp_dir',
+                        help='directory for temporary files; each run makes its own directory, named for the '
+                             'output, in it, with the annotated transcripts, the preliminary fusion reads and '
+                             'the synthetic fusion genome with its annotation, breakpoints, alignments and '
+                             'flair transcriptome output (default: $TMPDIR or the system temporary directory)')
     parser.add_argument('--keep_intermediate', action='store_true',
-                        help='keep the intermediate files: the annotated transcripts, the preliminary fusion '
-                             'reads, and the synthetic fusion genome with its annotation, breakpoints, '
-                             'alignments and flair transcriptome output, where the fusion isoforms can be '
-                             'viewed.  The chimeric reads bams and OUTPUT.fusions.prelim.bed are always kept')
+                        help="keep intermediate and temporary files for debugging, in the run's own directory, "
+                             'whose path the run reports: it is in --temp_dir when that is given and in $TMPDIR '
+                             'otherwise.  The fusion isoforms can be viewed on the synthetic fusion genome it '
+                             'contains.  The chimeric reads bams and OUTPUT.fusions.prelim.bed are beside the '
+                             'output and always kept')
     parser.set_defaults(entry=fusion_cmd)
+
+
+# what a run writes, so that an input that is one of them is rejected before the run
+# starts (precheck).  The bigBed and the two chimeric reads bams are the ones that do
+# not take the compression suffix
+OUTPUT_TEXT_SUFFIXES = ('.fusions.isoforms.bed', '.fusions.isoforms.gtf', '.fusions.isoforms.fa',
+                        '.fusions.isoforms.counts.tsv', '.fusions.isoforms.read.map.tsv',
+                        '.fusions.aaseq.tsv', '.fusions.tsv', '.fusions.prelim.bed')
+OUTPUT_BINARY_SUFFIXES = ('.fusions.isoforms.bb', '.genome_aligned.chim.bam',
+                          '.transcriptome_aligned.chim.bam')
+
 
 def fusion_cmd(args):
     check_sample_name(args.sample_name)
@@ -123,11 +139,13 @@ def fusion_cmd(args):
     check_option_ranges(args, fraction=('frac_support',),
                         count=('min_support', 'min_dist_between_breakpoints', 'max_partners', 'quality'),
                         positive=('threads', 'max_loci', 'min_fragment_size'))
-    precheck(files={'annotation GTF': args.gtf, 'aligned reads BAM': args.genome_aligned_bam},
-             programs=PROGRAMS, genome=args.genome, alignments=(args.genome_aligned_bam,))
-    detectfusions(genome=args.genome, gtf=args.gtf,
+    output = args.output if args.output is not None else args.sample_name
+    precheck(files={'annotation GTF': args.annot_gtf, 'aligned reads BAM': args.genome_aligned_bam},
+             programs=PROGRAMS, genome=args.genome, alignments=(args.genome_aligned_bam,),
+             outputs=output_paths(output, OUTPUT_TEXT_SUFFIXES, OUTPUT_BINARY_SUFFIXES))
+    detectfusions(genome=args.genome, annot_gtf=args.annot_gtf,
                   genome_aligned_bam=args.genome_aligned_bam, sample_name=args.sample_name,
-                  output=args.output if args.output is not None else args.sample_name,
+                  output=output,
                   threads=args.threads, min_fragment_size=args.min_fragment_size,
                   min_support=args.min_support, max_loci=args.max_loci,
                   # -1 turns the TSS distance check off
@@ -135,7 +153,7 @@ def fusion_cmd(args):
                   min_dist_between_breakpoints=args.min_dist_between_breakpoints,
                   frac_support=args.frac_support, subset_filter=args.filter, quality=args.quality,
                   max_partners=args.max_partners, transcriptome_alignment=not args.no_transcriptome_alignment,
-                  keep_intermediate=args.keep_intermediate)
+                  keep_intermediate=args.keep_intermediate, temp_dir=args.temp_dir)
 
 def report_nofusions(outputprefix):
     # the empty outputs; the run goes on to report the fusion count, which states
@@ -210,14 +228,14 @@ Annotation = namedtuple('Annotation', ['genetoinfo', 'genetoname', 'chrom_to_gen
                                        'juncs_to_gene', 'intronLocs', 'intronToGenome', 'gene_to_paralogs'])
 
 
-def align_reads_to_transcripts(genome, gtf_data, output, reads_fa, nreads, threads, min_fragment_size):
+def align_reads_to_transcripts(genome, gtf_data, output, work, reads_fa, nreads, threads, min_fragment_size):
     "the chimeric alignments of reads_fa to the annotated transcripts, in OUTPUT.transcriptome_aligned.chim.bam"
     logging.info('aligning to transcriptome and getting chimeric reads')
     transcriptchimbam = output + '.transcriptome_aligned.chim.bam'
-    annotated_bed = output + '.annotated_transcripts.bed'
+    annotated_bed = work + '.annotated_transcripts.bed'
     gtf_data_to_bed(annotated_bed, gtf_data, include_gene=True, name_sep='|')
-    annotated_fa = output + '.annotated_transcripts.fa'
-    get_sequence_from_bed(genome, output + '.annotated_transcripts.bed', annotated_fa)
+    annotated_fa = work + '.annotated_transcripts.fa'
+    get_sequence_from_bed(genome, annotated_bed, annotated_fa)
 
     logging.info(f'{nreads} reads to align to transcripts')
     mm2_cmd = ('minimap2', '-a', '-s', str(min_fragment_size), '-t', str(threads), '--secondary=no',
@@ -242,7 +260,7 @@ def _chimeric_bam_provenances(genome, annot_gtf, genome_aligned_bam, min_fragmen
             provenance(files=(genome_aligned_bam, genome, annot_gtf), options=options))
 
 
-def make_chimeric_bams(genome, gtf_data, annot_gtf, genome_aligned_bam, output, threads, min_fragment_size,
+def make_chimeric_bams(genome, gtf_data, annot_gtf, genome_aligned_bam, output, work, threads, min_fragment_size,
                        transcriptome_alignment):
     """The chimeric reads of the genome alignment and of the alignment to annotated
     transcripts, each unless an earlier run left one made from the same inputs and
@@ -256,7 +274,7 @@ def make_chimeric_bams(genome, gtf_data, annot_gtf, genome_aligned_bam, output, 
                                what="the genome alignment's chimeric reads")
     align_to_transcripts = transcriptome_alignment and not reuse_file(
         transcriptchimbam, transcript_prov, what='the chimeric alignments to the annotated transcripts')
-    transcriptome_reads_fa = output + '.transcriptome_reads.fa'
+    transcriptome_reads_fa = work + '.transcriptome_reads.fa'
     transcriptome_reads = None
     if make_chim or transcriptome_alignment:
         logging.info('getting chimeric reads from genome')
@@ -267,8 +285,8 @@ def make_chimeric_bams(genome, gtf_data, annot_gtf, genome_aligned_bam, output, 
             pysam.index(genomechimbam)
             record_provenance(genomechimbam, genome_prov)
     if align_to_transcripts:
-        align_reads_to_transcripts(genome, gtf_data, output, transcriptome_reads_fa, len(transcriptome_reads),
-                                   threads, min_fragment_size)
+        align_reads_to_transcripts(genome, gtf_data, output, work, transcriptome_reads_fa,
+                                   len(transcriptome_reads), threads, min_fragment_size)
         record_provenance(transcriptchimbam, transcript_prov)
     return transcriptome_reads
 
@@ -287,12 +305,13 @@ def parse_gtf(gtf_data):
             genetoname[gene_id] = transcript.gene_name if transcript.gene_name else gene_id
             juncs_to_gene.setdefault(transcript.chrom, {})
         info = genetoinfo[gene_id]
-        if transcript.chrom != info[0]:
-            continue
-        info[1], info[2] = min(info[1], transcript.start), max(info[2], transcript.end)
-        info[4].append(transcript.start if transcript.strand == '+' else transcript.end)
-        if len(transcript.exons) > 0:
-            genetoexons.setdefault(gene_id, {})[transcript.transcript_id] = [(e.start, e.end) for e in transcript.exons]
+        # a transcript of the gene on another chromosome is left out of its bounds
+        if transcript.chrom == info[0]:
+            info[1], info[2] = min(info[1], transcript.start), max(info[2], transcript.end)
+            info[4].append(transcript.start if transcript.strand == '+' else transcript.end)
+            if len(transcript.exons) > 0:
+                genetoexons.setdefault(gene_id, {})[transcript.transcript_id] = [(e.start, e.end)
+                                                                                 for e in transcript.exons]
     for gene_id, (chrom, start, end, strand, _) in genetoinfo.items():
         chrom_to_gene_pos.setdefault(chrom, []).append((start, end, strand, gene_id))
     for chrom in chrom_to_gene_pos:
@@ -396,13 +415,13 @@ def write_fusion_reads(fusionreads, bams, fasta):
                         seenreads.add(a.query_name)
 
 
-def make_synthetic_genome(gtf, gtf_data, genome, output):
+def make_synthetic_genome(annot_gtf, gtf_data, genome, prelim_bed, work):
     "the synthetic fusion genome and its annotation; False if it contains no fusion"
     logging.info('generating synthetic reference')
-    make_synthetic_reference(gtf_data, gtf, genome, output + '.fusions.prelim.bed', output)
-    if os.path.getsize(output + '.synthetic_fusion_genome.fa') == 0:
+    make_synthetic_reference(gtf_data, annot_gtf, genome, prelim_bed, work)
+    if os.path.getsize(work + '.synthetic_fusion_genome.fa') == 0:
         return False
-    run_program([('samtools', 'faidx', output + '.synthetic_fusion_genome.fa')])
+    run_program([('samtools', 'faidx', work + '.synthetic_fusion_genome.fa')])
     return True
 
 
@@ -420,61 +439,65 @@ def choose_synthetic_alignments(withsplice_bam, nosplice_bam):
                 rname_to_read[a.query_name] = a
     with pysam.AlignmentFile(nosplice_bam, 'rb') as bamfile:
         for a in bamfile:
-            if not is_primary(a):
-                continue
-            if a.query_name not in rname_to_read:
-                rname_to_read[a.query_name] = a
-                continue
-            nosplice_match, nosplice_insert = a.get_cigar_stats()[0][0], a.get_cigar_stats()[0][1]
-            withsplice_stats = rname_to_read[a.query_name].get_cigar_stats()[0]
-            if nosplice_match > withsplice_stats[0] and nosplice_insert < withsplice_stats[1]:
-                rname_to_read[a.query_name] = a
+            if is_primary(a):
+                if a.query_name not in rname_to_read:
+                    rname_to_read[a.query_name] = a
+                else:
+                    nosplice_match, nosplice_insert = a.get_cigar_stats()[0][0], a.get_cigar_stats()[0][1]
+                    withsplice_stats = rname_to_read[a.query_name].get_cigar_stats()[0]
+                    if nosplice_match > withsplice_stats[0] and nosplice_insert < withsplice_stats[1]:
+                        rname_to_read[a.query_name] = a
     return rname_to_read
 
 
-def align_to_synthetic_genome(output, freadsname, min_fragment_size, threads):
-    "OUTPUT.synthetic_aligned.bam: each fusion read's better alignment to the synthetic genome"
+def align_to_synthetic_genome(work, freadsname, min_fragment_size, threads):
+    "WORK.synthetic_aligned.bam: each fusion read's better alignment to the synthetic genome"
     logging.info('aligning to synthetic fusion genome')
-    synth_fa = output + '.synthetic_fusion_genome.fa'
-    withsplice, nosplice = output + '.synthetic_aligned.withsplice.bam', output + '.synthetic_aligned.nosplice.bam'
+    synth_fa = work + '.synthetic_fusion_genome.fa'
+    withsplice, nosplice = work + '.synthetic_aligned.withsplice.bam', work + '.synthetic_aligned.nosplice.bam'
     align_to_synth_genome(synth_fa, freadsname, nosplice,
                           ['-s', str(min_fragment_size), '-t', str(threads), '-un', '--secondary=no', '-G', '1000k'])
     align_to_synth_genome(synth_fa, freadsname, withsplice,
                           ['-s', str(min_fragment_size), '-t', str(threads), '--secondary=no', '-G', '1000k'])
     rname_to_read = choose_synthetic_alignments(withsplice, nosplice)
     with pysam.AlignmentFile(withsplice, 'rb') as template, \
-            pysam.AlignmentFile(output + '.synthetic_aligned.unsorted.bam', 'wb', template=template) as outbam:
+            pysam.AlignmentFile(work + '.synthetic_aligned.unsorted.bam', 'wb', template=template) as outbam:
         for a in rname_to_read:
             outbam.write(rname_to_read[a])
-    with fileOps.AtomicFileCreate(output + '.synthetic_aligned.bam') as tmp_bam:
-        run_program([('samtools', 'sort', '-o', tmp_bam, output + '.synthetic_aligned.unsorted.bam')])
-    run_program([('samtools', 'index', output + '.synthetic_aligned.bam')])
+    with fileOps.AtomicFileCreate(work + '.synthetic_aligned.bam') as tmp_bam:
+        run_program([('samtools', 'sort', '-o', tmp_bam, work + '.synthetic_aligned.unsorted.bam')])
+    run_program([('samtools', 'index', work + '.synthetic_aligned.bam')])
     run_program([('rm', withsplice, withsplice + '.bai', nosplice, nosplice + '.bai',
-                  output + '.synthetic_aligned.unsorted.bam')])
+                  work + '.synthetic_aligned.unsorted.bam')])
 
 
-def write_synthetic_junctions(output):
-    "OUTPUT.synthetic_aligned.SJ.bed: the junctions of the synthetic alignments to pass flair transcriptome"
+def write_synthetic_junctions(work):
+    "WORK.synthetic_aligned.SJ.bed: the junctions of the synthetic alignments to pass flair transcriptome"
     logging.info('finding the splice sites of the synthetic alignments')
-    with fileOps.AtomicFileCreate(f'{output}.synthetic_aligned.IPSJ.bed') as tmp_bed:
-        ipcmd = ('intron-prospector', f'--genome-fasta={output}.synthetic_fusion_genome.fa',
+    with fileOps.AtomicFileCreate(f'{work}.synthetic_aligned.IPSJ.bed') as tmp_bed:
+        ipcmd = ('intron-prospector', f'--genome-fasta={work}.synthetic_fusion_genome.fa',
                  f'--intron-bed6={tmp_bed}', '-C', '0.0', '--sj-filter=all',
-                 f'{output}.synthetic_aligned.bam')
+                 f'{work}.synthetic_aligned.bam')
         run_program([ipcmd])
 
     fusiontobp = {}
-    for bed in BedReader(f'{output}.synthetic_breakpoint_loc.bed', numStdCols=3):
+    for bed in BedReader(f'{work}.synthetic_breakpoint_loc.bed', numStdCols=3):
         fusiontobp[bed.chrom] = bed.chromStart
 
-    crossing = count_breakpoint_reads(f'{output}.synthetic_aligned.bam', fusiontobp)
-    good_sj = select_junctions(BedReader(f'{output}.synthetic_aligned.IPSJ.bed', numStdCols=6), fusiontobp, crossing)
+    crossing = count_breakpoint_reads(f'{work}.synthetic_aligned.bam', fusiontobp)
+    # rawScores: the score is intron-prospector's read count, kept as it is rather
+    # than clamped to the 1000 of the BED convention, so it compares with the reads
+    # counted across the breakpoint
+    good_sj = select_junctions(BedReader(f'{work}.synthetic_aligned.IPSJ.bed', numStdCols=6, rawScores=True),
+                               fusiontobp, crossing)
 
-    with open(f'{output}.synthetic_aligned.SJ.bed', 'w') as out:
+    with open(f'{work}.synthetic_aligned.SJ.bed', 'w') as out:
         for line in good_sj:
             out.write('\t'.join(line) + '\n')
 
 
-def run_synthetic_transcriptome(output, sample_name, threads, frac_support, subset_filter=DEFAULT_FILTER):
+def run_synthetic_transcriptome(work, sample_name, threads, frac_support, subset_filter, *,
+                                run_dir, keep_intermediate):
     "flair transcriptome on the reads aligned to the synthetic fusion genome"
     # NOTE: only the chimeric reads supporting a fusion (fusionreads above) are
     # aligned to the synthetic genome, and this transcriptome call would throw out
@@ -482,9 +505,9 @@ def run_synthetic_transcriptome(output, sample_name, threads, frac_support, subs
     # only accepts an alignment that covers a fusion breakpoint (check_fusionbp).
     # Realigning all reads through flair fusion would need that changed as well.
     transcriptome_command = ['flair', 'transcriptome',
-                             '--genome_aligned_bam', output + '.synthetic_aligned.bam',
-                             '--genome', output + '.synthetic_fusion_genome.fa',
-                             '--gtf', output + '.synthetic_reference_anno.gtf',
+                             '--genome_aligned_bam', work + '.synthetic_aligned.bam',
+                             '--genome', work + '.synthetic_fusion_genome.fa',
+                             '--gtf', work + '.synthetic_reference_anno.gtf',
                              '--ss_window', '8',
                              '--generate_map',
                              '--quality', '0',
@@ -494,12 +517,17 @@ def run_synthetic_transcriptome(output, sample_name, threads, frac_support, subs
                              '--end_window', '300',
                              '--frac_support', str(frac_support),
                              '--no_align_to_annot',
-                             '--fusion_breakpoints', output + '.synthetic_breakpoint_loc.bed',
+                             '--fusion_breakpoints', work + '.synthetic_breakpoint_loc.bed',
                              '--sample_name', sample_name,
-                             '--output', output + '.synthetic_aligned.flair',
-                             '--threads', str(threads)]
+                             '--output', work + '.synthetic_aligned.flair',
+                             '--threads', str(threads),
+                             # its temporary files go in this run's directory, where they are
+                             # removed or kept with the rest
+                             '--temp_dir', run_dir]
+    if keep_intermediate:
+        transcriptome_command.append('--keep_intermediate')
     # only include junction if any where found
-    junc_bed = output + '.synthetic_aligned.SJ.bed'
+    junc_bed = work + '.synthetic_aligned.SJ.bed'
     if os.path.exists(junc_bed) and (os.path.getsize(junc_bed) > 0):
         transcriptome_command.extend(['--junction_bed', junc_bed])
 
@@ -527,98 +555,92 @@ def filter_by_first_column(in_tsv, out_tsv, names, header=False):
                 out.write(line)
 
 
-def write_final_fusions(output, genome, min_dist_between_breakpoints, genetoname, gtf_data):
+def write_final_fusions(output, work, genome, min_dist_between_breakpoints, genetoname, gtf_data):
     """the fusion isoforms in genome coordinates, as flair transcriptome writes its
     isoforms: bed, sequences, counts, reads, proteins, GTF and bigBed"""
     logging.info('converting coordinates from synthetic to genomic')
-    iso_genes = convert_synthetic_isos(output + '.synthetic_aligned.flair.isoforms.bed', output + '.synthetic_breakpoint_loc.bed',
+    iso_genes = convert_synthetic_isos(work + '.synthetic_aligned.flair.isoforms.bed', work + '.synthetic_breakpoint_loc.bed',
                                        compressed_path(output + '.fusions.isoforms.bed'), min_dist_between_breakpoints,
                                        AnnotsByChrom(gtf_data))
 
     fusion_beds = list(BedReader(compressed_path(output + '.fusions.isoforms.bed'), fixScores=True, bedClass=FlairBed))
     goodisos = {bed.name for bed in fusion_beds}
-    filter_fasta(output + '.synthetic_aligned.flair.isoforms.fa', output + '.fusions.isoforms.fa', goodisos)
-    filter_by_first_column(output + '.synthetic_aligned.flair.isoforms.counts.tsv',
+    filter_fasta(work + '.synthetic_aligned.flair.isoforms.fa', output + '.fusions.isoforms.fa', goodisos)
+    filter_by_first_column(work + '.synthetic_aligned.flair.isoforms.counts.tsv',
                            output + '.fusions.isoforms.counts.tsv', goodisos, header=True)
-    filter_by_first_column(output + '.synthetic_aligned.flair.isoforms.read.map.tsv',
+    filter_by_first_column(work + '.synthetic_aligned.flair.isoforms.read.map.tsv',
                            output + '.fusions.isoforms.read.map.tsv', goodisos, header=True)
-    filter_by_first_column(output + '.synthetic_aligned.flair.aaseq.tsv', output + '.fusions.aaseq.tsv',
+    filter_by_first_column(work + '.synthetic_aligned.flair.aaseq.tsv', output + '.fusions.aaseq.tsv',
                            {bed.aaseq_id for bed in fusion_beds if bed.aaseq_id is not None}, header=True)
 
-    write_fusion_table(output, iso_genes, genetoname)
+    write_fusion_table(output, work, iso_genes, genetoname)
 
     bed_to_gtf(compressed_path(output + '.fusions.isoforms.bed'),
                compressed_path(output + '.fusions.isoforms.gtf'), is_flair_bed=True)
 
     with GenomeFasta(genome) as genome_fa:
-        make_big_bed(genome_fa, output + '.synthetic_aligned.flair.chrom.sizes', output + '.fusions.isoforms')
+        make_big_bed(genome_fa, output + '.fusions.isoforms')
 
 
-INTERMEDIATE_SUFFIXES = ('.annotated_transcripts.bed', '.annotated_transcripts.fa', '.fusionreads.prelim.fa',
-                         '.synthetic_fusion_genome.fa', '.synthetic_fusion_genome.fa.fai', '.synthetic_reference_anno.gtf',
-                         '.synthetic_breakpoint_loc.bed', '.synthetic_aligned.bam', '.synthetic_aligned.bam.bai',
-                         '.synthetic_aligned.IPSJ.bed', '.synthetic_aligned.SJ.bed')
-
-
-def remove_intermediates(output):
-    "remove the files --keep_intermediate keeps"
-    for filename in [output + suffix for suffix in INTERMEDIATE_SUFFIXES] \
-            + glob.glob(glob.escape(output) + '.synthetic_aligned.flair*'):
-        if os.path.exists(filename):
-            os.remove(filename)
-
-
-def detectfusions(*, genome, gtf, genome_aligned_bam, sample_name, output, threads,
+def detectfusions(*, genome, annot_gtf, genome_aligned_bam, sample_name, output, threads,
                   min_fragment_size, min_support, max_loci, max_dist_to_tss,
-                  min_dist_between_breakpoints, keep_intermediate, frac_support=0.05, subset_filter=DEFAULT_FILTER, quality=10,
-                  transcriptome_alignment=True, max_partners=1000):
+                  min_dist_between_breakpoints, keep_intermediate, temp_dir=None, frac_support=0.05,
+                  subset_filter=DEFAULT_FILTER, quality=10, transcriptome_alignment=True, max_partners=1000):
     # fusion detection relies on stranded reads, as the help and docs state: a read's pieces
     # are ordered 5' to 3' by their position in the read
     # parsed once for everything that needs the annotation.  Without CDS records,
     # which nothing here uses, it takes a third less memory and time
     logging.info('loading annotation GTF')
-    gtf_data = gtf_data_parser(gtf, attrs=GtfAttrsSet.FLAIR, include_features=TRANSCRIPT_EXON_FEATURES)
+    gtf_data = gtf_data_parser(annot_gtf, attrs=GtfAttrsSet.FLAIR, include_features=TRANSCRIPT_EXON_FEATURES)
     check_annotation(gtf_data, genome)
-    transcriptome_reads = make_chimeric_bams(genome, gtf_data, gtf, genome_aligned_bam, output, threads,
-                                             min_fragment_size, transcriptome_alignment)
-    annot = read_annotation(gtf_data)
-    logging.info('finding preliminary fusions')
-    # only the reads that needed aligning to transcripts, as a bam left by an earlier
-    # run may contain others.  A read aligned to the genome in one piece is left out, and
-    # with it a fusion from a deletion between genes closer than the genome aligner's
-    # maximum intron length, which aligns to the genome as one spliced read
-    prelim_fusions = id_chimeras(output + '.genome_aligned.chim.bam', annot, min_support, max_loci=max_loci,
-                                 max_dist_to_tss=max_dist_to_tss, max_partners=max_partners,
-                                 transcriptome_bam=output + '.transcriptome_aligned.chim.bam' if transcriptome_alignment else None,
-                                 min_mapq=quality, transcriptome_reads=transcriptome_reads)
-    fusionreads = write_prelim_fusions(prelim_fusions, output + '.fusions.prelim.bed')
-    if os.path.getsize(output + '.fusions.prelim.bed') > 0:
-        find_fusion_isoforms(fusionreads, gtf, gtf_data, genome, output, sample_name, threads, min_fragment_size,
-                             min_dist_between_breakpoints, frac_support, subset_filter, transcriptome_alignment,
-                             annot.genetoname)
-    else:
-        report_nofusions(output)
-    report_result_count('fusion', count_records(compressed_path(output + '.fusions.tsv')) - 1,
-                        remedy='check that the reads are stranded and aligned with minimap2 -ax splice, or '
-                        'lower --min_support')
-    if not keep_intermediate:
-        remove_intermediates(output)
+    # the intermediate files go in a directory of this run's own, removed at the end
+    # unless they were asked for.  The chimeric reads bams and the preliminary fusions
+    # are beside the output, where a later run finds them
+    run_dir = make_run_temp_dir(output, temp_dir)
+    logging.info(f'temporary files in {run_dir}')
+    with keep_or_remove(run_dir, keep_intermediate):
+        work = run_dir + os.path.basename(output)
+        transcriptome_reads = make_chimeric_bams(genome, gtf_data, annot_gtf, genome_aligned_bam, output, work,
+                                                 threads, min_fragment_size, transcriptome_alignment)
+        annot = read_annotation(gtf_data)
+        logging.info('finding preliminary fusions')
+        # only the reads that needed aligning to transcripts, as a bam left by an earlier
+        # run may contain others.  A read aligned to the genome in one piece is left out, and
+        # with it a fusion from a deletion between genes closer than the genome aligner's
+        # maximum intron length, which aligns to the genome as one spliced read
+        prelim_fusions = id_chimeras(output + '.genome_aligned.chim.bam', annot, min_support, max_loci=max_loci,
+                                     max_dist_to_tss=max_dist_to_tss, max_partners=max_partners,
+                                     transcriptome_bam=output + '.transcriptome_aligned.chim.bam' if transcriptome_alignment else None,
+                                     min_mapq=quality, transcriptome_reads=transcriptome_reads)
+        fusionreads = write_prelim_fusions(prelim_fusions, output + '.fusions.prelim.bed')
+        if os.path.getsize(output + '.fusions.prelim.bed') > 0:
+            find_fusion_isoforms(fusionreads, annot_gtf, gtf_data, genome, output, work, sample_name, threads,
+                                 min_fragment_size, min_dist_between_breakpoints, frac_support, subset_filter,
+                                 transcriptome_alignment, annot.genetoname,
+                                 run_dir=run_dir, keep_intermediate=keep_intermediate)
+        else:
+            report_nofusions(output)
+        report_result_count('fusion', count_records(compressed_path(output + '.fusions.tsv')) - 1,
+                            remedy='check that the reads are stranded and aligned with minimap2 -ax splice, or '
+                            'lower --min_support')
 
 
-def find_fusion_isoforms(fusionreads, gtf, gtf_data, genome, output, sample_name, threads, min_fragment_size,
-                         min_dist_between_breakpoints, frac_support, subset_filter, transcriptome_alignment, genetoname):
+def find_fusion_isoforms(fusionreads, annot_gtf, gtf_data, genome, output, work, sample_name, threads,
+                         min_fragment_size, min_dist_between_breakpoints, frac_support, subset_filter,
+                         transcriptome_alignment, genetoname, *, run_dir, keep_intermediate):
     "the fusion isoforms of the preliminary fusions' reads, from the synthetic fusion genome"
     logging.info('obtaining fusion reads')
-    freadsname = output + '.fusionreads.prelim.fa'
+    freadsname = work + '.fusionreads.prelim.fa'
     chim_bams = [output + '.genome_aligned.chim.bam']
     if transcriptome_alignment:
         chim_bams.append(output + '.transcriptome_aligned.chim.bam')
     write_fusion_reads(fusionreads, chim_bams, freadsname)
 
-    if not make_synthetic_genome(gtf, gtf_data, genome, output):
+    if not make_synthetic_genome(annot_gtf, gtf_data, genome, output + '.fusions.prelim.bed', work):
         report_nofusions(output)
         return
-    align_to_synthetic_genome(output, freadsname, min_fragment_size, threads)
-    write_synthetic_junctions(output)
-    run_synthetic_transcriptome(output, sample_name, threads, frac_support, subset_filter)
-    write_final_fusions(output, genome, min_dist_between_breakpoints, genetoname, gtf_data)
+    align_to_synthetic_genome(work, freadsname, min_fragment_size, threads)
+    write_synthetic_junctions(work)
+    run_synthetic_transcriptome(work, sample_name, threads, frac_support, subset_filter,
+                                run_dir=run_dir, keep_intermediate=keep_intermediate)
+    write_final_fusions(output, work, genome, min_dist_between_breakpoints, genetoname, gtf_data)

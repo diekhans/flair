@@ -228,7 +228,8 @@ flair fusion
 - ``--sample_name`` is required
 - ``--max_dist_to_tss``, ``--min_dist_between_breakpoints``, ``--max_partners``
 - ``--frac_support``, ``--quality``, ``--no_transcriptome_alignment``
-- ``--keep_intermediate``
+- ``--keep_intermediate`` and ``--temp_dir``: the intermediate files are in a directory
+  of the run's own rather than beside the output
 
 **Outputs**
 

@@ -92,11 +92,12 @@ def write_table(rows, tsv):
             out.write('\t'.join(str(x) for x in row) + '\n')
 
 
-def write_fusion_table(output, iso_genes, genetoname):
+def write_fusion_table(output, work, iso_genes, genetoname):
     """OUTPUT.fusions.tsv, from the run's preliminary fusions and final isoforms, with
-    iso_genes, isoform -> its final genes (convert_synthetic_isos)"""
+    iso_genes, isoform -> its final genes (convert_synthetic_isos).  work is the prefix
+    of the run's intermediate files, which the isoforms on the synthetic genome are"""
     rows = fusion_rows(prelim_read_counts(output + '.fusions.prelim.bed'),
-                       isoform_contigs(output + '.synthetic_aligned.flair.isoforms.bed'), iso_genes,
+                       isoform_contigs(work + '.synthetic_aligned.flair.isoforms.bed'), iso_genes,
                        isoform_read_counts(compressed_path(output + '.fusions.isoforms.read.map.tsv')),
                        isoform_pieces(compressed_path(output + '.fusions.isoforms.bed')),
                        genetoname)

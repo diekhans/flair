@@ -75,46 +75,48 @@ def bed_to_gtf(query, outputfile, force=False, use_cds=True, is_flair_bed=False)
     """convert a BED to a GTF, gzipping it when the output name ends in .gz, and
     return how many isoforms were written"""
     gene_to_records = _collect_gene_records(query, force, use_cds, is_flair_bed)
-    with fileOps.opengz(outputfile, 'w') as outfile:
+    # through a temporary file, so an interrupted run leaves no partial GTF
+    with fileOps.AtomicFileOpen(outputfile, 'w') as outfile:
         for gene_id, records in gene_to_records.items():
             _write_gene_records(outfile, gene_id, records)
     return sum(len(records) for records in gene_to_records.values())
 
-def _collect_gene_records(query, force, use_cds, is_flair_bed):  # noqa: C901 - FIXME: reduce complexity
+def _record_ids(query, bed, force, is_flair_bed):
+    "the transcript and gene ids of a BED row; a ';' in a name is a GTF separator"
+    name = bed.name.replace(';', ':')
+    if is_flair_bed:
+        if bed.gene_id is None:
+            raise FlairInputDataError(f'{query}: isoform {name} has no gene id in column 13; every row of a '
+                                      'flair BED must name its gene, or use --force to take each isoform '
+                                      'name as its gene id')
+        return name, bed.gene_id
+    if force:
+        return name, name
+    raise FlairInputDataError(f'{query} has no gene ids: give --is_flair_bed for a bed from flair, whose gene '
+                              'ids are in column 13, or --force to use each isoform name as its gene id too')
+
+
+def _add_bed_records(records, bed, transcript_id, gene_id, *, is_flair_bed, use_cds):
+    "the transcript, exon, CDS and UTR records of one BED row"
+    attrs = _make_attrs(gene_id, transcript_id, bed, is_flair_bed)
+    _add_record(records, ('transcript', bed.chrom, bed.chromStart, bed.chromEnd, bed.strand, attrs))
+    for b, blk in enumerate(bed.blocks):
+        # 1-based and counted 5' to 3', as the GTF specification has it
+        number = b + 1 if bed.strand == '+' else len(bed.blocks) - b
+        exon_attrs = _make_attrs(gene_id, transcript_id, bed, is_flair_bed, exon_number=number)
+        _add_record(records, ('exon', bed.chrom, blk.start, blk.end, bed.strand, exon_attrs))
+        if use_cds and _has_cds(bed):
+            _add_cds_records(records, bed, blk, attrs, exon_attrs)
+
+
+def _collect_gene_records(query, force, use_cds, is_flair_bed):
+    "gene id -> the GTF records of its BED rows, in the order the BED has them"
     gene_to_records = {}
-    my_bed_class = FlairBed if is_flair_bed else Bed
-    for bed in BedReader(query, bedClass=my_bed_class):
-        name = bed.name
-        if ';' in name:
-            name = name.replace(';', ':')
-
-        if is_flair_bed:
-            transcript_id = name
-            gene_id = bed.gene_id
-            if gene_id is None:
-                raise FlairInputDataError(f'{query}: isoform {name} has no gene id in column 13; every row of a '
-                                          'flair BED must name its gene, or use --force to take each isoform '
-                                          'name as its gene id')
-        elif force:
-            transcript_id, gene_id = name, name
-        else:
-            raise FlairInputDataError(f'{query} has no gene ids: give --is_flair_bed for a bed from flair, whose gene '
-                                      'ids are in column 13, or --force to use each isoform name as its gene id too')
-
-        if gene_id not in gene_to_records:
-            gene_to_records[gene_id] = []
-
-        attrs = _make_attrs(gene_id, transcript_id, bed, is_flair_bed)
-        _add_record(gene_to_records[gene_id], ('transcript', bed.chrom, bed.chromStart, bed.chromEnd, bed.strand, attrs))
-
-        for b, blk in enumerate(bed.blocks):
-            # 1-based and counted 5' to 3', as the GTF specification has it
-            number = b + 1 if bed.strand == '+' else len(bed.blocks) - b
-            exon_attrs = _make_attrs(gene_id, transcript_id, bed, is_flair_bed, exon_number=number)
-            _add_record(gene_to_records[gene_id], ('exon', bed.chrom, blk.start, blk.end, bed.strand, exon_attrs))
-            if use_cds and _has_cds(bed):
-                _add_cds_records(gene_to_records[gene_id], bed, blk, attrs, exon_attrs)
-
+    bed_class = FlairBed if is_flair_bed else Bed
+    for bed in BedReader(query, bedClass=bed_class):
+        transcript_id, gene_id = _record_ids(query, bed, force, is_flair_bed)
+        _add_bed_records(gene_to_records.setdefault(gene_id, []), bed, transcript_id, gene_id,
+                         is_flair_bed=is_flair_bed, use_cds=use_cds)
     return gene_to_records
 
 

@@ -9,7 +9,8 @@ from flair.counts_matrix_tsv import CountsRow, write_counts_matrix
 from flair.io_utils import GenomeFasta, open_sorted_bed, read_manifest_rows
 from flair.run_checks import (check_annotation, check_input_files, check_option_ranges, precheck,
                               report_result_count, count_records)
-from flair.output_compress import compressed_path, open_fasta_output, open_output, resolved_input_path
+from flair.output_compress import (compressed_path, open_fasta_output, open_output, output_paths,
+                                   resolved_input_path)
 from flair.pycbio.hgdata.bed import BedBlock
 from flair.flair_bed import FlairBedReader
 from statistics import median
@@ -23,13 +24,21 @@ from flair.convert_synthetic_to_genome_bed import piece_gene
 # the programs a run executes, checked before it starts
 PROGRAMS = ('bedToBigBed',)
 
+# what a run writes, so that an input that is one of them is rejected before the run
+# starts (precheck).  The bigBed is the one that does not take the compression suffix
+OUTPUT_TEXT_SUFFIXES = ('.combined.isoforms.bed', '.combined.isoforms.fa', '.combined.isoforms.gtf',
+                        '.combined.isoforms.counts.tsv', '.combined.isoforms.map.tsv',
+                        '.combined.genes.map.tsv', '.combined.aaseq.tsv')
+OUTPUT_BINARY_SUFFIXES = ('.combined.isoforms.bb',)
+
 
 def add_subparser(subparsers):
     desc = ("Combine FLAIR transcriptomes into one.  Each input is a flair BED, with the "
             "read support columns flair transcriptome, flair fusion and flair isoalleles write")
     parser = subparsers.add_parser('combine', help="Combine transcriptomes from multiple samples",
                                    description=desc)
-    mutexc = parser.add_mutually_exclusive_group(required=True)
+    required = parser.add_argument_group('required named arguments')
+    mutexc = required.add_mutually_exclusive_group(required=True)
     mutexc.add_argument('--manifest', type=str,
                         help="file naming the flair isoform BEDs to combine, one path a line, as in "
                         "path/to/isoforms.bed.  Blank lines and lines starting with '#' are skipped; "
@@ -41,17 +50,17 @@ def add_subparser(subparsers):
     mutexc.add_argument('--isoform_beds', type=str, action='append',
                         help="paths of the flair isoform BEDs to combine; give several comma "
                         "separated, or repeat the option, or both")
-    parser.add_argument('-g', '--genome', required=True,
-                        help='genome FASTA, read for the isoform sequences, the protein predictions and '
-                        'the chromosome sizes of the bigBed')
-    parser.add_argument('-f', '--gtf', default=None,
+    required.add_argument('-g', '--genome', required=True,
+                          help='genome FASTA, read for the isoform sequences, the protein predictions and '
+                          'the chromosome sizes of the bigBed')
+    parser.add_argument('-f', '--gtf', dest='annot_gtf', metavar='GTF', default=None,
                         help='an annotation GTF.  With it, each combined isoform is given its gene, reference transcript, '
                         'CDS, productivity and protein from this annotation, as flair transcriptome gives them, whatever '
                         'annotation the samples were run with, so samples run with different annotations or FLAIR versions '
                         'can be combined, and the proteins are written to combined.aaseq.tsv.  Fusion isoforms keep the '
                         'samples\' genes.  Without it, the samples\' genes, CDS and productivity are used, isoforms from '
                         'different samples with different genes are an error, and isoforms have no protein ids')
-    parser.add_argument('-o', '--output', default='flair.combined.isoforms',
+    parser.add_argument('-o', '--output', default='flair',
                         help="prefix for output file (default: %(default)s)")
     parser.add_argument('--end_window', type=int, default=200,
                         help="window, in bases, for comparing ends of isoforms with the same intron chain (default: %(default)s)")
@@ -81,28 +90,14 @@ def combine_cmd(args):
     # the manifest names the BEDs, so it is checked before it is read
     check_input_files({'manifest': args.manifest})
     isoform_beds = parse_input(args.manifest, args.prefixes, args.isoform_beds)
-    precheck(files={'isoform BED': isoform_beds, 'annotation GTF': args.gtf},
-             programs=PROGRAMS, genome=args.genome, isoform_beds=isoform_beds)
+    precheck(files={'isoform BED': isoform_beds, 'annotation GTF': args.annot_gtf},
+             programs=PROGRAMS, genome=args.genome, isoform_beds=isoform_beds,
+             outputs=output_paths(args.output, OUTPUT_TEXT_SUFFIXES, OUTPUT_BINARY_SUFFIXES))
     combine(manifest=args.manifest, prefixes=args.prefixes, isoform_beds=args.isoform_beds,
-            genome=args.genome, annotation=args.gtf, output=args.output, end_window=args.end_window,
+            genome=args.genome, annotation=args.annot_gtf, output=args.output, end_window=args.end_window,
             frac_support=args.frac_support,
             remove_single_exon=args.remove_single_exon, max_ends=args.max_ends,
             min_reads=args.min_reads)
-
-# def bedReadToIntronChain(bed):
-#     introns = []
-#     for i in range(len(bed.blocks) - 1):
-#         introns.append((bed.blocks[i].end, bed.blocks[i + 1].start))
-#     # strand is not accounted for here, all intron chains will be left to right
-#     return tuple(introns)
-
-# def intronChainToestarts(ichain, start, end):
-#     esizes, estarts = [], [0,]
-#     for i in ichain:
-#         esizes.append(i[0] - (start + estarts[-1]))
-#         estarts.append(i[1] - start)
-#     esizes.append(end - (start + estarts[-1]))
-#     return esizes, estarts
 
 def _longest_first(bed_list):
     """a sort key, reversed, for a sample's isoform: longest, then one without an
@@ -630,7 +625,7 @@ def combine(*, manifest, prefixes, isoform_beds, genome, output, end_window,
     bed_to_gtf(compressed_path(output + '.combined.isoforms.bed'),
                compressed_path(output + '.combined.isoforms.gtf'), is_flair_bed=True)
 
-    make_big_bed(genome_fa, output + '.chrom.sizes', output + '.combined.isoforms')
+    make_big_bed(genome_fa, output + '.combined.isoforms')
     genome_fa.close()
 
     report_result_count('combined isoform', count_records(compressed_path(output + '.combined.isoforms.bed')),

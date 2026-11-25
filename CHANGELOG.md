@@ -115,6 +115,11 @@
     auxiliary console script installs
   * flair now uses real subcommands, so `flair <subcommand> --help` and the
     subcommand list in `flair --help` describe what each one accepts.
+  * The bigBed schema, `flair_bed.as`, declares `read_support` a `uint`, where it
+    was a string that a genome browser filtered and sorted as text, so a filter of
+    `read_support > 100` is now available on the bigBed.  `frac_support` and
+    `pos_in_fusion` stay strings: each is empty where it is not computed, which a
+    numeric bigBed field cannot be.
   * Command line documentation is generated from the programs themselves, so it
     can no longer drift from what they accept.  flair alleles and isoalleles are
     documented for the first time.
@@ -194,6 +199,29 @@
     to `$TMPDIR`.  `--keep_intermediate` required it in `flair transcriptome` and
     `flair quantify` and was rejected with it in `flair spliceevents`; it now keeps
     the run's own directory, wherever that is, and the run reports the path.
+  * `flair fusion` writes its intermediate files in a directory of the run's own, in
+    `--temp_dir` or `$TMPDIR`, rather than beside the output, and `--keep_intermediate`
+    keeps that directory and reports where it is, as the other subcommands do.  The
+    chimeric reads bams and `OUTPUT.fusions.prelim.bed` are still beside the output,
+    where a later run finds them.
+  * Every output is written to a temporary file beside it and installed when it is
+    complete, so an interrupted run leaves no partial output: the joined tables of
+    flair transcriptome and flair spliceevents, the isoform GTF, the bigBed, the
+    regions BED and the usage plots were written in place.  `flair spliceevents`
+    writes `OUT.spliceevents.regions.bed` with its other outputs rather than before
+    the run, so a stopped run leaves none of the set, and `flair combine` and `flair
+    isoalleles` no longer leave an `OUT.chrom.sizes` beside the output.
+  * The read support of a `--junction_bed` junction is read as the file has it, where
+    the BED score convention clamped it to 1000: a junction with more reads than that
+    is now compared with `--junction_support` by its real count.
+  * `flair combine --output` defaults to `flair`, where it defaulted to
+    `flair.combined.isoforms` and every output appends `.combined.isoforms`, so a run
+    without `-o` wrote `flair.combined.isoforms.combined.isoforms.bed`.  A default run
+    now writes `flair.combined.isoforms.bed`.
+  * Every subcommand rejects an input that is one of the files the run writes, naming
+    it, rather than destroying it: combining a combined transcriptome in the directory
+    holding it, or an `--output` prefix that an input was written under.  The check is
+    made before the run starts, with the other input checks.
   * `--threads` defaults to 12 in every program that takes it.  It was 12 in two
     subcommands, 4 in six programs and 1 in `flair_partition`, so how much of a
     machine a run used depended on which subcommand it was.
@@ -222,6 +250,11 @@
   * The outliers table of `spliceevents_outliers` has two columns, `alternative_reads`
     and `psi_total`, where one column had both numbers joined by a semicolon under
     the name `event_reads;total_locus_reads`, which named neither of them.
+  * The event tables of `flair spliceevents` name their gene column `gene_id`,
+    where it was `gene`: the counts, the two PSI tables, the totals and the two
+    outliers tables, and every other FLAIR table names a column of FLAIR gene ids
+    `gene_id`.  A counts table of an earlier 3.1 development version is read again
+    once its header is changed.
   * The rest of that table's columns are named as the other tables are:
     `median_psi`, `dev_iqr_half`, `sample_psi`, `samples_with_psi` and
     `delta_psi_to_median`, where they were `medianPSI`, `dev(IQR/2)`, `sample_val`,

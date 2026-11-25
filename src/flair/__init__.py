@@ -111,5 +111,5 @@ def resolve_deprecated_option(args, *, deprecated, current):
         if getattr(args, current) is not None:
             raise FlairInputDataError(f"--{deprecated} is the deprecated name for --{current}; "
                                       f"specify one of them, not both")
-        logging.warning("--%s is deprecated, use --%s instead", deprecated, current)
+        logging.warning(f'--{deprecated} is deprecated, use --{current} instead')
         setattr(args, current, value)

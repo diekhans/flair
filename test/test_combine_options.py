@@ -3,7 +3,13 @@
 latter take a list (cli_options)."""
 import pytest
 from flair import FlairInputDataError
-from flair.flair_combine import parse_input
+from flair.flair_combine import OUTPUT_BINARY_SUFFIXES, OUTPUT_TEXT_SUFFIXES, parse_input
+from flair.output_compress import output_paths
+from flair.run_checks import check_inputs_not_outputs
+
+
+def combine_outputs(output):
+    return output_paths(output, OUTPUT_TEXT_SUFFIXES, OUTPUT_BINARY_SUFFIXES)
 
 
 def write_beds(tmp_path, prefixes):
@@ -51,3 +57,26 @@ def test_a_bed_the_manifest_names_must_exist(tmp_path):
     manifest.write_text('nosuch.isoforms.bed\n')
     with pytest.raises(FlairInputDataError, match='isoform BED nosuch.isoforms.bed does not exist'):
         parse_input(str(manifest), None, None)
+
+
+def test_an_input_that_the_run_writes_is_an_error(tmp_path):
+    "a combined transcriptome combined again in the directory it was written to"
+    output = f'{tmp_path}/flair'
+    bed = output + '.combined.isoforms.bed'
+    with pytest.raises(FlairInputDataError, match='isoform BED file is one this run writes'):
+        check_inputs_not_outputs(combine_outputs(output), {'isoform BED': [bed]})
+
+
+def test_an_input_beside_the_output_is_not_an_error(tmp_path):
+    output = f'{tmp_path}/flair'
+    check_inputs_not_outputs(combine_outputs(output),
+                             {'isoform BED': [f'{tmp_path}/sample.isoforms.bed'],
+                              'annotation GTF': None})
+
+
+def test_the_annotation_that_the_run_writes_is_an_error(tmp_path):
+    "-f naming the GTF of an earlier run with the same --output"
+    output = f'{tmp_path}/flair'
+    with pytest.raises(FlairInputDataError, match='annotation GTF file is one this run writes'):
+        check_inputs_not_outputs(combine_outputs(output),
+                                 {'annotation GTF': output + '.combined.isoforms.gtf'})

@@ -199,7 +199,7 @@ def check_bam_indexed(bam_file):
     "--region/--region_bed reads only the regions of a BAM, which needs its index"
     if bam_chroms(bam_file) is None:
         raise FlairInputDataError(f"--region/--region_bed needs an indexed BAM or CRAM to read the regions "
-                                  f"of {bam_file}; index it with `samtools index', or drop the option")
+                                  f"of {bam_file}; index it with 'samtools index', or drop the option")
 
 
 def _exon_span_fields(line):
@@ -372,10 +372,9 @@ class _Range:
 def read_ranges(fh):
     "generator of _Range objects for the lines of a BED"
     for line in fh:
-        if line.isspace() or line.startswith(('#', 'track ', 'browser ')):
-            continue
-        chrom, start, end = line.split('\t', 3)[:3]
-        yield _Range(chrom, int(start), int(end))
+        if not (line.isspace() or line.startswith(('#', 'track ', 'browser '))):
+            chrom, start, end = line.split('\t', 3)[:3]
+            yield _Range(chrom, int(start), int(end))
 
 def write_partitions(partitions, part_fh, part_counts):
     for bed_part, item_count in partitions:
@@ -407,7 +406,7 @@ def closed_partitions(bed_files, bam_files, gtf_files, nthreads, part_merge_dist
     this terminates.  min_partition_items is not used, as the counts are of the items
     read, not of the whole input"""
     while True:
-        logging.info("partitioning over %s", plural(len(regions), 'region'))
+        logging.info(f"partitioning over {plural(len(regions), 'region')}")
         partitions = list(scan_partitions(bed_files, bam_files, gtf_files, nthreads, 0,
                                           part_merge_dist, regions, tmp_dir))
         grown = covered_regions(partitions)
@@ -449,7 +448,8 @@ def flair_partition(bed_files, bam_files, gtf_files, ranges_bed, nthreads, min_p
     if regions is not None:
         check_region_seqs(regions, bam_files)
 
-    with fileOps.opengz(ranges_bed, 'w') as part_fh:
+    # through a temporary file, so an interrupted run leaves no partial partitioning
+    with fileOps.AtomicFileOpen(ranges_bed, 'w') as part_fh:
         build_partitions(bed_files, bam_files, gtf_files, nthreads, min_partition_items,
                          part_merge_dist, regions, part_fh, part_counts)
     if (regions is not None) and (part_counts.part_count == 0):

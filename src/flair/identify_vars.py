@@ -41,8 +41,6 @@ def parse_args():
     parser.add_argument('--num_repeats_for_filtering', type=int, default=1,
                         help='Required number of repeats to flag indels in tandem repeat regions as sequencing errors. '
                         'Set this to 1 to remove all calls in tandem repeat regions, set it high if you are interested in getting calls for these regions.')
-    # parser.add_argument('--max_depth', type=int, default=100000,
-    #                     help='Maximum read depth allowed to search for indels at locus (lower values will miss some genes, but will run substantially faster)')
     parser.add_argument('--region_bed', type=str,
                         help='bed (3+) file of regions on which to call indels')
     parser.add_argument('--region', dest='regions', action='append', default=[],
@@ -52,8 +50,6 @@ def parse_args():
     parser.add_argument('--identify_snvs', type=str, default='no',
                         help="[yes/no], default:no - specify yes if you want this caller to identify SNVs")
 
-    # parser.add_argument('--keep_intermediate', default=False, action='store_true',
-    #                     help='''specify if intermediate and temporary files are to be kept for debugging.''')
     args = parser.parse_args()
     args.identify_indels = True if args.identify_indels == 'yes' else False
     args.identify_snvs = True if args.identify_snvs == 'yes' else False

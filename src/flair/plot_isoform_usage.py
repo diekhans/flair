@@ -44,7 +44,7 @@ name_colors = ['xkcd:windows blue', 'xkcd:faded green', 'xkcd:dusty purple', 'xk
 gray = "xkcd:greyish"
 
 
-def parse_bed(bedfile, keepiso, *, names=False):  # noqa: C901 - FIXME: reduce complexity
+def parse_bed(bedfile, keepiso, *, names=False):
     """keepiso maps an isoform name to its plot colour, and is what selects the
     isoforms to draw.  It had a default of set(), the wrong type for the lookup
     below, so calling this without it raised TypeError rather than doing nothing."""
@@ -101,7 +101,7 @@ def pack(data, rev=True, color=False, tosort=True):
     return packed
 
 
-def plot_blocks(data, panel, names, upper, lower, strand, height=.5, l=0.8):  # noqa: C901 - FIXME: reduce complexity
+def plot_blocks(data, panel, names, upper, lower, strand, height=.5, l=0.8):
     panel.set_xlim(1, upper - lower + 2)
     if strand == '-':  # flip axes so that the isoforms are plotted 5' -> 3'
         panel.set_xlim(upper - lower + 2, 1)
@@ -114,7 +114,6 @@ def plot_blocks(data, panel, names, upper, lower, strand, height=.5, l=0.8):  # 
                       top=False, labeltop=False)
 
     di = 0  # data index
-    # ni = 0  # name index unused
     ew = 1.5  # edgewidth on all blocks
     for i in range(0, len(data) * 2, 2):  # each line
         read = data[di]
@@ -187,109 +186,121 @@ def read_color_palette(palette_file):
     return colors
 
 
-def plot_isoform_usage(args):  # noqa: C901 - FIXME: reduce complexity
-    # the gene is always in the name, since one prefix may be used for several genes
-    prefix = f'{args.output}_{args.gene_name}' if args.output else args.gene_name
-
-    color_palette = name_colors + hex_colors
-    if args.palette:
-        color_palette = read_color_palette(args.palette)
-
-    keepiso = {}  # isoforms that they have a sufficient proportion of reads mapping to them
-    sample_ids = read_sample_columns(args.counts_matrix)
+def _gene_proportions(args, sample_ids, gray_bar):
+    """the counts of each isoform of the gene, with those below --min_reads in every
+    sample in the gray bar, and the totals of the gray bar's samples"""
     proportions = []
     totals = [0] * len(sample_ids)
+    for row in read_counts_rows(args.counts_matrix):
+        if row.gene_id == args.gene_name:
+            _add_counts_row(row, gray_bar, totals, proportions, sample_ids, args.min_reads)
+    return proportions, totals
 
+
+def _color_proportions(proportions, gray_bar, totals, sample_ids, color_palette):
+    """the isoforms in expression order, each with a color and counted into the
+    totals; those past the end of the palette go into the gray bar.  Returns the rows
+    to plot and the isoform -> color of the ones plotted separately"""
+    keepiso = {}  # isoforms that they have a sufficient proportion of reads mapping to them
+    colored = []
+    for p in sorted(proportions, key=lambda x: x[-1], reverse=True):  # sort by expression
+        counts = p[1:-1]
+        for i in range(len(sample_ids)):
+            totals[i] += counts[i]
+        if len(colored) == len(color_palette):  # the colors ran out: into the gray bar
+            for i in range(len(sample_ids)):
+                gray_bar[0][i + 1] += counts[i]
+        else:
+            keepiso[p[0]] = color_palette[len(colored)]
+            colored.append(p + [color_palette[len(colored)]])
+    return [gray_bar[0]] + colored, keepiso
+
+
+def _usage_panel(sample_ids):
+    "the figure and axes of the usage proportions, one bar a sample"
     figwidth = 1 + len(sample_ids) * 7 / 10
     plt.figure(figsize=(figwidth, 6))  # proportion usage figure
     figstart = 0.7 / figwidth
-
     panel = plt.axes([figstart, 0.11, 1 - figstart - 0.02, 0.88], frameon=False)  # plotting the proportion of expression
     panel.tick_params(axis='both', which='both',
                       bottom=True, labelbottom=True,
                       left=True, labelleft=True,
                       right=False, labelright=False,
                       top=False, labeltop=False, labelsize=8)
+    return panel
 
-    gray_bar = [['lowexpr'] + [0] * len(sample_ids) + [gray]]  # the minor isoform bar is gray
 
-    for row in read_counts_rows(args.counts_matrix):
-        if row.gene_id == args.gene_name:
-            _add_counts_row(row, gray_bar, totals, proportions, sample_ids, args.min_reads)
+def _bar_labels(panel, sample, height, percentage, reads):
+    "the usage percentage and the read count of one isoform's bar, where they fit in it"
+    if percentage >= 7.5:  # add usage percentage
+        panel.text(sample + 1 + .07, height + percentage / 2, str(round(percentage, 1)) + '%',
+                   fontsize=10, ha='center', va='center', color='white')
+    if percentage >= 12.25:  # add read num
+        what = ' read' if reads == 1 else ' reads'
+        panel.text(sample + 1 + (.45 if reads == 1 else .44), height + 1.75, str(int(reads)) + what,
+                   fontsize=6, ha='right', va='center', color='white')
 
-    colori = 0
-    proportions = sorted(proportions, key=lambda x: x[-1], reverse=True)  # sort by expression
-    proportions_color = []
-    for i in range(len(proportions)):
-        p = proportions[i]
-        counts = p[1:-1]
-        for i in range(len(sample_ids)):
-            totals[i] += counts[i]
-        if colori == len(color_palette):  # add to gray bar bc colors ran out
-            for i in range(len(sample_ids)):
-                gray_bar[0][i + 1] += counts[i]
-            continue
-        proportions_color += [p + [color_palette[colori]]]
-        keepiso[p[0]] = color_palette[colori]
-        colori += 1
 
-    proportions = [gray_bar[0]] + proportions_color
-
-    if len(proportions) == 1:
-        raise FlairInputDataError(f'no isoform of gene {args.gene_name} reaches --min_reads '
-                                  f'{args.min_reads} in any sample of {args.counts_matrix}; check the '
-                                  'gene name against the gene_id column, or lower --min_reads')
-
-    proportions = sorted(proportions, key=lambda x: x[1])[::-1]
+def _draw_usage_bars(panel, proportions, totals, sample_ids):
+    "a stacked bar of each sample's isoform usage, the most used isoform at the bottom"
     heights = [0] * len(sample_ids)
-    for iso in proportions:
+    for iso in sorted(proportions, key=lambda x: x[1])[::-1]:
         for i in range(len(sample_ids)):
-            if totals[i] == 0:
-                continue
-            percentage = iso[1 + i] / totals[i] * 100
-            rectangle = mplpatches.Rectangle([i + 1 - 0.4, heights[i]],
-                                             width=0.9, height=percentage, facecolor=iso[-1], linewidth=0)
-            panel.add_patch(rectangle)
-            if percentage >= 7.5:  # add usage percentage
-                panel.text(i + 1 + .07, heights[i] + percentage / 2, str(round(percentage, 1)) + '%',
-                           fontsize=10, ha='center', va='center', color='white')
-            if percentage >= 12.25:  # add read num
-                if iso[1 + i] == 1:
-                    panel.text(i + 1.45, heights[i] + 1.75, str(int(iso[1 + i])) + ' read',
-                               fontsize=6, ha='right', va='center', color='white')
-                else:
-                    panel.text(i + 1.44, heights[i] + 1.75, str(int(iso[1 + i])) + ' reads',
-                               fontsize=6, ha='right', va='center', color='white')
+            # a sample with no reads of the gene has no bar
+            if totals[i] > 0:
+                percentage = iso[1 + i] / totals[i] * 100
+                panel.add_patch(mplpatches.Rectangle([i + 1 - 0.4, heights[i]],
+                                                     width=0.9, height=percentage, facecolor=iso[-1], linewidth=0))
+                _bar_labels(panel, i, heights[i], percentage, iso[1 + i])
+                heights[i] += percentage
 
-            heights[i] += percentage
 
+def _draw_usage_axes(panel, sample_ids):
+    "the guide lines every 20 percent, the sample names and the axis bounds"
     xlim = len(sample_ids) + 0.5  # guide lines every 20%
-    panel.plot([-1, xlim], [0, 0], 'r--', lw=.75, alpha=.3, zorder=0)
-    panel.plot([-1, xlim], [20, 20], 'r--', lw=.75, alpha=.3, zorder=0)
-    panel.plot([-1, xlim], [40, 40], 'r--', lw=.75, alpha=.3, zorder=0)
-    panel.plot([-1, xlim], [60, 60], 'r--', lw=.75, alpha=.3, zorder=0)
-    panel.plot([-1, xlim], [80, 80], 'r--', lw=.75, alpha=.3, zorder=0)
-    panel.plot([-1, xlim], [100, 100], 'r--', lw=.75, alpha=.3, zorder=0)
-
+    for percent in (0, 20, 40, 60, 80, 100):
+        panel.plot([-1, xlim], [percent, percent], 'r--', lw=.75, alpha=.3, zorder=0)
     panel.set_xticks(np.arange(1, xlim))
     panel.set_xticklabels(sample_ids, rotation=20, ha='right')
     panel.set_xlim(0.5, xlim)
     panel.set_ylim(0, 100)
     panel.set_ylabel('Percent Usage', fontsize=12)
-    plt.savefig(f'{prefix}_usage.pdf', transparent=True)
+
+
+def _plot_isoform_structures(args, keepiso, prefix):
+    "PREFIX_isoforms.pdf: the exon structure of each isoform plotted"
     plt.figure()
-
-    # plotting isoform structures
     panel = plt.axes([0.005, 0.015, .99, 0.97], frameon=True)  # annotation
-
     isoforms, lower, upper, strand, names = parse_bed(args.isoforms, keepiso)
     # productivity is empty in a BED not run through predictProductivity
     isoforms = sorted(isoforms, key=lambda x: x[3] or '', reverse=True)
     packed = pack(isoforms, rev=False, tosort=False)
-
     plot_blocks(packed, panel, names, upper, lower, strand, l=1)
+    with fileOps.AtomicFileCreate(f'{prefix}_isoforms.pdf') as tmp_pdf:
+        plt.savefig(tmp_pdf, transparent=True)
 
-    plt.savefig(f'{prefix}_isoforms.pdf', transparent=True)
+
+def plot_isoform_usage(args):
+    # the gene is always in the name, since one prefix may be used for several genes
+    prefix = f'{args.output}_{args.gene_name}' if args.output else args.gene_name
+    color_palette = read_color_palette(args.palette) if args.palette else name_colors + hex_colors
+
+    sample_ids = read_sample_columns(args.counts_matrix)
+    gray_bar = [['lowexpr'] + [0] * len(sample_ids) + [gray]]  # the minor isoform bar is gray
+    proportions, totals = _gene_proportions(args, sample_ids, gray_bar)
+    proportions, keepiso = _color_proportions(proportions, gray_bar, totals, sample_ids, color_palette)
+    if len(proportions) == 1:
+        raise FlairInputDataError(f'no isoform of gene {args.gene_name} reaches --min_reads '
+                                  f'{args.min_reads} in any sample of {args.counts_matrix}; check the '
+                                  'gene name against the gene_id column, or lower --min_reads')
+
+    panel = _usage_panel(sample_ids)
+    _draw_usage_bars(panel, proportions, totals, sample_ids)
+    _draw_usage_axes(panel, sample_ids)
+    with fileOps.AtomicFileCreate(f'{prefix}_usage.pdf') as tmp_pdf:
+        plt.savefig(tmp_pdf, transparent=True)
+
+    _plot_isoform_structures(args, keepiso, prefix)
 
 
 def main():

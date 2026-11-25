@@ -81,11 +81,11 @@ def direct_assignments(corrected_reads, isoforms, unique_bounds):
     assignments = {}
     for read in corrected_reads:
         as_aligned = not read.junctions_moved and read.clean_splice_sites
-        if not (as_aligned or (read.junctions_from_annotation and not read.terminal_junctions_moved)):
-            continue
-        matches = by_chain.get(_juncs_key(read.juncs), [])
-        if len(matches) == 1 and covers_unique_bounds(matches[0], unique_bounds.get(matches[0].name, {}), read.start, read.end):
-            assignments[read.name] = (matches[0], read)
+        if as_aligned or (read.junctions_from_annotation and not read.terminal_junctions_moved):
+            matches = by_chain.get(_juncs_key(read.juncs), [])
+            if len(matches) == 1 and covers_unique_bounds(matches[0], unique_bounds.get(matches[0].name, {}),
+                                                          read.start, read.end):
+                assignments[read.name] = (matches[0], read)
     return assignments
 
 
@@ -96,13 +96,12 @@ def _could_extend_into(read, by_junction, window):
     short exon"""
     juncs = _juncs_key(read.juncs)
     for chain, i in by_junction.get(juncs[0], ()):
-        if chain[i:i + len(juncs)] != juncs:
-            continue
-        if i > 0 and read.clipping[0] > 0 and abs(read.start - chain[i - 1][1]) <= window:
-            return True
-        after = i + len(juncs)
-        if after < len(chain) and read.clipping[1] > 0 and abs(read.end - chain[after][0]) <= window:
-            return True
+        if chain[i:i + len(juncs)] == juncs:
+            if i > 0 and read.clipping[0] > 0 and abs(read.start - chain[i - 1][1]) <= window:
+                return True
+            after = i + len(juncs)
+            if after < len(chain) and read.clipping[1] > 0 and abs(read.end - chain[after][0]) <= window:
+                return True
     return False
 
 

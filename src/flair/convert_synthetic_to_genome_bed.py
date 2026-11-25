@@ -107,9 +107,6 @@ def identify_fusion_problems(fgenes, locustopartners, maxpromiscuity, genetoname
                 areig.append(False)
         else:
             allnames.add(g)
-            # if g[:3] == 'chr':
-            #     areig.append(True)
-            # else:
             areig.append(False)
         if g in genetoparalogs:
             other = set(fgenes) - {g, }
@@ -171,7 +168,6 @@ def convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusboun
         locusestarts = [x - starts[order] for x in locusestarts]
         totlen = locusestarts[-1] + locusesizes[-1]
         locusdir = '+' if leftbound < rightbound else '-'
-        # name = 'gene' + str(order + 1) + '_' + iso
         thickStart, thickEnd = None, None
         if leftbound > rightbound:  # reverse direction
             temp = []
@@ -305,10 +301,8 @@ def convert_synthetic_isos(isoformsbed, breakpointfile, outname, min_dist, annot
 
             assigned_exons = sorted(i for indexes in exonindexes for i in indexes)
             if assigned_exons != list(range(len(esizes))):
-                logging.warning('skipping %s: not all synthetic exons could be assigned to exactly one locus', iso)
-                continue
-
-            if None not in starts:
+                logging.warning(f'skipping {iso}: not all synthetic exons could be assigned to exactly one locus')
+            elif None not in starts:
                 genomicbounds, bedinfos = convert_to_genomic_coords(numloci, synthinfo, exonindexes, starts, locusbounds, esizes, estarts, start, iso, thickEdges)
                 if not check_too_close(numloci, genomicbounds, min_dist):
                     genes = [piece_gene(genomicchr, locusdir, blocks, order, numloci, annots_by_chrom)
@@ -324,7 +318,7 @@ def convert_synthetic_isos(isoformsbed, breakpointfile, outname, min_dist, annot
             if len(set(genes)) < len(genes):
                 # pieces of one gene: a rearrangement within a gene, as of a
                 # segmental duplication, which flair fusion doesn't call
-                logging.info('skipping %s: pieces of one gene, %s', bed.name, '--'.join(genes))
+                logging.info(f"skipping {bed.name}: pieces of one gene, {'--'.join(genes)}")
             else:
                 iso_genes[bed.name] = tuple(genes)
                 curr_gene_count = _write_fusion_pieces(out, bed, bedinfos, genes, gene_og_to_new,

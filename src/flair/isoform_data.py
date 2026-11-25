@@ -10,7 +10,9 @@ from flair.output_compress import compressed_path
 from statistics import median
 import pysam
 from flair.io_utils import run_program
+from flair.pycbio.sys import fileOps
 import os.path as osp
+import tempfile
 
 # the IUPAC nucleotide codes to their complements, with U and the gap characters:
 # https://www.bioinformatics.org/sms/iupac.html
@@ -194,16 +196,19 @@ def get_sequence_for_exons(genome, chrom, strand, exons):
     return trans_seq
 
 
-def make_big_bed(genome, chrom_sizes_file_name, output_prefix):
-    with open(chrom_sizes_file_name, 'w') as fh:
-        for chrom in genome.references:
-            fh.write(chrom + '\t' + str(genome.get_reference_length(chrom)) + '\n')
-    # no -sort: the BED is written in position order already, so sorting it again
-    # only costs a pass over it
-    run_program([('bedToBigBed', f'-as={osp.dirname(__file__)}/flair_bed.as', '-type=bed12+',
-                  compressed_path(f'{output_prefix}.bed'), chrom_sizes_file_name,
-                  f'{output_prefix}.bb', '-tab')])
-    run_program([('rm', chrom_sizes_file_name)])
+def make_big_bed(genome, output_prefix):
+    """OUTPUT_PREFIX.bb from OUTPUT_PREFIX.bed, written through a temporary file, so
+    an interrupted run leaves no partial bigBed and no chromosome sizes beside it"""
+    with tempfile.TemporaryDirectory(prefix='flair.chrom.sizes.') as sizes_dir:
+        chrom_sizes = osp.join(sizes_dir, 'chrom.sizes')
+        with open(chrom_sizes, 'w') as fh:
+            for chrom in genome.references:
+                fh.write(chrom + '\t' + str(genome.get_reference_length(chrom)) + '\n')
+        # no -sort: the BED is written in position order already, so sorting it again
+        # only costs a pass over it
+        with fileOps.AtomicFileCreate(f'{output_prefix}.bb') as tmp_bb:
+            run_program([('bedToBigBed', f'-as={osp.dirname(__file__)}/flair_bed.as', '-type=bed12+',
+                          compressed_path(f'{output_prefix}.bed'), chrom_sizes, tmp_bb, '-tab')])
 
 def add_blocks_from_readrec(bed, readrec):
     exon_starts, exon_sizes = get_bed_exons_from_juncs(readrec.juncs, readrec.start, readrec.end)

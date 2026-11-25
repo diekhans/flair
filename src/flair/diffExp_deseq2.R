@@ -105,8 +105,11 @@ plot_results <- function(dds, args) {
   matrixFile <- args$matrix
 
   qcOut <- sprintf("%s.%s_QCplots_%s_v_%s.pdf", out_prefix, prefix, condition_a, condition_b)
-  
-  pdf(qcOut)
+  # written to a temporary file beside it and renamed when it is complete, so a
+  # failed run leaves no partial PDF
+  qcTmp <- paste0(qcOut, ".tmp.", Sys.getpid())
+
+  pdf(qcTmp)
 
   # the named coefficient, as the results table uses: bare results(dds) takes the last
   # coefficient in resultsNames, which is the batch term once batch is in the design
@@ -120,6 +123,7 @@ plot_results <- function(dds, args) {
     vst(dds, nsub = nsub, blind = FALSE)
   }, error = function(e) {
     dev.off()
+    unlink(qcTmp)
     stop(sprintf(paste('the PCA plot failed where DESeq2 and the other QC plots succeeded: %s.',
                        'This is usually too few genes in the counts matrix'),
                  conditionMessage(e)))
@@ -145,6 +149,7 @@ plot_results <- function(dds, args) {
   print(plot)
   
   dev.off()
+  file.rename(qcTmp, qcOut)
 }
 
 # Main function to handle the workflow

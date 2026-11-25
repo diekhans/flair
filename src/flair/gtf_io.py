@@ -86,13 +86,15 @@ class GtfRecord:
         self.attrs = attrs if attrs is not None else {}
         if gene_id is not None:
             if re.search(r'\s', gene_id):
-                raise GtfParseError(f"white space not allowed  in gene_id: {gene_id}")
+                raise GtfParseError(f"white space not allowed in gene_id: {gene_id}; "
+                                    "remove it from the GTF attribute")
             self.attrs['gene_id'] = gene_id
         if gene_name is not None:
             self.attrs['gene_name'] = gene_name
         if transcript_id is not None:
             if re.search(r'\s', transcript_id):
-                raise GtfParseError(f"white space not allowed  in transcript_id: {transcript_id}")
+                raise GtfParseError(f"white space not allowed in transcript_id: {transcript_id}; "
+                                    "remove it from the GTF attribute")
             self.attrs['transcript_id'] = transcript_id
         if exon_number is not None:
             self.attrs['exon_number'] = exon_number
@@ -213,7 +215,8 @@ class GtfData:
 
     def add_transcript(self, transcript: GtfTranscript):
         if transcript.transcript_id in self.transcripts_by_id:
-            raise GtfParseError(f"adding duplicate transcript id: `{transcript.transcript_id}'")
+            raise GtfParseError(f"duplicate transcript id '{transcript.transcript_id}'; each transcript id "
+                                "must appear on the lines of one transcript only")
         self.transcripts.append(transcript)
         self.transcripts_by_id[transcript.transcript_id] = transcript
         self.transcripts_by_range[transcript.chrom].add(transcript.start, transcript.end, transcript)
@@ -227,7 +230,7 @@ class GtfData:
         try:
             return self.transcripts_by_id[transcript_id]
         except KeyError as exc:
-            raise GtfIdError(f"unknown transcript id `{transcript_id}'") from exc
+            raise GtfIdError(f"unknown transcript id '{transcript_id}'") from exc
 
     def iter_transcript_ids(self):
         return self.transcripts_by_id.keys()
@@ -391,14 +394,16 @@ def _parse_coordinates(start_str: str, end_str: str) -> tuple[int, int]:
         start = int(start_str) - 1  # Convert to 0-based
         end = int(end_str)
     except ValueError as exc:
-        raise GtfParseError(f"Invalid coordinates `{start_str}' `{end_str}'") from exc
+        raise GtfParseError(f"invalid coordinates '{start_str}' '{end_str}'; GTF columns 4 and 5 are "
+                            "the integer start and end of the feature") from exc
     if start >= end:
-        raise GtfParseError(f"Coordinates `{start_str}' > `{end_str}'")
+        raise GtfParseError(f"start coordinate '{start_str}' is past end coordinate '{end_str}'; "
+                            "a GTF feature is written on the forward strand, start first")
     return start, end
 
 def _parse_strand(strand: str) -> str:
     if strand not in {'+', '-', '.'}:
-        raise GtfParseError(f"Invalid strand '{strand}'")
+        raise GtfParseError(f"invalid strand '{strand}'; GTF column 7 is '+', '-' or '.'")
     return strand
 
 def _parse_score(score_str: str) -> float | None:
@@ -408,7 +413,7 @@ def _parse_score(score_str: str) -> float | None:
         else:
             return float(score_str)
     except Exception as exc:
-        raise GtfParseError(f"Invalid score '{score_str}'") from exc
+        raise GtfParseError(f"invalid score '{score_str}'; GTF column 6 is a number or '.'") from exc
 
 def _parse_frame(frame_str: str) -> int | None:
     try:
@@ -417,10 +422,10 @@ def _parse_frame(frame_str: str) -> int | None:
         else:
             frame = int(frame_str)
     except Exception as exc:
-        raise GtfParseError(f"Invalid frame '{frame_str}'") from exc
+        raise GtfParseError(f"invalid frame '{frame_str}'; GTF column 8 is 0, 1, 2 or '.'") from exc
 
     if not (0 <= frame <= 2):
-        raise GtfParseError(f"Frame must be in the range 0..2 or `.', got'{frame}'")
+        raise GtfParseError(f"frame {frame} is out of range; GTF column 8 is 0, 1, 2 or '.'")
     return frame
 
 
@@ -481,7 +486,8 @@ def _parse_gtf_line(line: str, include_features: StrSetNone, attrs_parser) -> Gt
 
     fields = line.split('\t')
     if len(fields) != 9:
-        raise GtfParseError(f"Expected 9 fields, got {len(fields)}")
+        raise GtfParseError(f"expected 9 tab-separated fields, got {len(fields)}; the file is not GTF, "
+                            "or its fields are separated by spaces")
     if (include_features is not None) and (fields[2] not in include_features):
         return None
 
@@ -541,14 +547,13 @@ def _gtf_record_iter(gtf_file: str, include_features, attrs_parser, chroms=None)
     given chroms, only those on them, skipping the others' lines before parsing"""
     with fileOps.opengz(gtf_file) as fh:
         for line_num, line in enumerate(fh, start=1):
-            if (chroms is not None) and (line.split('\t', 1)[0] not in chroms):
-                continue
-            try:
-                rec = _parse_gtf_line(line, include_features, attrs_parser)
-                if rec is not None:
-                    yield rec
-            except GtfParseError as exc:
-                raise GtfParseError(f"{gtf_file}:{line_num}: invalid GTF record") from exc
+            if (chroms is None) or (line.split('\t', 1)[0] in chroms):
+                try:
+                    rec = _parse_gtf_line(line, include_features, attrs_parser)
+                    if rec is not None:
+                        yield rec
+                except GtfParseError as exc:
+                    raise GtfParseError(f"{gtf_file}:{line_num}: invalid GTF record") from exc
 
 def gtf_record_parser(gtf_file: str, *, include_features: StrSetNone = None, attrs: GtfAttrsSet = GtfAttrsSet.FLAIR):
     """Parse GTF file, yields GtfRecord GtfTranscript, GtfExon, or GtfCDS objects.

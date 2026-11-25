@@ -14,10 +14,6 @@ Thresholds = namedtuple('Thresholds', ('feature_support', 'event_frac_of_tot', '
 MIN_MAIN_FRACTION = 0.1
 
 
-def thresholds_of(args):
-    return Thresholds(args.feature_support, args.event_frac_of_tot, args.junc_frac_of_event, args.event_support)
-
-
 # Reads are counted per sample in Counters, sample -> reads, without the samples of none
 
 
@@ -329,25 +325,34 @@ def exon_skipping_events(caller, info):
         add_counts(exc, exon, info.juncs.get(outer, {}))
     events, es_juncs, seen = [], {}, set()
     for exon, exon_outers in outers.items():
-        tot = inc[exon] + exc[exon]
-        if not (caller.supported(inc[exon]) and caller.supported(exc[exon]) and caller.alternative(inc[exon], tot)):
-            continue
-        # the skipping junctions whose inclusion is a large enough part of the event
-        good = {outer for outer in exon_outers if caller.supported(info.junc_pairs[_flanking(outer, exon)])
-                and caller.alternative(info.junc_pairs[_flanking(outer, exon)], tot)}
-        flanking = {j for outer in good for j in _flanking(outer, exon)}
-        event = caller.event('es', *exon, tot)
-        events.append(event)
-        event.introns = {j for outer in exon_outers for j in _flanking(outer, exon)} | (exon_outers & info.juncs.keys())
-        event.add('inc', inc[exon], flanking, (), good, [exon], [junction_blocks(outer, [exon]) for outer in good])
-        event.add('exc', exc[exon], (), flanking, good, [exon])
-        for outer in good:
-            for j in _flanking(outer, exon):
-                add_counts(es_juncs.setdefault(j, {}), outer, info.junc_pairs[_flanking(outer, exon)])
-        ref = good or exon_outers
-        event.totoverlap = caller.covering((max(j[0] for j in ref), min(j[1] for j in ref)))
-        seen.add(frozenset(good | flanking))
+        event = _exon_skip_event(caller, info, exon, exon_outers, inc[exon], exc[exon], es_juncs, seen)
+        if event is not None:
+            events.append(event)
     return events, es_juncs, seen
+
+
+def _exon_skip_event(caller, info, exon, exon_outers, inc, exc, es_juncs, seen):
+    """one exon's es event, or None where its inclusion and exclusion are not both
+    supported and alternative.  Adds the reads of its flanking junctions to es_juncs
+    and its junctions to seen"""
+    tot = inc + exc
+    if not (caller.supported(inc) and caller.supported(exc) and caller.alternative(inc, tot)):
+        return None
+    # the skipping junctions whose inclusion is a large enough part of the event
+    good = {outer for outer in exon_outers if caller.supported(info.junc_pairs[_flanking(outer, exon)])
+            and caller.alternative(info.junc_pairs[_flanking(outer, exon)], tot)}
+    flanking = {j for outer in good for j in _flanking(outer, exon)}
+    event = caller.event('es', *exon, tot)
+    event.introns = {j for outer in exon_outers for j in _flanking(outer, exon)} | (exon_outers & info.juncs.keys())
+    event.add('inc', inc, flanking, (), good, [exon], [junction_blocks(outer, [exon]) for outer in good])
+    event.add('exc', exc, (), flanking, good, [exon])
+    for outer in good:
+        for j in _flanking(outer, exon):
+            add_counts(es_juncs.setdefault(j, {}), outer, info.junc_pairs[_flanking(outer, exon)])
+    ref = good or exon_outers
+    event.totoverlap = caller.covering((max(j[0] for j in ref), min(j[1] for j in ref)))
+    seen.add(frozenset(good | flanking))
+    return event
 
 
 def complex_skipping_events(caller, info, es_juncs, seen):
@@ -358,29 +363,38 @@ def complex_skipping_events(caller, info, es_juncs, seen):
     junctions flanking the included exons to es_juncs"""
     events = []
     for outer, inner_counts in info.skipped.items():
-        exc = info.juncs[outer]
-        tot = total([exc, *inner_counts.values()])
-        if not (caller.supported(exc) and caller.alternative(exc, tot)):
-            continue
-        alt_rows, main_rows, other = caller.split(inner_counts, tot)
-        if not alt_rows or frozenset(set().union(*alt_rows) | {outer}) in seen:
-            continue
-        rows = alt_rows + main_rows
-        inner_juncs = set().union(*rows)
-        event = caller.event('ces', *outer, tot)
-        events.append(event)
-        event.introns = {outer}.union(*inner_counts)
-        exons = {exon for inner in rows for exon in internal_exons(inner)}
-        event.add('exc', exc, (), inner_juncs, [outer], exons, [junction_blocks(outer)])
-        for inner in rows:
-            inner_exons = internal_exons(inner)
-            event.add(coord_ranges(inner_exons, caller.strand), inner_counts[inner], inner, inner_juncs - set(inner), [outer], inner_exons,
-                      [junction_blocks(outer, inner_exons)])
-            for j in inner:
-                add_counts(es_juncs.setdefault(j, {}), outer, inner_counts[inner])
-        caller.keep_other(event, other)
-        event.totoverlap = caller.covering(outer)
+        event = _complex_skip_event(caller, info, outer, inner_counts, es_juncs, seen)
+        if event is not None:
+            events.append(event)
     return events
+
+
+def _complex_skip_event(caller, info, outer, inner_counts, es_juncs, seen):
+    """one skipping junction's ces event, or None where its exclusion is not supported
+    and alternative, it has no alternative way of including the exons, or an es event
+    has the same junctions"""
+    exc = info.juncs[outer]
+    tot = total([exc, *inner_counts.values()])
+    if not (caller.supported(exc) and caller.alternative(exc, tot)):
+        return None
+    alt_rows, main_rows, other = caller.split(inner_counts, tot)
+    if not alt_rows or frozenset(set().union(*alt_rows) | {outer}) in seen:
+        return None
+    rows = alt_rows + main_rows
+    inner_juncs = set().union(*rows)
+    event = caller.event('ces', *outer, tot)
+    event.introns = {outer}.union(*inner_counts)
+    exons = {exon for inner in rows for exon in internal_exons(inner)}
+    event.add('exc', exc, (), inner_juncs, [outer], exons, [junction_blocks(outer)])
+    for inner in rows:
+        inner_exons = internal_exons(inner)
+        event.add(coord_ranges(inner_exons, caller.strand), inner_counts[inner], inner, inner_juncs - set(inner), [outer], inner_exons,
+                  [junction_blocks(outer, inner_exons)])
+        for j in inner:
+            add_counts(es_juncs.setdefault(j, {}), outer, inner_counts[inner])
+    caller.keep_other(event, other)
+    event.totoverlap = caller.covering(outer)
+    return event
 
 
 def _apart_from_skipping(caller, site, alt, alternatives, es_juncs):
@@ -406,32 +420,42 @@ def alternative_site_events(caller, eventtype, site_alternatives, es_juncs, term
     sites spliced to all of them, with their reads, for shared_site_events"""
     events, groups = [], {}
     for site, alternatives in site_alternatives.items():
-        if len(alternatives) <= 1:
-            continue
-        tot = total(alternatives.values())
-        alt_rows, main_rows, other = caller.split(alternatives, tot)
-        if frozenset(junc_between(site, alt) for alt in alt_rows) in terminal_juncs:
-            continue
-        if len(alt_rows) > 1:
-            groups.setdefault(frozenset(alt_rows), {})[site] = tot
-        # only if alternative splicing, not counting the reads of junctions skipping exons
-        own = [alt for alt in alt_rows if _apart_from_skipping(caller, site, alt, alternatives, es_juncs)]
-        if len(own) <= 1 or not caller.supported(tot, caller.thresholds.event_support):
-            continue
-        rows = alt_rows + main_rows
-        juncs = {junc_between(site, alt) for alt in rows}
-        # from the shared site to the furthest alternative one, so unique to the shared site
-        start, end = span(juncs)
-        event = caller.event(eventtype, start, end, tot)
-        events.append(event)
-        event.introns = {junc_between(site, alt) for alt in alternatives}
-        for alt in rows:
-            junc = junc_between(site, alt)
-            event.add(coord_ranges([junc], caller.strand), alternatives[alt], [junc], juncs - {junc}, blocks=[[junc]])
-        caller.keep_other(event, other)
-        # all the alternative sites lie on the same side of the shared one
-        event.totoverlap = caller.covering((site, min(rows)) if site < min(rows) else (max(rows), site))
+        event = _alternative_site_event(caller, eventtype, site, alternatives, es_juncs, terminal_juncs, groups)
+        if event is not None:
+            events.append(event)
     return events, groups
+
+
+def _alternative_site_event(caller, eventtype, site, alternatives, es_juncs, terminal_juncs, groups):
+    """one shared site's alt5 or alt3 event, or None where it is spliced to one site,
+    its junctions are those of a first or last exon event, or one alternative is left
+    once the reads of the junctions skipping exons are taken out.  Adds a group of
+    alternative sites to groups, for shared_site_events"""
+    if len(alternatives) <= 1:
+        return None
+    tot = total(alternatives.values())
+    alt_rows, main_rows, other = caller.split(alternatives, tot)
+    if frozenset(junc_between(site, alt) for alt in alt_rows) in terminal_juncs:
+        return None
+    if len(alt_rows) > 1:
+        groups.setdefault(frozenset(alt_rows), {})[site] = tot
+    # only if alternative splicing, not counting the reads of junctions skipping exons
+    own = [alt for alt in alt_rows if _apart_from_skipping(caller, site, alt, alternatives, es_juncs)]
+    if len(own) <= 1 or not caller.supported(tot, caller.thresholds.event_support):
+        return None
+    rows = alt_rows + main_rows
+    juncs = {junc_between(site, alt) for alt in rows}
+    # from the shared site to the furthest alternative one, so unique to the shared site
+    start, end = span(juncs)
+    event = caller.event(eventtype, start, end, tot)
+    event.introns = {junc_between(site, alt) for alt in alternatives}
+    for alt in rows:
+        junc = junc_between(site, alt)
+        event.add(coord_ranges([junc], caller.strand), alternatives[alt], [junc], juncs - {junc}, blocks=[[junc]])
+    caller.keep_other(event, other)
+    # all the alternative sites lie on the same side of the shared one
+    event.totoverlap = caller.covering((site, min(rows)) if site < min(rows) else (max(rows), site))
+    return event
 
 
 def shared_site_events(caller, eventtype, groups):
@@ -439,28 +463,37 @@ def shared_site_events(caller, eventtype, groups):
     eventtype), from the groups of alternative_site_events"""
     events = []
     for alts, site_totals in groups.items():
-        tot = total(site_totals.values())
-        if len(site_totals) <= 1 or not caller.supported(tot, caller.thresholds.event_support):
-            continue
-        alt_rows, main_rows, other = caller.split(site_totals, tot)
-        if len(alt_rows) <= 1:
-            continue
-        rows = alt_rows + main_rows
-        juncs = {junc_between(site, alt) for site in rows for alt in alts}
-        # unique: each site is in one group, and the event ends at its outermost site
-        start, end = span(juncs)
-        event = caller.event(eventtype, start, end, tot)
-        events.append(event)
-        event.introns = {junc_between(site, alt) for site in site_totals for alt in alts}
-        for site in rows:
-            inc = {junc_between(site, alt) for alt in alts}
-            # 10 bases of the exon, on its side of the site: upstream of a 5' site, downstream of a 3' one
-            exon_left = lies_left(eventtype == 'alt5ss', caller.strand)
-            block = (site - 10, site) if exon_left else (site, site + 10)
-            event.add(coord_ranges(inc, caller.strand), site_totals[site], inc, juncs - inc, blocks=[[block]])
-        caller.keep_other(event, other)
-        event.totoverlap = caller.covering((max(rows), min(alts)) if median(rows) < median(alts) else (max(alts), min(rows)))
+        event = _shared_site_event(caller, eventtype, alts, site_totals)
+        if event is not None:
+            events.append(event)
     return events
+
+
+def _shared_site_event(caller, eventtype, alts, site_totals):
+    """one group's alt5ss or alt3ss event, or None where one site is spliced to the
+    alternatives, its reads do not reach event_support, or one of the sites is
+    alternative"""
+    tot = total(site_totals.values())
+    if len(site_totals) <= 1 or not caller.supported(tot, caller.thresholds.event_support):
+        return None
+    alt_rows, main_rows, other = caller.split(site_totals, tot)
+    if len(alt_rows) <= 1:
+        return None
+    rows = alt_rows + main_rows
+    juncs = {junc_between(site, alt) for site in rows for alt in alts}
+    # unique: each site is in one group, and the event ends at its outermost site
+    start, end = span(juncs)
+    event = caller.event(eventtype, start, end, tot)
+    event.introns = {junc_between(site, alt) for site in site_totals for alt in alts}
+    for site in rows:
+        inc = {junc_between(site, alt) for alt in alts}
+        # 10 bases of the exon, on its side of the site: upstream of a 5' site, downstream of a 3' one
+        exon_left = lies_left(eventtype == 'alt5ss', caller.strand)
+        block = (site - 10, site) if exon_left else (site, site + 10)
+        event.add(coord_ranges(inc, caller.strand), site_totals[site], inc, juncs - inc, blocks=[[block]])
+    caller.keep_other(event, other)
+    event.totoverlap = caller.covering((max(rows), min(alts)) if median(rows) < median(alts) else (max(alts), min(rows)))
+    return event
 
 
 def _overlapping(juncs, junc):
@@ -478,23 +511,31 @@ def intron_retention_events(caller, info):
     events = []
     juncs = sorted(info.juncs)
     for junc, spliced in info.juncs.items():
-        retained = total([counts for block, counts in info.blocks.items() if block[0] < junc[0] and junc[1] < block[1]])
-        overlapping = _overlapping(juncs, junc)
-        near = [k for k in overlapping
-                if abs(k[0] - junc[0]) <= IR_NEAR_JUNCTION_WINDOW and abs(k[1] - junc[1]) <= IR_NEAR_JUNCTION_WINDOW]
-        other = total([info.juncs[k] for k in near])
-        tot = spliced + retained + other
-        if not (caller.supported(spliced) and caller.supported(retained) and caller.alternative(retained, tot)
-                and caller.alternative(spliced, spliced + retained + total([info.juncs[k] for k in overlapping]))):
-            continue
-        event = caller.event('ir', *junc, tot)
-        events.append(event)
-        event.introns = {junc, *near}
-        event.add('spliced', spliced, [junc], (), blocks=[junction_blocks(junc)])
-        event.add('retained', retained, (), [junc], blocks=[[junc]])
-        caller.keep_other(event, other)
-        event.totoverlap = caller.covering(junc)
+        event = _retention_event(caller, info, juncs, junc, spliced)
+        if event is not None:
+            events.append(event)
     return events
+
+
+def _retention_event(caller, info, juncs, junc, spliced):
+    """one junction's ir event, or None where the spliced and the retaining reads are
+    not both supported and alternative"""
+    retained = total([counts for block, counts in info.blocks.items() if block[0] < junc[0] and junc[1] < block[1]])
+    overlapping = _overlapping(juncs, junc)
+    near = [k for k in overlapping
+            if abs(k[0] - junc[0]) <= IR_NEAR_JUNCTION_WINDOW and abs(k[1] - junc[1]) <= IR_NEAR_JUNCTION_WINDOW]
+    other = total([info.juncs[k] for k in near])
+    tot = spliced + retained + other
+    if not (caller.supported(spliced) and caller.supported(retained) and caller.alternative(retained, tot)
+            and caller.alternative(spliced, spliced + retained + total([info.juncs[k] for k in overlapping]))):
+        return None
+    event = caller.event('ir', *junc, tot)
+    event.introns = {junc, *near}
+    event.add('spliced', spliced, [junc], (), blocks=[junction_blocks(junc)])
+    event.add('retained', retained, (), [junc], blocks=[[junc]])
+    caller.keep_other(event, other)
+    event.totoverlap = caller.covering(junc)
+    return event
 
 
 def extract_terminal_info(samples, chains_by_sample, key, strand, terminal):

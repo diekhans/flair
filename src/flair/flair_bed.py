@@ -136,32 +136,23 @@ class FlairBed(Bed):
         except Exception as ex:
             raise BedException(f"parsing of BED row failed: {row}") from ex
 
-    def get_named_extra_attrs(self):  # noqa: C901
-        my_attrs = []
-        if self.ref_transcript_id is not None:
-            my_attrs.append(('ref_transcript_id', self.ref_transcript_id))
-        if len(self.ref_gene_mappings) > 0:
-            my_attrs.append(('ref_gene_mappings', strArrayJoin(self.ref_gene_mappings)))
-        if self.read_support is not None:
-            my_attrs.append(('read_support', self.read_support))
-        if self.frac_support is not None:
-            my_attrs.append(('frac_support', round(self.frac_support, 4)))
-        if self.productivity is not None:
-            my_attrs.append(('productivity', self.productivity))
-        my_attrs.append(('transcript_class', self.transcript_class))
-        if len(self.fused_genes) > 0:
-            my_attrs.append(('fused_genes', strArrayJoin(self.fused_genes)))
-        if self.pos_in_fusion is not None:
-            my_attrs.append(('pos_in_fusion', self.pos_in_fusion))
-        if len(self.samples) > 0:
-            my_attrs.append(('samples', strArrayJoin(self.samples)))
-        if self.source_isoform is not None:
-            my_attrs.append(('source_isoform', self.source_isoform))
-        if self.allele_group is not None:
-            my_attrs.append(('allele_group', self.allele_group))
-        if self.aaseq_id is not None:
-            my_attrs.append(('aaseq_id', self.aaseq_id))
-        return my_attrs
+    def get_named_extra_attrs(self):
+        """the extra columns that have a value, as (name, value) in column order.
+        transcript_class is written whatever it holds, as every row has one"""
+        values = (('ref_transcript_id', self.ref_transcript_id),
+                  ('ref_gene_mappings', strArrayJoin(self.ref_gene_mappings) if self.ref_gene_mappings else None),
+                  ('read_support', self.read_support),
+                  ('frac_support', round(self.frac_support, 4) if self.frac_support is not None else None),
+                  ('productivity', self.productivity),
+                  ('transcript_class', self.transcript_class),
+                  ('fused_genes', strArrayJoin(self.fused_genes) if self.fused_genes else None),
+                  ('pos_in_fusion', self.pos_in_fusion),
+                  ('samples', strArrayJoin(self.samples) if self.samples else None),
+                  ('source_isoform', self.source_isoform),
+                  ('allele_group', self.allele_group),
+                  ('aaseq_id', self.aaseq_id))
+        return [(name, value) for name, value in values
+                if (value is not None) or (name == 'transcript_class')]
 
 
 def FlairBedReader(bed_file, *, fixScores=False):
@@ -171,5 +162,6 @@ def FlairBedReader(bed_file, *, fixScores=False):
     try:
         yield from BedReader(bed_file, bedClass=FlairBed, fixScores=fixScores)
     except PycbioDataError as exc:
-        raise FlairInputDataError(f'{bed_file} is not a FLAIR isoform bed, of the 25 columns flair transcriptome '
-                                  f'and flair combine write: {exc}') from exc
+        raise FlairInputDataError(f'{bed_file} is not a FLAIR isoform BED, of the 25 columns flair transcriptome '
+                                  f'and flair combine write.  A flair transcriptome run writes its isoforms as '
+                                  f'<prefix>.isoforms.bed; <prefix>.regions.bed is the regions it covered') from exc

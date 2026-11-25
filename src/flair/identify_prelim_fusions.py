@@ -315,15 +315,13 @@ def _scan_genome_alignment(genome_bam, min_clip, chim_bam, reads_fa):
         chim_out = pysam.AlignmentFile(chim_bam, 'wb', template=pieces) if chim_bam else None
         fa_out = open(reads_fa, 'w') if reads_fa else None
         for read in pieces.fetch(until_eof=True):
-            if read.is_secondary:
-                continue
-            if chim_out is not None and read.is_mapped and read.has_tag('SA'):
-                chim_out.write(read)
-            if read.is_supplementary or not needs_transcriptome(read, min_clip):
-                continue
-            needed.add(read.query_name)
-            if fa_out is not None and read.query_sequence:
-                fa_out.write('>' + read.query_name + '\n' + read.get_forward_sequence() + '\n')
+            if not read.is_secondary:
+                if chim_out is not None and read.is_mapped and read.has_tag('SA'):
+                    chim_out.write(read)
+                if not (read.is_supplementary or not needs_transcriptome(read, min_clip)):
+                    needed.add(read.query_name)
+                    if fa_out is not None and read.query_sequence:
+                        fa_out.write('>' + read.query_name + '\n' + read.get_forward_sequence() + '\n')
         if chim_out is not None:
             chim_out.close()
         if fa_out is not None:
@@ -392,8 +390,8 @@ def read_pieces(mode, bam, piece_of, min_mapq, only_reads):
     for read in low_quality:
         read_to_pieces.pop(read, None)
     if low_quality:
-        logging.info('%s chimeras: %s with a piece below MAPQ %d left out', mode,
-                     plural(len(low_quality), 'read'), min_mapq)
+        logging.info(f"{mode} chimeras: {plural(len(low_quality), 'read')} with a piece below "
+                     f"MAPQ {min_mapq} left out")
     return read_to_pieces
 
 
@@ -401,8 +399,8 @@ def drop_foldbacks(mode, read_to_pieces):
     foldbacks = [read for read, pieces in read_to_pieces.items() if is_foldback(pieces)]
     for read in foldbacks:
         del read_to_pieces[read]
-    logging.info('%s chimeras: %s of %d left out', mode, plural(len(foldbacks), 'fold-back read'),
-                 len(read_to_pieces) + len(foldbacks))
+    logging.info(f"{mode} chimeras: {plural(len(foldbacks), 'fold-back read')} of "
+                 f"{len(read_to_pieces) + len(foldbacks)} left out")
 
 
 def consensus_gene(genes):
@@ -500,16 +498,15 @@ def fusion_read_positions(reads, read_to_pieces, num_loci):
     piece_ends = [[[], []] for x in range(num_loci)]
     good_reads = []
     for read in reads:
-        if len(read_to_pieces[read]) != num_loci:
-            continue
-        pieces = sorted(read_to_pieces[read])
-        good_reads.append(read)
-        for i in range(num_loci - 1):
-            # positive where the pieces overlap in the read, negative where bases between them are unaligned
-            read_gaps[i].append(pieces[i][1][0] - pieces[i + 1][0][0])
-        for i in range(num_loci):
-            piece_ends[i][0].append(pieces[i][0][1])
-            piece_ends[i][1].append(pieces[i][1][1])
+        if len(read_to_pieces[read]) == num_loci:
+            pieces = sorted(read_to_pieces[read])
+            good_reads.append(read)
+            for i in range(num_loci - 1):
+                # positive where the pieces overlap in the read, negative where bases between them are unaligned
+                read_gaps[i].append(pieces[i][1][0] - pieces[i + 1][0][0])
+            for i in range(num_loci):
+                piece_ends[i][0].append(pieces[i][0][1])
+                piece_ends[i][1].append(pieces[i][1][1])
     return good_reads, read_gaps, piece_ends
 
 
@@ -691,11 +688,10 @@ def id_chimeras(genome_bam, annot, min_support, max_loci=10, max_dist_to_tss=Non
     fusion_to_info = {}
     for fusion_genes in supported:
         chroms = [annot.genetoinfo[g][0] if g in annot.genetoinfo else g.split(':')[0] for g in fusion_genes]
-        if not identify_fusion_problems(fusion_genes, gene_to_partners, max_partners, annot.genetoname,
-                                        annot.gene_to_paralogs, chroms):
-            continue
-        info = call_fusion(fusion_genes, genes_to_reads[fusion_genes], read_to_pieces, annot.genetoinfo, chroms,
-                           max_dist_to_tss)
-        if info is not None:
-            fusion_to_info['__'.join(fusion_genes)] = info
+        if identify_fusion_problems(fusion_genes, gene_to_partners, max_partners, annot.genetoname,
+                                    annot.gene_to_paralogs, chroms):
+            info = call_fusion(fusion_genes, genes_to_reads[fusion_genes], read_to_pieces, annot.genetoinfo,
+                               chroms, max_dist_to_tss)
+            if info is not None:
+                fusion_to_info['__'.join(fusion_genes)] = info
     return fusion_to_info

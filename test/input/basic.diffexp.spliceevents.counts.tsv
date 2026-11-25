@@ -1,4 +1,4 @@
-event	alternative	event_type	gene	gene_name	additional_genes	additional_gene_names	junctions_included	junctions_excluded	outer_junctions	exons	novel_junctions	MCF7cdnar1r3_MCF7_batch1	MCF7cdnastrandr3r2_MCF7_batch1	MCF7cdnastrandr2r1_MCF7_batch1	A549cdnastrandr5r2_A549_batch1	A549cdnastrandr3r3_A549_batch1	A549cdnar1r2_A549_batch1
+event	alternative	event_type	gene_id	gene_name	additional_genes	additional_gene_names	junctions_included	junctions_excluded	outer_junctions	exons	novel_junctions	MCF7cdnar1r3_MCF7_batch1	MCF7cdnastrandr3r2_MCF7_batch1	MCF7cdnastrandr2r1_MCF7_batch1	A549cdnastrandr5r2_A549_batch1	A549cdnastrandr3r3_A549_batch1	A549cdnar1r2_A549_batch1
 es|chr1:0-100(+)|ENSG00000188243.13	4f9b723c-a62b-4594-be0c-c73820991544	es	ENSG00000188243.13									77	46	14	56	44	90
 es|chr1:0-100(+)|ENSG00000188243.13	34f48706-d759-4ae3-b085-cb5c05c83575	es	ENSG00000188243.13									164	113	28	173	59	145
 es|chr1:1000-1100(+)|ENSG00000106803.10	ENST00000223641.5	es	ENSG00000106803.10									2266	1289	608	1216	522	1517

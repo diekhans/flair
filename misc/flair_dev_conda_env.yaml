@@ -47,4 +47,3 @@ dependencies:
   - poetry
   - sphinx
   - sphinx_rtd_theme
-  - sphinx-argparse

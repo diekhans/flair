@@ -13,7 +13,8 @@
                        [--max_partners MAX_PARTNERS] [--quality QUALITY]
                        [--frac_support FRAC_SUPPORT]
                        [--filter {nosubset,comprehensive,ginormous,<N>X}]
-                       [--no_transcriptome_alignment] [--keep_intermediate]
+                       [--no_transcriptome_alignment] [--temp_dir TEMP_DIR]
+                       [--keep_intermediate]
 
 .. rubric:: options
 
@@ -65,9 +66,13 @@
 
    find fusions from the chimeric reads of the genome alignment only, without aligning reads to annotated transcripts. About half the time and a third of the memory, and -b can then contain only the chimeric reads, but drops fusion reads whose partner piece the genome alignment leaves clipped, particularly short 5' exons
 
+.. option:: --temp_dir TEMP_DIR
+
+   directory for temporary files; each run makes its own directory, named for the output, in it, with the annotated transcripts, the preliminary fusion reads and the synthetic fusion genome with its annotation, breakpoints, alignments and flair transcriptome output (default: $TMPDIR or the system temporary directory)
+
 .. option:: --keep_intermediate
 
-   keep the intermediate files: the annotated transcripts, the preliminary fusion reads, and the synthetic fusion genome with its annotation, breakpoints, alignments and flair transcriptome output, where the fusion isoforms can be viewed. The chimeric reads bams and OUTPUT.fusions.prelim.bed are always kept
+   keep intermediate and temporary files for debugging, in the run's own directory, whose path the run reports: it is in --temp_dir when that is given and in $TMPDIR otherwise. The fusion isoforms can be viewed on the synthetic fusion genome it contains. The chimeric reads bams and OUTPUT.fusions.prelim.bed are beside the output and always kept
 
 .. rubric:: required named arguments
 

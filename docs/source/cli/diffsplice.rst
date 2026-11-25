@@ -64,11 +64,11 @@
 
 .. option:: --isoform_bed ISOFORM_BED
 
-   isoforms in BED format
+   the isoforms the events are called in, a FLAIR isoform BED (the 25 columns of flair transcriptome, flair combine and flair fusion); its isoform ids must be those of the counts matrix
 
 .. option:: --counts_matrix COUNTS_MATRIX
 
-   tab-delimited isoform count matrix from flair quantify
+   the isoform counts of the samples, the counts matrix flair quantify writes, plain or gzipped; a matrix of genes rather than isoforms has no events to call
 
 .. option:: -o, --output OUTPUT
 

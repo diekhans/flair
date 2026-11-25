@@ -83,12 +83,27 @@ def _phases(records):
     phases = {}
     for rec in records:
         gt, sample = _genotype(rec), rec.samples[0] if len(rec.samples) else None
-        if sample is None or not sample.phased or not gt or None in gt:
-            continue
-        for i, alt in enumerate(rec.alts or ()):
-            if i + 1 in gt and len(set(gt)) > 1:
-                phases[(rec.pos, rec.ref, alt)] = (f'H{gt.index(i + 1) + 1}', sample.get('PS'))
+        if not (sample is None or not sample.phased or not gt or None in gt):
+            for i, alt in enumerate(rec.alts or ()):
+                if i + 1 in gt and len(set(gt)) > 1:
+                    phases[(rec.pos, rec.ref, alt)] = (f'H{gt.index(i + 1) + 1}', sample.get('PS'))
     return phases
+
+
+def _record_variants(rec, gt, phases):
+    "the GermlineVariants of one record's alts that its genotype calls"
+    out = []
+    for i, alt in enumerate(rec.alts or ()):
+        if i + 1 in gt:
+            key = Variant(rec.chrom, rec.pos, rec.ref, alt)
+            phase = phases.get((rec.pos, rec.ref, alt))
+            if len(set(gt)) == 1:
+                out.append(GermlineVariant(key, HOMOZYGOUS, None, None))
+            elif phase:
+                out.append(GermlineVariant(key, PHASED_HET, *phase))
+            else:
+                out.append(GermlineVariant(key, UNPHASED_HET, None, None))
+    return out
 
 
 def germline_variants(records, phased_records=None):
@@ -101,19 +116,8 @@ def germline_variants(records, phased_records=None):
     out = []
     for rec in records:
         gt = _genotype(rec)
-        if not passes(rec) or not gt or None in gt:
-            continue
-        for i, alt in enumerate(rec.alts or ()):
-            if i + 1 not in gt:
-                continue
-            key = Variant(rec.chrom, rec.pos, rec.ref, alt)
-            phase = phases.get((rec.pos, rec.ref, alt))
-            if len(set(gt)) == 1:
-                out.append(GermlineVariant(key, HOMOZYGOUS, None, None))
-            elif phase:
-                out.append(GermlineVariant(key, PHASED_HET, *phase))
-            else:
-                out.append(GermlineVariant(key, UNPHASED_HET, None, None))
+        if passes(rec) and gt and None not in gt:
+            out.extend(_record_variants(rec, gt, phases))
     return out
 
 
@@ -145,13 +149,13 @@ def variant_keys(texts, vcf_paths):
         chrom, pos, ref, alt = parse_variant(text)
         if ref:
             keys.append(Variant(chrom, pos, ref, alt))
-            continue
-        found = {Variant(rec.chrom, rec.pos, rec.ref, a) for path, vcf in vcfs
-                 for rec in fetch(vcf, path, chrom, pos - 1, pos) if rec.pos == pos for a in rec.alts or ()}
-        if not found:
-            raise FlairInputDataError(f'--variant {text}: no VCF has a record at {chrom}:{pos}; give it as '
-                                      'CHROM:POS:REF>ALT')
-        keys.extend(sorted(found))
+        else:
+            found = {Variant(rec.chrom, rec.pos, rec.ref, a) for path, vcf in vcfs
+                     for rec in fetch(vcf, path, chrom, pos - 1, pos) if rec.pos == pos for a in rec.alts or ()}
+            if not found:
+                raise FlairInputDataError(f'--variant {text}: no VCF has a record at {chrom}:{pos}; give it as '
+                                          'CHROM:POS:REF>ALT')
+            keys.extend(sorted(found))
     for vcf in vcfs:
         vcf[1].close()
     return sorted(set(keys))

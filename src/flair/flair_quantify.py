@@ -17,7 +17,7 @@ from flair.io_utils import GenomeFasta, make_run_temp_dir, read_manifest_rows
 from flair.run_checks import check_option_ranges, check_sample_name, precheck, report_result_count
 from flair.run_logging import (count_reads_read, plural, report_reads_used, report_task_done,
                                start_task_progress)
-from flair.output_compress import compressed_path, open_seekable_output
+from flair.output_compress import compressed_path, open_seekable_output, output_paths
 from flair import thread_share
 from flair.pycbio.hgdata.bed import BedBlock
 from flair.flair_bed import FlairBedReader
@@ -96,6 +96,13 @@ def add_subparser(subparsers):
                              'otherwise')
     parser.set_defaults(entry=quantify_cmd)
 
+
+# what a run writes, so that an input that is one of them is rejected before the run
+# starts (precheck).  The read maps, one a sample, are named for samples the manifest
+# has not been read for yet, so they are not here
+OUTPUT_TEXT_SUFFIXES = ('.isoforms.counts.tsv', '.isoforms.cpm.tsv', '.isoforms.sample_info.tsv')
+
+
 def quantify_cmd(args):
     if args.trust_ends and args.normalize_ends:
         raise FlairInputDataError(
@@ -105,7 +112,8 @@ def quantify_cmd(args):
             f"allows, so every spliced isoform would count zero reads; give one or the other")
     check_option_ranges(args, positive=('threads',))
     precheck(files={'isoform models BED': args.isoform_bed, 'manifest': args.manifest},
-             programs=PROGRAMS, genome=args.genome, isoform_beds=(args.isoform_bed,))
+             programs=PROGRAMS, genome=args.genome, isoform_beds=(args.isoform_bed,),
+             outputs=output_paths(args.output, OUTPUT_TEXT_SUFFIXES))
     quantify(manifest=args.manifest, genome=args.genome, isoform_bed=args.isoform_bed,
              output=args.output, threads=args.threads,
              trust_ends=args.trust_ends, generate_map=args.generate_map,
@@ -176,29 +184,34 @@ def load_isoform_data(isoform_bed):
     for bed in FlairBedReader(isoform_bed):
         if bed.pos_in_fusion is not None:
             fusions.setdefault(bed.name, []).append(bed)
-            continue
-        if not bed.gene_id:
-            raise FlairInputDataError(f"{isoform_bed}: isoform '{bed.name}' has no gene id (column 13); quantify needs "
-                                      'the isoforms of flair transcriptome or flair combine')
-        gene_info = gene_data.get(bed.gene_id)
-        if gene_info is None:
-            gene_info = gene_data[bed.gene_id] = GeneData(bed.gene_id, bed.chrom, bed.strand)
-        elif bed.chrom != gene_info.chrom or bed.strand != gene_info.strand:
-            raise FlairInputDataError(f"{isoform_bed}: gene id '{bed.gene_id}' has isoforms on {gene_info.chrom} "
-                                      f"{gene_info.strand} and on {bed.chrom} {bed.strand}; a gene's isoforms are on one "
-                                      'chromosome and strand.  A set from an older flair combine can have such genes: '
-                                      'combine the samples again with the current flair combine')
-        # isoforms are realigned to and counted by name alone, a batch of genes at a
-        # time, so two isoforms of one name anywhere would share a counts row
-        if bed.name in names:
-            raise FlairInputDataError(f"{isoform_bed}: isoform name '{bed.name}' is used more than once; "
-                                      "each isoform of a set must have its own name, whatever its chromosome")
-        names[bed.name] = bed.gene_id
-        gene_info.add_isoform_bed(bed)
+        else:
+            _add_gene_isoform(isoform_bed, bed, gene_data, names)
     if not gene_data and not fusions:
         raise FlairInputDataError(f'{isoform_bed}: no isoforms')
     _order_fusion_pieces(isoform_bed, fusions, set(names))
     return gene_data, fusions
+
+
+def _add_gene_isoform(isoform_bed, bed, gene_data, names):
+    "add one isoform to its gene, checking that it names a gene and is named once"
+    if not bed.gene_id:
+        raise FlairInputDataError(f"{isoform_bed}: isoform '{bed.name}' has no gene id (column 13); quantify needs "
+                                  'the isoforms of flair transcriptome or flair combine')
+    gene_info = gene_data.get(bed.gene_id)
+    if gene_info is None:
+        gene_info = gene_data[bed.gene_id] = GeneData(bed.gene_id, bed.chrom, bed.strand)
+    elif bed.chrom != gene_info.chrom or bed.strand != gene_info.strand:
+        raise FlairInputDataError(f"{isoform_bed}: gene id '{bed.gene_id}' has isoforms on {gene_info.chrom} "
+                                  f"{gene_info.strand} and on {bed.chrom} {bed.strand}; a gene's isoforms are on one "
+                                  'chromosome and strand.  A set from an older flair combine can have such genes: '
+                                  'combine the samples again with the current flair combine')
+    # isoforms are realigned to and counted by name alone, a batch of genes at a
+    # time, so two isoforms of one name anywhere would share a counts row
+    if bed.name in names:
+        raise FlairInputDataError(f"{isoform_bed}: isoform name '{bed.name}' is used more than once; "
+                                  "each isoform of a set must have its own name, whatever its chromosome")
+    names[bed.name] = bed.gene_id
+    gene_info.add_isoform_bed(bed)
 
 def _order_fusion_pieces(isoform_bed, fusions, other_names):
     "sort each fusion's pieces by pos_in_fusion, 0, 1, ..., and check its name is its own"
@@ -368,6 +381,26 @@ def single_exon_isoform(read, se_index):
                if covers_single_exon(min(iso[1], end) - max(iso[0], start), iso[1] - iso[0])]
     return min(covered, key=lambda iso: (abs(start - iso[0]) + abs(end - iso[1]),) + iso, default=None)
 
+def _in_this_batch(read, loci, prev_end, fusion_reads):
+    """is the alignment one this batch counts: a primary alignment with a sequence,
+    over the batch's loci, past the previous batch's end so that a read in both is
+    counted once, and not one already counted for a fusion"""
+    return not ((prev_end is not None and read.reference_start < prev_end)
+                or not _overlaps_loci(loci, read.reference_start, read.reference_end)
+                or read.is_secondary or read.is_supplementary or read.query_sequence is None
+                or read.query_name in fusion_reads)
+
+def _merged_spans(spans):
+    "the spans, sorted, with the overlapping ones joined"
+    spans = sorted(spans)
+    merged = [list(spans[0])]
+    for start, end in spans[1:]:
+        if start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
+
 def _batch_alignments(bam_file, batch):
     """The batch's alignments.  A sample's BAM contains some of the isoforms'
     chromosomes, which check_bam_chromosomes allows, and fetch raises on one it
@@ -390,23 +423,20 @@ def batch_reads(bam_file, batch, chains, genome, trust_ends, se_index, fasta, cl
     loci, prev_end = batch['loci'], batch['prev_end']
     with open(fasta, 'w') as fa_fh, open(clipping, 'w') as clip_fh:
         for read in _batch_alignments(bam_file, batch):
-            if ((prev_end is not None and read.reference_start < prev_end)
-                    or not _overlaps_loci(loci, read.reference_start, read.reference_end)
-                    or read.is_secondary or read.is_supplementary or read.query_sequence is None
-                    or read.query_name in fusion_reads):
-                continue
-            if not read_introns(read):
-                iso = single_exon_isoform(read, se_index)
-                if iso is not None:
-                    direct.setdefault(iso[2], []).append(read.query_name)
-                continue
-            bed = direct_isoform(read, chains, genome, trust_ends)
-            if bed is not None:
-                direct.setdefault(bed.name, []).append(read.query_name)
-            else:
-                fa_fh.write('>' + read.query_name + '\n' + read.get_forward_sequence() + '\n')
-                clip_fh.write(read.query_name + '\t' + '\t'.join(str(c) for c in cigar_clipping(read.cigartuples)) + '\n')
-                num_realign += 1
+            if _in_this_batch(read, loci, prev_end, fusion_reads):
+                if not read_introns(read):
+                    iso = single_exon_isoform(read, se_index)
+                    if iso is not None:
+                        direct.setdefault(iso[2], []).append(read.query_name)
+                else:
+                    bed = direct_isoform(read, chains, genome, trust_ends)
+                    if bed is not None:
+                        direct.setdefault(bed.name, []).append(read.query_name)
+                    else:
+                        fa_fh.write('>' + read.query_name + '\n' + read.get_forward_sequence() + '\n')
+                        clip_fh.write(read.query_name + '\t'
+                                      + '\t'.join(str(c) for c in cigar_clipping(read.cigartuples)) + '\n')
+                        num_realign += 1
     return direct, num_realign
 
 def read_count_sam_results(counts_file, read_map_file, assigned):
@@ -424,14 +454,13 @@ def write_batch_reference(batch_beds, genome, temp_prefix):
     any_reference = False
     with open(temp_prefix + 'isoforms.bed', 'w') as fh_bed, open(temp_prefix + 'isoforms.fa', 'w') as fh_fa:
         for bed in batch_beds:
-            if not is_realigned_to(bed):
-                continue
-            any_reference = True
-            bed.write(fh_bed)
-            seq = ''.join(genome.fetch(bed.chrom, block.start, block.end) for block in bed.blocks)
-            if bed.strand == '-':
-                seq = get_reverse_complement(seq)
-            fh_fa.write('>' + bed.name + '\n' + seq + '\n')
+            if is_realigned_to(bed):
+                any_reference = True
+                bed.write(fh_bed)
+                seq = ''.join(genome.fetch(bed.chrom, block.start, block.end) for block in bed.blocks)
+                if bed.strand == '-':
+                    seq = get_reverse_complement(seq)
+                fh_fa.write('>' + bed.name + '\n' + seq + '\n')
     return any_reference
 
 def count_batch(batch, batch_beds, sample_data, temp_dir, genome_file, trust_ends, generate_map, keep_intermediate):
@@ -526,23 +555,14 @@ def fusion_candidate_reads(bam_file, fusions, fasta, clipping):
     seen = set()
     with open(fasta, 'w') as fa_fh, open(clipping, 'w') as clip_fh:
         for chrom, spans in regions.items():
-            if chrom not in bam_file.references:
-                continue
-            spans.sort()
-            merged = [list(spans[0])]
-            for start, end in spans[1:]:
-                if start <= merged[-1][1]:
-                    merged[-1][1] = max(merged[-1][1], end)
-                else:
-                    merged.append([start, end])
-            for start, end in merged:
-                for read in bam_file.fetch(chrom, start, end):
-                    if (read.is_secondary or read.is_supplementary or read.query_sequence is None
-                            or read.query_name in seen or not needs_transcriptome(read, FUSION_MIN_CLIP)):
-                        continue
-                    seen.add(read.query_name)
-                    fa_fh.write('>' + read.query_name + '\n' + read.get_forward_sequence() + '\n')
-                    clip_fh.write(read.query_name + '\t0\t0\n')
+            if chrom in bam_file.references:
+                for start, end in _merged_spans(spans):
+                    for read in bam_file.fetch(chrom, start, end):
+                        if not (read.is_secondary or read.is_supplementary or read.query_sequence is None
+                                or read.query_name in seen or not needs_transcriptome(read, FUSION_MIN_CLIP)):
+                            seen.add(read.query_name)
+                            fa_fh.write('>' + read.query_name + '\n' + read.get_forward_sequence() + '\n')
+                            clip_fh.write(read.query_name + '\t0\t0\n')
     return len(seen)
 
 def count_fusions(fusions, sample_data, temp_dir, genome_file, threads, trust_ends, generate_map, keep_intermediate):
@@ -671,9 +691,10 @@ def quantify(*, manifest, genome, isoform_bed, output, threads,
 
     # a directory of this run's own, so no earlier run's files are read
     run_temp_dir = make_run_temp_dir(output, temp_dir)
-    logging.info('temporary files in %s', run_temp_dir)
-    logging.info('realigning reads to the transcriptome in %s of genes%s', plural(len(batches), 'batch', 'batches'),
-                 f" and {plural(len(fusions), 'fusion isoform')}" if fusions else '')
+    logging.info(f'temporary files in {run_temp_dir}')
+    more = f" and {plural(len(fusions), 'fusion isoform')}" if fusions else ''
+    logging.info(f"realigning reads to the transcriptome in "
+                 f"{plural(len(batches), 'batch', 'batches')} of genes{more}")
     try:
         fusion_results, fusion_reads = count_fusions(fusions, sample_data, run_temp_dir, genome, threads, trust_ends,
                                                      generate_map, keep_intermediate)

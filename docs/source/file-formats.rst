@@ -259,7 +259,7 @@ contain: ``.spliceevents.counts.tsv``, the reads of the alternative,
        of them
    * - ``event_type``
      - the kind of event
-   * - ``gene``, ``gene_name``
+   * - ``gene_id``, ``gene_name``
      - the gene the event was found in, and its name
    * - ``additional_genes``, ``additional_gene_names``
      - other genes sharing the event's junctions

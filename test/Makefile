@@ -1246,7 +1246,7 @@ test-transcriptome-polyt: mkdirs ${POLYT_ALIGN_BAM}
 # novel DDX5 isoforms use the intron shared with the synthetic SHAREDJ1 gene; SHAREDJ1
 # has fewer of their junctions, so gene assignment drops it and the results match
 # test-transcriptome
-# deliberately uses the deprecated --junction_tab, so that spelling stays covered
+# deliberately uses the deprecated --junction_tab, so that the old name stays covered
 test-transcriptome-shared-junc: mkdirs ${BASIC_ALIGN_BAM} ${SHARED_JUNC_ANNOTATION}
 	flair transcriptome -b ${BASIC_ALIGN_BAM} -g ${GENOME_FA} --junction_tab ${BASIC_SHORTREAD_JUNCTIONS} -t 4 -f ${SHARED_JUNC_ANNOTATION} -o $O/$@ --sample_name $@
 	$(diff_bed_gtf)
@@ -1543,7 +1543,7 @@ test-identifyvars-thresholds: mkdirs ${GENOME_FA} ${BASIC_ALIGN_BAM}
 
 fusion-tests: test-fusion test-fusion-pary test-fusion-nongenic test-fusion-no-tome test-fusion-3gene test-fusion-sorted-gtf \
 	test-fusion-refseq test-fusion-recall test-fusion-help test-fusion-compress test-fusion-max-partners \
-	test-fusion-reuse test-fusion-reuse-other-reads
+	test-fusion-reuse test-fusion-reuse-other-reads test-fusion-keep-intermediate
 
 update-fusion-tests:
 	$(call update_expected,test-fusion)
@@ -1583,6 +1583,24 @@ test-fusion-compress: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST
 	$(call cmp_expect_gz,$@.fusions.isoforms.fa,test-fusion.fusions.isoforms.fa)
 	$(call check_gz,$@.fusions.isoforms.gtf)
 	$(call check_fasta_indexable,$@.fusions.isoforms.fa)
+	$(call cmp_expect_named,$@.fusions.prelim.bed,test-fusion.fusions.prelim.bed)
+
+# the intermediate files are in the run's own directory under --temp_dir, kept and
+# reported with --keep_intermediate, and none of them is beside the output.  The
+# chimeric reads bams and the preliminary fusions are beside the output as always.
+# The sample name is the one test-fusion used, since it is written into the BED
+test-fusion-keep-intermediate: mkdirs ${GENOME_FA} ${ERGIC3_KRAS_SIM_FA_GZ} ${FUSION_TEST_BAM}
+	rm -rf $O/$@.tmp
+	flair fusion -g ${GENOME_FA} -f $(BASIC_ANNOTATION) -b ${FUSION_TEST_BAM} --max_loci 4 -o $O/$@ --sample_name test-fusion --min_support 2 \
+	  --temp_dir $O/$@.tmp --keep_intermediate > $O/$@.out 2>&1
+	grep -q -- 'intermediate files kept in' $O/$@.out
+	ls $O/$@.tmp/*.intermediate/$@.synthetic_fusion_genome.fa > /dev/null
+	ls $O/$@.tmp/*.intermediate/$@.synthetic_aligned.flair.isoforms.bed > /dev/null
+	test ! -e $O/$@.synthetic_fusion_genome.fa -a ! -e $O/$@.annotated_transcripts.bed
+	test -s $O/$@.genome_aligned.chim.bam
+	$(call cmp_expect_named,$@.fusions.isoforms.bed,test-fusion.fusions.isoforms.bed)
+	$(call cmp_expect_named,$@.fusions.tsv,test-fusion.fusions.tsv)
+	$(call cmp_expect_named,$@.fusions.isoforms.counts.tsv,test-fusion.fusions.isoforms.counts.tsv)
 	$(call cmp_expect_named,$@.fusions.prelim.bed,test-fusion.fusions.prelim.bed)
 
 # --max_partners 0 makes every gene promiscuous, so the fusion test-fusion reports

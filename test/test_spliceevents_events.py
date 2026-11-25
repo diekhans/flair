@@ -471,7 +471,7 @@ def test_a_splicing_event_is_of_the_gene_annotated_with_most_of_its_introns_and_
     # the reads were given G1, but GX has both inclusion introns, GY only the first
     annotated = _annotated({'GX': INC, 'GY': [(200, 300)]})
     tables, totals = _events(tmp_path, *ES_READS, annotated=annotated)
-    assert {row['gene'] for row in _of_type(tables, 'es').values()} == {'GX'}
+    assert {row['gene_id'] for row in _of_type(tables, 'es').values()} == {'GX'}
     # the event named with its gene
     assert totals[('es|chr1:300-400(+)|GX', 'event_reads')] == {'s1': 40, 's2': 40}
 
@@ -493,20 +493,20 @@ def test_the_other_genes_sharing_an_events_splice_sites_are_its_additional_genes
     annotated.names = {'GX': 'GENEX', 'GZ': 'GENEZ'}
     tables, totals = _events(tmp_path, *ES_READS, annotated=annotated)
     for row in _of_type(tables, 'es').values():
-        assert (row['gene'], row['gene_name']) == ('GX', 'GENEX')
+        assert (row['gene_id'], row['gene_name']) == ('GX', 'GENEX')
         assert (row['additional_genes'], row['additional_gene_names']) == ('GY,GZ', ',GENEZ')
 
 
 def test_genes_annotated_alike_with_an_event_are_all_its_genes(tmp_path):
     tables, _ = _events(tmp_path, *ES_READS, annotated=_annotated({'GX': INC, 'GY': INC}))
-    assert {row['gene'] for row in _of_type(tables, 'es').values()} == {'GX,GY'}
+    assert {row['gene_id'] for row in _of_type(tables, 'es').values()} == {'GX,GY'}
 
 
 def test_a_tie_goes_to_the_gene_of_more_annotated_transcripts(tmp_path):
     # as a gene and a readthrough of it, annotated with the same introns
     annotated = _annotated({'GX': INC, 'GX-GZ': INC}, num_transcripts={'GX': 5, 'GX-GZ': 1})
     tables, _ = _events(tmp_path, *ES_READS, annotated=annotated)
-    assert {row['gene'] for row in _of_type(tables, 'es').values()} == {'GX'}
+    assert {row['gene_id'] for row in _of_type(tables, 'es').values()} == {'GX'}
 
 
 def test_an_annotated_intron_counts_2_and_each_splice_site_of_another_1(tmp_path):
@@ -515,12 +515,12 @@ def test_an_annotated_intron_counts_2_and_each_splice_site_of_another_1(tmp_path
     # sites 200 and 300 of 200-300, 400 of 400-500, and 200 of 200-500: 4
     annotated = _annotated({'GY': [(200, 300)], 'GX': [(150, 300), (400, 450), (180, 200)]})
     tables, _ = _events(tmp_path, *ES_READS, annotated=annotated)
-    assert {row['gene'] for row in _of_type(tables, 'es').values()} == {'GX'}
+    assert {row['gene_id'] for row in _of_type(tables, 'es').values()} == {'GX'}
 
 
 def test_an_event_of_no_annotated_intron_or_site_is_of_its_reads_gene(tmp_path):
     tables, _ = _events(tmp_path, *ES_READS, annotated=_annotated({'GX': [(1000, 1100)]}))
-    assert {row['gene'] for row in _of_type(tables, 'es').values()} == {'G1'}
+    assert {row['gene_id'] for row in _of_type(tables, 'es').values()} == {'G1'}
 
 
 def test_an_event_of_no_annotation_is_of_the_gene_of_most_of_its_reads():
@@ -560,7 +560,7 @@ def test_an_events_gene_counts_the_introns_of_its_other_row(tmp_path):
     tables, _ = _events(tmp_path, s1, s2, junc_frac_of_event=0.2, annotated=annotated)
     alt3 = _of_type(tables, 'alt3')
     assert 'alt3|chr1:200-350(+)|GX|other' in alt3
-    assert {row['gene'] for row in alt3.values()} == {'GX'}
+    assert {row['gene_id'] for row in alt3.values()} == {'GX'}
 
 
 def test_an_events_other_reads_are_counted_however_few_they_are(tmp_path):
@@ -586,7 +586,7 @@ def test_an_events_introns_count_for_its_gene_by_their_reads(tmp_path):
     s2 = [([(200, 300)], 100, 400, 20), ([(200, 350)], 100, 400, 10)]
     annotated = _annotated({'GX': [(200, 300)], 'GY': [(200, 350)]})
     tables, _ = _events(tmp_path, s1, s2, annotated=annotated)
-    assert {row['gene'] for row in _of_type(tables, 'alt3').values()} == {'GX'}
+    assert {row['gene_id'] for row in _of_type(tables, 'alt3').values()} == {'GX'}
 
 
 def test_two_genes_events_of_one_locus_are_named_by_their_genes(tmp_path):

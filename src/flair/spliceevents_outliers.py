@@ -96,15 +96,15 @@ def read_events(input_prefix, psi):
         totals = {row.event: {s: getattr(row, s) for s in samples} for row in reader if row.total == PSI_TOTALS[psi]}
     event_rows = []
     for row in rows:
-        if row['alternative'] == 'other':  # the reads of an event's other ends or junctions
-            continue
-        if row['event'] not in totals:
-            raise FlairInputDataError(f"event {row['event']} of {counts_tsv} is not in "
-                                      f'{input_prefix}.spliceevents.totals.tsv; both files must be '
-                                      'from the same flair spliceevents run')
-        row['counts'] = {s: int(row[s]) for s in samples}
-        row['totals'] = totals[row['event']]
-        event_rows.append(row)
+        # the 'other' row is the reads of an event's other ends or junctions
+        if row['alternative'] != 'other':
+            if row['event'] not in totals:
+                raise FlairInputDataError(f"event {row['event']} of {counts_tsv} is not in "
+                                          f'{input_prefix}.spliceevents.totals.tsv; both files must be '
+                                          'from the same flair spliceevents run')
+            row['counts'] = {s: int(row[s]) for s in samples}
+            row['totals'] = totals[row['event']]
+            event_rows.append(row)
     return event_rows, samples
 
 
@@ -153,7 +153,7 @@ def row_outliers(row, samples, event_support):
     for s, psi in psis.items():
         delta = abs(psi - med)
         if delta >= MIN_DELTA_PSI and ((dev == 0 and psi != med) or delta > dev * MIN_DEVIATIONS):
-            outliers[s] = [row['event'], row['alternative'], row['event_type'], row['gene'], row['gene_name'],
+            outliers[s] = [row['event'], row['alternative'], row['event_type'], row['gene_id'], row['gene_name'],
                            row['additional_genes'], row['additional_gene_names'], s, round(med, 6), round(dev, 6), round(psi, 6),
                            len(vals), row['counts'][s], row['totals'][s], round(delta, 6),
                            round(delta / dev, 6) if dev != 0 else NO_DEVIATION]

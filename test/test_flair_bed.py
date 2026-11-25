@@ -166,7 +166,7 @@ def test_reader_of_a_plain_bed12(tmp_path):
     p = tmp_path / "bed12.bed"
     p.write_text("\t".join(["chr1", "100", "200", "tx1", "0", "+",
                             "100", "200", "0", "1", "100,", "0,"]) + "\n")
-    with pytest.raises(FlairInputDataError, match="is not a FLAIR isoform bed"):
+    with pytest.raises(FlairInputDataError, match="is not a FLAIR isoform BED"):
         list(FlairBedReader(str(p)))
 
 
@@ -183,5 +183,5 @@ def test_big_bed_of_an_isoform_in_many_samples(tmp_path):
     samples = [f"sample_number_{i:02d}" for i in range(40)]
     with open(tmp_path / "combined.bed", "w") as fh:
         _make_bed(samples=samples).write(fh)
-    make_big_bed(_Genome(), str(tmp_path / "chrom.sizes"), str(tmp_path / "combined"))
+    make_big_bed(_Genome(), str(tmp_path / "combined"))
     assert (tmp_path / "combined.bb").stat().st_size > 0

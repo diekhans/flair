@@ -13,6 +13,7 @@ import shutil
 import time
 import pipettor
 from flair import FlairError, FlairToolError, SeqRange
+from flair.io_utils import program_failed_msg
 from flair.process_pool import ProcessPool
 from flair.run_logging import child_log_level_opt, report_task_done, start_task_progress
 from flair import thread_share
@@ -51,7 +52,9 @@ def combine_temp_files_by_suffix(output, temp_prefixes, suffixes, *, headers=(),
                     _copy_part(in_fh, combined_fh, has_header and (num > 0))
 
 def _open_combined(path, compress):
-    return fileOps.opengz(compressed_path(path), 'wb') if compress else open(path, 'wb')
+    # written through a temporary file in the same directory, so a joined file
+    # appears under its name only when it is complete
+    return fileOps.AtomicFileOpen(compressed_path(path) if compress else path, 'wb')
 
 
 class Partition:
@@ -166,7 +169,7 @@ def run_flair_partition(bam_files, annot_gtf, threads, *, region_bed=None, min_p
                 regions.append(SeqRange(bed.chrom, bed.chromStart, bed.chromEnd))
                 item_counts.append(int(bed.extraCols[0]))
     except pipettor.ProcessException as exc:
-        raise FlairToolError('flair_partition failed, its diagnostics are above') from exc
+        raise FlairToolError(program_failed_msg([cmd], exc)) from exc
     return regions, item_counts
 
 

@@ -58,10 +58,11 @@ by one without it leaves both ``OUTPUT.isoforms.bed.gz`` and
 ``OUTPUT.isoforms.bed``.  Use a new prefix for a run with different options, or
 remove the old files first.
 
-``flair fusion`` and ``flair spliceevents`` with ``--keep_intermediate`` reuse what
-an earlier run under the same prefix left, and only where the reads, the genome, the
-annotation and the options are those it was made from; each run reports what it
-reuses and what it makes again.
+``flair fusion`` reuses the chimeric reads bams an earlier run under the same prefix
+left, and ``flair spliceevents`` with ``--keep_intermediate`` the corrected reads in
+``OUTPUT.intermediate``, each only where the reads, the genome, the annotation and the
+options are those it was made from; each run reports what it reuses and what it makes
+again.
 
 A run that is stopped with SIGTERM or SIGINT, as a job scheduler and the terminal
 send, removes its temporary directory as a failed run does.  SIGKILL cannot be

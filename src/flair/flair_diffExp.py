@@ -16,10 +16,9 @@ import logging
 import os.path as osp
 from collections import Counter
 from statistics import median, mean
-import pipettor
 
-from flair import FlairInputDataError, FlairToolError
-from flair.io_utils import keep_or_remove, make_run_temp_dir
+from flair import FlairInputDataError
+from flair.io_utils import keep_or_remove, make_run_temp_dir, run_program
 from flair.run_checks import (check_option_ranges, count_records, precheck,
                               report_result_count)
 from flair.conditions import condition_column_indexes, select_condition_pair
@@ -30,7 +29,7 @@ from flair.drimseq_counts_tsv import drimseq_counts_writer
 from flair.drimseq_input import check_feature_ids_unique
 from flair.formula_matrix_tsv import FormulaRow, write_formula_matrix
 from flair.iso_usage_change_tsv import iso_usage_change_writer
-from flair.output_compress import compressed_path, output_compression
+from flair.output_compress import compressed_path, output_compression, output_paths
 from flair.sample_info_tsv import read_sample_info
 
 # imported after flair, which sets OPENBLAS_NUM_THREADS
@@ -160,14 +159,13 @@ def do_mtc_ttest(rows, gene_to_tot_counts, ref_cols, test_cols, unreported, coun
     from scipy.stats import ttest_ind
     allids, allpval, alldeltas = [], [], []
     for row in rows:
-        if row.isoform_id in unreported:
-            continue
-        tested = row_ttest(ttest_ind, row, gene_to_tot_counts[row.gene_id], ref_cols, test_cols)
-        if tested is not None:
-            deltausage, pval = tested
-            allids.append((row.gene_id, row.isoform_id))
-            allpval.append(pval)
-            alldeltas.append(deltausage)
+        if row.isoform_id not in unreported:
+            tested = row_ttest(ttest_ind, row, gene_to_tot_counts[row.gene_id], ref_cols, test_cols)
+            if tested is not None:
+                deltausage, pval = tested
+                allids.append((row.gene_id, row.isoform_id))
+                allpval.append(pval)
+                alldeltas.append(deltausage)
 
     if len(allpval) == 0:
         raise FlairInputDataError(f"no {counts_format.row_noun}'s median count differs between the two "
@@ -291,32 +289,91 @@ def run_deseq2(prefix, id_column, workdir, condition_a, condition_b, matrix_file
     # no --batch: neither R script ever read it, and one arbitrary batch label would
     # not have reported anything anyway.  Both take the batch column from the formula matrix
     stderr = f"{workdir}/{prefix}.txt"
-    try:
-        with open(stderr, "w") as stderr_fh:
-            pipettor.run(["Rscript", diffExp_deseq2, "--condition_a", condition_a, "--condition_b", condition_b,
-                          "--matrix", matrix_file, "--out_prefix", output, "--workdir", workdir,
-                          "--prefix", prefix, "--id_column", id_column,
-                          "--formula", formula_matrix_file] + r_compress_option(),
-                         stderr=stderr_fh)
-    except pipettor.ProcessException as exc:
-        raise FlairToolError(f'running {prefix} failed, please check {stderr} for details') from exc
+    with open(stderr, "w") as stderr_fh:
+        run_program(["Rscript", diffExp_deseq2, "--condition_a", condition_a, "--condition_b", condition_b,
+                     "--matrix", matrix_file, "--out_prefix", output, "--workdir", workdir,
+                     "--prefix", prefix, "--id_column", id_column,
+                     "--formula", formula_matrix_file] + r_compress_option(),
+                    stderr=stderr_fh, doing=f'building {prefix}', diagnostics_file=stderr)
 
 def run_dirmseq(prefix, workdir, threads, condition_a, condition_b, matrix_file, output, formula_matrix_file,
                 unreported_file):
     check_feature_ids_unique(matrix_file)
     stderr = f"{workdir}/{prefix}.txt"
-    try:
-        with open(stderr, "w") as stderr_fh:
-            pipettor.run(["Rscript", diffExp_drimseq, "--threads", threads, "--condition_a", condition_a, "--condition_b", condition_b,
-                          "--matrix", matrix_file, "--out_prefix", output, "--workdir", workdir,
-                          "--prefix", prefix, "--formula", formula_matrix_file,
-                          "--unreported", unreported_file] + r_compress_option(),
-                         stderr=stderr_fh)
-    except pipettor.ProcessException as exc:
-        raise FlairToolError(f'running {prefix} failed, please check {stderr} for details') from exc
+    with open(stderr, "w") as stderr_fh:
+        run_program(["Rscript", diffExp_drimseq, "--threads", threads, "--condition_a", condition_a,
+                     "--condition_b", condition_b,
+                     "--matrix", matrix_file, "--out_prefix", output, "--workdir", workdir,
+                     "--prefix", prefix, "--formula", formula_matrix_file,
+                     "--unreported", unreported_file] + r_compress_option(),
+                    stderr=stderr_fh, doing=f'building {prefix}', diagnostics_file=stderr)
 
 
-def calculate_sig(*, counts_matrix, output, condition_a, condition_b, min_expression,  # noqa: C901 - FIXME: reduce complexity
+def _check_sample_design(quant_table_tsv, groups, batches):
+    """the sample info must name two conditions of at least three samples each, with
+    batch names of their own that are not numbers"""
+    group_counts = Counter(groups)
+    if len(group_counts) != 2:
+        raise FlairInputDataError(f"flair diffexp compares two conditions, but the sample info of "
+                                  f"{quant_table_tsv} names {len(group_counts)}: "
+                                  f"{', '.join(sorted(group_counts))}.  Cut the counts matrix and its "
+                                  f"sample info down to the two conditions to compare")
+    elif min(group_counts.values()) < 3:
+        raise FlairInputDataError("flair diffexp needs at least 3 samples of each condition; "
+                                  "with fewer, compare two samples with the diff_iso_usage program")
+    elif set(groups).intersection(set(batches)):
+        raise FlairInputDataError(f"a condition and a batch have the same name, "
+                                  f"{', '.join(sorted(set(groups) & set(batches)))}, which the model "
+                                  f"formula cannot distinguish; rename the batch in the sample info of "
+                                  f"{quant_table_tsv}")
+    elif any(x.isdigit() for x in groups) or any(x.isdigit() for x in batches):
+        raise FlairInputDataError(f"condition and batch names must not be numbers, which are read as "
+                                  f"numbers rather than as groups; name them in the sample info of "
+                                  f"{quant_table_tsv}, batch1 rather than 1")
+
+
+def _write_formula_matrix_file(workdir, samples, groups, batches, combos):
+    """the formula matrix the R scripts are given.  DESeq2 models batch when the
+    matrix has a batch column, so it is written only when batch varies and is not a
+    linear combination of condition.  The no-batch branches used to differ only in a
+    stray leading space in the condition column name"""
+    with_batch = (len(combos) != 2) and (len(set(batches)) > 1)
+    formula_rows = [FormulaRow(sample, group, batch)
+                    for sample, group, batch in zip(samples, groups, batches)]
+    formula_matrix_file = workdir + "/formula_matrix.tsv"
+    write_formula_matrix(formula_matrix_file, formula_rows, with_batch=with_batch)
+    return formula_matrix_file
+
+
+def _run_r_tests(*, workdir, output, grouped, quant_table_tsv, condition_a, condition_b, threads,
+                 formula_matrix_file):
+    "DESeq2 for expression, where the counts are of isoforms, and DRIMSeq for usage"
+    iso_matrix_file = workdir + "/filtered_iso_counts_ds2.tsv"
+    gene_matrix_file = workdir + "/filtered_gene_counts_ds2.tsv"
+    drim_matrix_file = workdir + "/filtered_iso_counts_drim.tsv"
+
+    # DESeq2 genes & isoforms.  An event's reads are not the expression of a gene, so
+    # of flair spliceevents counts only usage is tested
+    expression_tested = grouped.format is QUANTIFY_COUNTS
+    if expression_tested:
+        run_deseq2("genes_deseq2", 'gene_id', workdir, condition_a, condition_b, gene_matrix_file,
+                   output, formula_matrix_file)
+        run_deseq2("isoforms_deseq2", 'isoform_id', workdir, condition_a, condition_b, iso_matrix_file,
+                   output, formula_matrix_file)
+    else:
+        logging.info(f'{quant_table_tsv} is of {grouped.format.program}: testing usage only, '
+                     'not expression with DESeq2')
+
+    # DIRMSeq, its results of the rows that are not tested left out
+    unreported_file = workdir + "/unreported_features.txt"
+    with open(unreported_file, 'w') as fh:
+        fh.writelines(feature_id + '\n' for feature_id in sorted(grouped.unreported))
+    run_dirmseq("isoforms_drimseq", workdir, threads, condition_a, condition_b, drim_matrix_file, output,
+                formula_matrix_file, unreported_file)
+    return expression_tested
+
+
+def calculate_sig(*, counts_matrix, output, condition_a, condition_b, min_expression,
                   threads, temp_dir=None, keep_intermediate=False):
     quant_table_tsv = counts_matrix
     s_filter = min_expression
@@ -341,25 +398,7 @@ def calculate_sig(*, counts_matrix, output, condition_a, condition_b, min_expres
                                                      quant_table_tsv)
     a_cols = condition_column_indexes(groups, condition_a)
     b_cols = condition_column_indexes(groups, condition_b)
-
-    group_counts = Counter(groups)
-    if len(list(group_counts.keys())) != 2:
-        raise FlairInputDataError(f"flair diffexp compares two conditions, but the sample info of "
-                                  f"{quant_table_tsv} names {len(group_counts)}: "
-                                  f"{', '.join(sorted(group_counts))}.  Cut the counts matrix and its "
-                                  f"sample info down to the two conditions to compare")
-    elif min(list(group_counts.values())) < 3:
-        raise FlairInputDataError("flair diffexp needs at least 3 samples of each condition; "
-                                  "with fewer, compare two samples with the diff_iso_usage program")
-    elif set(groups).intersection(set(batches)):
-        raise FlairInputDataError(f"a condition and a batch have the same name, "
-                                  f"{', '.join(sorted(set(groups) & set(batches)))}, which the model "
-                                  f"formula cannot distinguish; rename the batch in the sample info of "
-                                  f"{quant_table_tsv}")
-    elif sum([1 if x.isdigit() else 0 for x in groups]) > 0 or sum([1 if x.isdigit() else 0 for x in batches]) > 0:
-        raise FlairInputDataError(f"condition and batch names must not be numbers, which are read as "
-                                  f"numbers rather than as groups; name them in the sample info of "
-                                  f"{quant_table_tsv}, batch1 rather than 1")
+    _check_sample_design(quant_table_tsv, groups, batches)
 
     # the unfiltered tables and the R scripts' other intermediates, in a directory
     # of this run's own, removed at the end unless they were asked for
@@ -375,39 +414,11 @@ def calculate_sig(*, counts_matrix, output, condition_a, condition_b, min_expres
         # Convert count tables to dataframe and update isoform objects.
         genes, isoforms = separate_tables(counts_rows, s_filter, samples, a_cols, b_cols, workdir)
 
-        # DESeq2 models batch when the formula matrix has a batch column, so it is
-        # written only when batch varies and is not a linear combination of condition.
-        # The no-batch branches used to differ only in a stray leading space in the
-        # condition column name
-        with_batch = (len(combos) != 2) and (len(set(batches)) > 1)
-        formula_rows = [FormulaRow(sample, group, batch)
-                        for sample, group, batch in zip(samples, groups, batches)]
-
-        formula_matrix_file = workdir + "/formula_matrix.tsv"
-        write_formula_matrix(formula_matrix_file, formula_rows, with_batch=with_batch)
-
-        iso_matrix_file = workdir + "/filtered_iso_counts_ds2.tsv"
-        gene_matrix_file = workdir + "/filtered_gene_counts_ds2.tsv"
-        drim_matrix_file = workdir + "/filtered_iso_counts_drim.tsv"
-
-        # DESeq2 genes & isoforms.  An event's reads are not the expression of a gene, so
-        # of flair spliceevents counts only usage is tested
-        expression_tested = grouped.format is QUANTIFY_COUNTS
-        if expression_tested:
-            run_deseq2("genes_deseq2", 'gene_id', workdir, condition_a, condition_b, gene_matrix_file,
-                       output, formula_matrix_file)
-            run_deseq2("isoforms_deseq2", 'isoform_id', workdir, condition_a, condition_b, iso_matrix_file,
-                       output, formula_matrix_file)
-        else:
-            logging.info(f'{quant_table_tsv} is of {grouped.format.program}: testing usage only, '
-                         'not expression with DESeq2')
-
-        # DIRMSeq, its results of the rows that are not tested left out
-        unreported_file = workdir + "/unreported_features.txt"
-        with open(unreported_file, 'w') as fh:
-            fh.writelines(feature_id + '\n' for feature_id in sorted(grouped.unreported))
-        run_dirmseq("isoforms_drimseq", workdir, threads, condition_a, condition_b, drim_matrix_file, output,
-                    formula_matrix_file, unreported_file)
+        formula_matrix_file = _write_formula_matrix_file(workdir, samples, groups, batches, combos)
+        expression_tested = _run_r_tests(workdir=workdir, output=output, grouped=grouped,
+                                         quant_table_tsv=quant_table_tsv, condition_a=condition_a,
+                                         condition_b=condition_b, threads=threads,
+                                         formula_matrix_file=formula_matrix_file)
         report_results(output, condition_a, condition_b, grouped.format, expression_tested)
 
 
@@ -438,6 +449,12 @@ def report_results(output, condition_a, condition_b, counts_format, expression_t
 
 # the programs a run executes, checked before it starts
 PROGRAMS = ('Rscript',)
+
+# what a run writes under a name of its own, so that an input that is one of them is
+# rejected before the run starts (precheck).  The DESeq2 and DRIMSeq tables and the QC
+# plots are named for the two conditions, which are selected from the counts matrix
+# after this check, so they are not here
+OUTPUT_TEXT_SUFFIXES = ('.isoforms_sig_exp_change_norm_by_gene.tsv',)
 
 
 def add_subparser(subparsers):
@@ -474,7 +491,8 @@ def add_subparser(subparsers):
 
 def diffexp_cmd(args):
     check_option_ranges(args, count=('min_expression',), positive=('threads',))
-    precheck(files={'counts matrix': args.counts_matrix}, programs=PROGRAMS)
+    precheck(files={'counts matrix': args.counts_matrix}, programs=PROGRAMS,
+             outputs=output_paths(args.output, OUTPUT_TEXT_SUFFIXES))
     calculate_sig(counts_matrix=args.counts_matrix, output=args.output,
                   condition_a=args.condition_a, condition_b=args.condition_b,
                   min_expression=args.min_expression, threads=args.threads,

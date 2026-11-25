@@ -1,4 +1,4 @@
-event	alternative	event_type	gene	gene_name	additional_genes	additional_gene_names	junctions_included	junctions_excluded	outer_junctions	exons	novel_junctions	s1	s2	s3	s4	s5	s6
+event	alternative	event_type	gene_id	gene_name	additional_genes	additional_gene_names	junctions_included	junctions_excluded	outer_junctions	exons	novel_junctions	s1	s2	s3	s4	s5	s6
 tts|chr12:25206932-25205246(-)|ENSG00000133703.12	25205246	tts	ENSG00000133703.12	KRAS			chr12:25205246	chr12:25206931				90	87	88	94	54	54
 tts|chr12:25206932-25205246(-)|ENSG00000133703.12	25206931	tts	ENSG00000133703.12	KRAS			chr12:25206931	chr12:25205246				7	8	6	8	2	4
 tts|chr12:25206932-25205246(-)|ENSG00000133703.12	other	tts	ENSG00000133703.12	KRAS								4	2	7	6	4	2

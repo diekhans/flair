@@ -25,7 +25,7 @@ from flair.isoallele_variants import UNTAGGED, open_vcf, variant_keys
 from flair.pycbio.sys import fileOps
 from flair.isoalleles_tsv import TABLES, isoalleles_table_writer, table_path
 from flair.isoform_data import make_big_bed
-from flair.output_compress import compressed_path, open_fasta_output
+from flair.output_compress import compressed_path, open_fasta_output, output_paths
 from flair.process_pool import ProcessPool
 from flair.run_logging import plural, report_task_done, start_task_progress
 from flair.read_map_index import ReadMapIndex
@@ -204,21 +204,25 @@ def _write_batch_labels(ctx, batch_genes, out, batch_dir):
     paths = {}
     for sample, labelled in out.labels.items():
         labels = dict(labelled)
-        if not labels:
-            continue
-        unsorted = os.path.join(batch_dir, f'{sample}.unsorted.bam')
-        written = {}
-        with pysam.AlignmentFile(unsorted, 'wb', template=ctx.bams[sample]) as fh:
-            for _, isos in batch_genes:
-                chrom, start, end = isos[0].chrom, min(i.chromStart for i in isos), max(i.chromEnd for i in isos)
-                for read in ctx.bams[sample].fetch(chrom, start, end):
-                    label = labels.get(read.query_name)
-                    if label and not (read.is_secondary or read.is_supplementary):
-                        _write_labelled_read(read, label, written, fh, ctx.bam_paths[sample])
-        paths[sample] = os.path.join(batch_dir, f'{sample}.bam')
-        pysam.sort('-o', paths[sample], unsorted)
-        os.remove(unsorted)
+        if labels:
+            _write_sample_labels(ctx, sample, labels, batch_genes, batch_dir, paths)
     return paths
+
+
+def _write_sample_labels(ctx, sample, labels, batch_genes, batch_dir, paths):
+    "one sample's labelled reads of the batch's genes, as a sorted BAM in batch_dir"
+    unsorted = os.path.join(batch_dir, f'{sample}.unsorted.bam')
+    written = {}
+    with pysam.AlignmentFile(unsorted, 'wb', template=ctx.bams[sample]) as fh:
+        for _, isos in batch_genes:
+            chrom, start, end = isos[0].chrom, min(i.chromStart for i in isos), max(i.chromEnd for i in isos)
+            for read in ctx.bams[sample].fetch(chrom, start, end):
+                label = labels.get(read.query_name)
+                if label and not (read.is_secondary or read.is_supplementary):
+                    _write_labelled_read(read, label, written, fh, ctx.bam_paths[sample])
+    paths[sample] = os.path.join(batch_dir, f'{sample}.bam')
+    pysam.sort('-o', paths[sample], unsorted)
+    os.remove(unsorted)
 
 
 class Outputs:
@@ -255,6 +259,17 @@ class Outputs:
                 writer.writeReads(label, sorted(by_label[label]))
 
 
+# what a run writes, so that an input that is one of them is rejected before the run
+# starts (precheck).  The read maps and labelled bams, one a sample, are named for
+# samples the manifest has not been read for yet, so they are not here
+OUTPUT_TEXT_SUFFIXES = ('.isoalleles.bed', '.isoalleles.fa', '.isoalleles.counts.tsv',
+                        '.isoalleles.aaseq.tsv', '.isoalleles.variants.tsv', '.isoalleles.genes.tsv',
+                        '.isoalleles.sequences.tsv', '.isoalleles.somatic_sets.tsv',
+                        '.isoalleles.terminal_sites.tsv', '.isoalleles.excluded.tsv',
+                        '.isoalleles.warnings.tsv')
+OUTPUT_BINARY_SUFFIXES = ('.isoalleles.bb',)
+
+
 def isoalleles_cmd(args):
     "the subcommand: its own options, not flair's global ones, to isoalleles"
     for name in (args.sample_name, args.normal_name):
@@ -278,7 +293,8 @@ def isoalleles(*, isoform_bed, genome, bam, read_map, phased_vcf, germline_vcf=N
                '--normal_bam': normal_bam, '--normal_read_map': normal_read_map,
                '--tumor_vcf': tumor_vcf, '--somatic_vcf': somatic_vcf})
     precheck(programs=PROGRAMS, genome=genome, indexed_alignments=(bam, normal_bam), isoform_beds=(isoform_bed,),
-             vcfs=(phased_vcf, germline_vcf, tumor_vcf, somatic_vcf))
+             vcfs=(phased_vcf, germline_vcf, tumor_vcf, somatic_vcf),
+             outputs=output_paths(output, OUTPUT_TEXT_SUFFIXES, OUTPUT_BINARY_SUFFIXES))
     gene_data, fusions = load_isoform_data(isoform_bed)
     if fusions:
         logging.info(f'{len(fusions)} fusion isoforms left out: isoalleles takes the isoforms of genes')
@@ -304,7 +320,7 @@ def isoalleles(*, isoform_bed, genome, bam, read_map, phased_vcf, germline_vcf=N
             batch_dir = os.path.join(run_temp_dir, f'batch{n}')
             os.makedirs(batch_dir)
             packed.append(([(gene_id, gene_data[gene_id].isoform_beds) for gene_id in batch['gene_ids']], batch_dir))
-        logging.info('%s in %s', plural(len(gene_data), 'gene'), plural(len(batches), 'batch', 'batches'))
+        logging.info(f"{plural(len(gene_data), 'gene')} in {plural(len(batches), 'batch', 'batches')}")
         start_task_progress(len(packed))
         _run(settings, packed, threads, output, names, generate_map, label_bams, genome)
         _report_alleles(output)
@@ -354,10 +370,12 @@ def _run(settings, packed, threads, output, names, generate_map, label_bams, gen
                 label_parts[sample].append(path)
     write_aaseqs(compressed_path(f'{output}.isoalleles.aaseq.tsv'), outputs.proteins)
     with GenomeFasta(genome) as genome_fa:
-        make_big_bed(genome_fa, f'{output}.isoalleles.chrom.sizes', f'{output}.isoalleles')
+        make_big_bed(genome_fa, f'{output}.isoalleles')
     if label_bams:
         for sample, parts in label_parts.items():
             path = f'{output}.isoalleles.{sample}.bam'
             if parts:
-                pysam.merge('-f', '-o', path, *parts)
+                # through a temporary file, so an interrupted run leaves no partial bam
+                with fileOps.AtomicFileCreate(path) as tmp_bam:
+                    pysam.merge('-f', '-o', tmp_bam, *parts)
                 pysam.index(path)

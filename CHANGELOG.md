@@ -210,7 +210,9 @@
     regions BED and the usage plots were written in place.  `flair spliceevents`
     writes `OUT.spliceevents.regions.bed` with its other outputs rather than before
     the run, so a stopped run leaves none of the set, and `flair combine` and `flair
-    isoalleles` no longer leave an `OUT.chrom.sizes` beside the output.
+    isoalleles` no longer leave an `OUT.chrom.sizes` beside the output.  The `.bai` of
+    a BAM and the `.fai` of a FASTA that flair indexes are installed the same way, so
+    a run killed while indexing leaves no partial index beside a complete file.
   * The read support of a `--junction_bed` junction is read as the file has it, where
     the BED score convention clamped it to 1000: a junction with more reads than that
     is now compared with `--junction_support` by its real count.

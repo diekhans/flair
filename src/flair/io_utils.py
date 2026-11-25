@@ -176,6 +176,25 @@ def program_failed_msg(cmds, exc, *, name=None, doing=None, diagnostics_file=Non
     return what + where
 
 
+def index_bam(bam):
+    """samtools index, with the index installed when it is complete, so a run killed
+    while indexing leaves no partial .bai beside a complete BAM for a later run or a
+    genome browser to read."""
+    with fileOps.AtomicFileCreate(bam + '.bai') as tmp_bai:
+        run_program([('samtools', 'index', '-o', tmp_bai, bam)])
+
+
+def index_fasta(fasta):
+    """samtools faidx, with the indexes installed when they are complete (index_bam).
+    A bgzip compressed FASTA takes a .gzi as well as a .fai."""
+    with fileOps.AtomicFileCreate(fasta + '.fai') as tmp_fai:
+        if fasta.endswith(('.gz', '.bgz')):
+            with fileOps.AtomicFileCreate(fasta + '.gzi') as tmp_gzi:
+                run_program([('samtools', 'faidx', '--fai-idx', tmp_fai, '--gzi-idx', tmp_gzi, fasta)])
+        else:
+            run_program([('samtools', 'faidx', '--fai-idx', tmp_fai, fasta)])
+
+
 def run_program(cmds, *, name=None, doing=None, diagnostics_file=None, **kwargs):
     """Run a program, or a pipeline of them, reporting a failure as a tool error with
     the program's own diagnostics, so that a traceback of the flair code that started

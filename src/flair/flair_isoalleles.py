@@ -18,7 +18,7 @@ from flair import FlairInputDataError
 from flair.aaseq_tsv import write_aaseqs
 from flair.counts_matrix_tsv import CountsRow, counts_matrix_writer
 from flair.flair_quantify import load_isoform_data, make_batches
-from flair.io_utils import GenomeFasta, make_run_temp_dir, open_sorted_bed
+from flair.io_utils import GenomeFasta, index_bam, make_run_temp_dir, open_sorted_bed
 from flair.run_checks import check_option_ranges, check_sample_name, precheck, report_result_count
 from flair.isoallele_genes import GeneOutput, process_gene
 from flair.isoallele_variants import UNTAGGED, open_vcf, variant_keys
@@ -378,4 +378,4 @@ def _run(settings, packed, threads, output, names, generate_map, label_bams, gen
                 # through a temporary file, so an interrupted run leaves no partial bam
                 with fileOps.AtomicFileCreate(path) as tmp_bam:
                     pysam.merge('-f', '-o', tmp_bam, *parts)
-                pysam.index(path)
+                index_bam(path)

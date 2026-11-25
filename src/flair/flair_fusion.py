@@ -18,7 +18,8 @@ from flair.bed_to_gtf import bed_to_gtf
 from flair.isoform_data import make_big_bed
 from flair.fusion_table import write_fusion_table, write_table
 from flair.flair_transcriptome import DEFAULT_FILTER, parse_filter
-from flair.io_utils import GenomeFasta, keep_or_remove, make_run_temp_dir, run_program
+from flair.io_utils import (GenomeFasta, index_bam, index_fasta, keep_or_remove,
+                            make_run_temp_dir, run_program)
 from flair.pycbio.sys import fileOps
 from flair.reuse import provenance, record_provenance, reuse_file
 from flair.run_checks import (check_annotation, check_option_ranges, check_sample_name, precheck,
@@ -178,7 +179,7 @@ def align_to_synth_genome(genome, reads, output, additional_options):
     # so an interrupted run leaves no bam that a later run takes for a finished one
     with fileOps.AtomicFileCreate(output) as tmp_bam:
         run_program([mm2_cmd, samtools_filter_cmd, ('samtools', 'sort', '-o', tmp_bam, '-')])
-    run_program([('samtools', 'index', output)])
+    index_bam(output)
 
 
 CANONICAL_MOTIFS = {"GT/AG", "GC/AG", "AT/AC"}
@@ -248,7 +249,7 @@ def align_reads_to_transcripts(genome, gtf_data, output, work, reads_fa, nreads,
         run_program([('samtools', 'sort', '-o', tmp_bam, unsorted_sam)])
         os.remove(unsorted_sam)
     os.remove(reads_fa)
-    pysam.index(transcriptchimbam)
+    index_bam(transcriptchimbam)
 
 
 def _chimeric_bam_provenances(genome, annot_gtf, genome_aligned_bam, min_fragment_size):
@@ -282,7 +283,7 @@ def make_chimeric_bams(genome, gtf_data, annot_gtf, genome_aligned_bam, output, 
                                                     chim_bam=genomechimbam if make_chim else None,
                                                     reads_fa=transcriptome_reads_fa if align_to_transcripts else None)
         if make_chim:
-            pysam.index(genomechimbam)
+            index_bam(genomechimbam)
             record_provenance(genomechimbam, genome_prov)
     if align_to_transcripts:
         align_reads_to_transcripts(genome, gtf_data, output, work, transcriptome_reads_fa,
@@ -421,7 +422,7 @@ def make_synthetic_genome(annot_gtf, gtf_data, genome, prelim_bed, work):
     make_synthetic_reference(gtf_data, annot_gtf, genome, prelim_bed, work)
     if os.path.getsize(work + '.synthetic_fusion_genome.fa') == 0:
         return False
-    run_program([('samtools', 'faidx', work + '.synthetic_fusion_genome.fa')])
+    index_fasta(work + '.synthetic_fusion_genome.fa')
     return True
 
 
@@ -466,7 +467,7 @@ def align_to_synthetic_genome(work, freadsname, min_fragment_size, threads):
             outbam.write(rname_to_read[a])
     with fileOps.AtomicFileCreate(work + '.synthetic_aligned.bam') as tmp_bam:
         run_program([('samtools', 'sort', '-o', tmp_bam, work + '.synthetic_aligned.unsorted.bam')])
-    run_program([('samtools', 'index', work + '.synthetic_aligned.bam')])
+    index_bam(work + '.synthetic_aligned.bam')
     run_program([('rm', withsplice, withsplice + '.bai', nosplice, nosplice + '.bai',
                   work + '.synthetic_aligned.unsorted.bam')])
 

@@ -11,6 +11,11 @@ ifneq (${use_installed_flair},yes)
     export PYTHONPATH := ${root}/src:${PYTHONPATH}
 endif
 
+# argparse colorizes its help wherever the environment takes color, FORCE_COLOR
+# being enough; the targets comparing --help against test/expected would read the
+# escape sequences as a difference
+export PYTHON_COLORS := 0
+
 ifeq (${PYTHONWARNINGS},)
    # get resource and other warnings
    #   ResourceWarning: Enable tracemalloc to get the object allocation traceback

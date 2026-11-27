@@ -5,8 +5,9 @@ Migrating from FLAIR 3.0 to 3.1
 
 What a command line written for FLAIR 3.0 has to change to run under FLAIR 3.1.
 Each table gives what 3.0 had, what 3.1 has, and what to know about the change.
-An empty first column is new in 3.1.  Options and outputs that are not listed are
-unchanged.
+An empty first column is new in 3.1, and removed in the second column means 3.1
+has no such option or command and nothing took its place.  Options and outputs
+that are not listed are unchanged.
 
 An old name still given on a command line is reported with the name that replaced
 it, rather than as unrecognized: ``flair transcriptome --out_dir out`` reports
@@ -61,7 +62,7 @@ Commands replaced or removed
      - One command does both, starting from a genome aligned BAM, with the junction
        evidence given by ``--gtf``, ``--junction_bed`` or ``--junction_star``.
    * - ``flair align``
-     - gone
+     - removed
      - It ran minimap2 and filtered its output, which nothing else used.  Align the
        reads with the minimap2 command under this table.
    * - ``flair variants``
@@ -108,54 +109,54 @@ flair transcriptome
        (default 3), and the fraction of the gene locus an isoform must make up
        (default 0.05).
    * - ``--no_stringent``, ``--no_check_splice``
-     - gone
+     - removed
      - ``--stringent`` and ``--check_splice`` always apply: turning them off counted
        reads that do not support an isoform toward it.
    * - ``-n``, ``--no_redundant``
-     - gone
+     - removed
      -
    * - ``--predictCDS``, ``--longestORF``
-     - gone
+     - removed
      - An isoform's CDS and productivity are reported whenever the annotation given
        with ``-f`` has start codons.
    * - ``--annotation_reliant``, ``--annotated_bed``, ``--transcriptomefasta``
-     - gone
+     - removed
      - Reads are aligned to the transcripts of ``-f`` by default, with no FASTA or
        BED of them to build or pass; ``--no_align_to_annot`` turns that alignment
        off.
    * - ``--remove_internal_priming``, ``--intprimingthreshold``,
        ``--intprimingfracAs``
-     - gone
+     - removed
      - Single-exon reads whose 3' end is in A-rich genome, 60% A in the 20 bases
        after it or 80% A in its last 20 aligned bases, are always removed as
        oligo-dT mispriming; ``--keep_internally_primed`` keeps them.
    * - ``--nvrna``
-     - gone
+     - removed
      - Correcting a read's strand against the annotation is what correction does;
        ``--trust_strand`` and ``--directRNA`` keep the alignment's strand instead.
    * - ``--promoters``, ``--3prime_regions``, ``--gene_tss``,
        ``--no_gtf_end_adjustment``
-     - gone
+     - removed
      - An isoform's ends come from the ends of the reads assigned to it, clustered
        within ``--end_window``, at most ``--max_ends`` of them, or
        ``--normalize_ends``.  No promoter or transcription end site file, no
        gene-level ends, and the annotation's ends are used to keep subset isoforms
        rather than to move an isoform's ends.
    * - ``--mm2_args``
-     - gone
+     - removed
      - The minimap2 runs are internal.
    * - ``--longshot_bam``, ``--longshot_vcf``
-     - gone
+     - removed
      - Haplotypes come from ``flair isoalleles``.
    * - ``--allow_paralogs``
-     - gone
+     - removed
      -
    * - ``--parallelmode``, ``--parallel_mode``
-     - gone
+     - removed
      - The input is always partitioned into clusters of overlapping reads and
        annotated transcripts.
    * - ``--trust_ends``
-     - gone
+     - removed
      - Each isoform's ends come from the ends of the reads assigned to it, and
        passing it is an error that reports that.
    * -
@@ -214,20 +215,20 @@ flair quantify
      - ``--isoform_bed``
      - Given with ``-g``, ``--genome``.
    * - ``-i``, ``--isoforms``
-     - gone
+     - removed
      - The isoforms are given as ``--isoform_bed``, not as a FASTA.
    * - ``--output_bam``, ``--sample_id_only``, ``--quality``
-     - gone
+     - removed
      -
    * - ``--tpm``
-     - gone
+     - removed
      - The table it asked for is always written, as ``<output>.isoforms.cpm.tsv``.
    * - ``--stringent``, ``--check_splice``
-     - gone
+     - removed
      - Both requirements always apply to read assignment, so there is nothing to
        turn on.
    * - ``--with_gene``
-     - gone
+     - removed
      - The counts matrix always names the gene, in its own column.
    * -
      - ``--normalize_ends``
@@ -287,10 +288,10 @@ flair combine
      - ``--remove_single_exon``
      - Single exon isoforms are kept by default, and this drops them.
    * - ``-c``, ``--convert_gtf``
-     - gone
+     - removed
      - The GTF is always written.
    * - ``-f``, ``--filter``
-     - gone
+     - removed
      - ``-f`` is now ``--gtf``, below.
    * - the manifest's sample name, type, FASTA and read map columns
      - one isoform BED path per line
@@ -334,10 +335,10 @@ flair fusion
      - ``--min_support``
      -
    * - ``--stringent``, ``--check_splice``
-     - gone
+     - removed
      - Both always apply; neither can be turned off.
    * - ``-r``, ``--reads``, ``--transcriptchimbam``
-     - gone
+     - removed
      -
    * -
      - ``--sample_name``
@@ -456,30 +457,30 @@ Standalone programs
      - 3.1
      - Comment
    * - ``bed_to_sequence``
-     - gone
+     - removed
      - Use ``bedtools getfasta``.
    * - ``counts_to_tpm``
-     - gone
+     - removed
      - ``flair quantify`` writes ``<output>.isoforms.cpm.tsv`` itself.
    * - ``normalize_counts_matrix``
-     - gone
+     - removed
      -
    * - ``predictProductivity``
-     - gone
+     - removed
      - ``flair transcriptome`` writes the productivity call in the isoform BED, and
-       ``--predictCDS`` is gone with it.
+       ``--predictCDS`` is removed with it.
    * - ``identify_annotated_gene``
-     - gone
+     - removed
      -
    * - ``identify_gene_isoform``
-     - gone
+     - removed
      - It named isoforms transcript_gene for ``bed_to_gtf`` to split, and FLAIR no
        longer splits names (:ref:`ids <ids-label>`).
    * - ``annotate_aaseq_with_uniprot``
-     - gone
+     - removed
      -
    * - ``junctions_from_sam``
-     - gone
+     - removed
      - It read only alignments without an indel or clipping, which is 4% of a
        minimap2 BAM, and took the strand from an ``XS:A:`` tag that minimap2 does
        not write, so its junctions had a fraction of the read support and no strand.
@@ -488,7 +489,7 @@ Standalone programs
        ``--junction_bed``, or use STAR's ``SJ.out.tab`` with ``--junction_star``.
    * - ``bed_to_gtf --dontuseCDS``
      - ``bed_to_gtf --no_cds``
-     - ``--add_reference_transcript_id`` is gone, and ``--is_flair_bed`` turns the
+     - ``--add_reference_transcript_id`` is removed, and ``--is_flair_bed`` turns the
        extra BED columns into GTF attributes.  A BED not from FLAIR is rejected
        unless given ``--force``, which uses each name as its gene id too: names are
        no longer split into a transcript and gene at an underscore.  A thick range
@@ -498,7 +499,7 @@ Standalone programs
        no coding region, which was read as having none; convert such a BED with
        ``--no_cds``.
    * - ``plot_isoform_usage --vcf``
-     - gone
+     - removed
      -
    * - ``mark_intron_retention``, ``fasta_seq_lengths``,
        ``diffsplice_fishers_exact``

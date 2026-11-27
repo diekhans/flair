@@ -384,10 +384,12 @@ flair diffexp
      - Comment
    * - ``--out_dir``
      - ``-o``, ``--output``
-     -
+     - A file name base rather than a directory to write into: each table and plot
+       is written as ``<output>.<name>``, as every other subcommand writes its
+       outputs.
    * - ``-of``, ``--out_dir_force``
-     - ``--overwrite_output``
-     -
+     - removed
+     - ``--output`` names a file name base, and its outputs are replaced.
    * - ``-e``, ``--exp_thresh``
      - ``--min_expression``
      -
@@ -406,7 +408,7 @@ Outputs:
      - 3.1
      - Comment
    * -
-     - ``isoforms_sig_exp_change_norm_by_gene.tsv``
+     - ``<output>.isoforms_sig_exp_change_norm_by_gene.tsv``
      - Isoforms whose usage changes, from a t-test on counts normalized by gene.
 
 flair diffsplice
@@ -424,10 +426,12 @@ flair diffsplice
      -
    * - ``--outDir``
      - ``-o``, ``--output``
-     -
+     - A file name base rather than a directory to write into: each table and plot
+       is written as ``<output>.<name>``, as every other subcommand writes its
+       outputs.
    * - ``-of``, ``--out_dir_force``
-     - ``--overwrite_output``
-     -
+     - removed
+     - ``--output`` names a file name base, and its outputs are replaced.
    * - ``--conditionA``, ``--conditionB``
      - ``--condition_a``, ``--condition_b``
      -
@@ -441,8 +445,9 @@ flair diffsplice
        spliceevents`` names an event.  Without the strand, an event called on both
        strands at one locus appeared twice under one name, and DRIMSeq rejected the
        file.
-   * - a ``drimseq_<event>_A_v_B.tsv`` for each event type tested
-     - all four, always
+   * - a ``drimseq_<event>_A_v_B.tsv`` in the output directory, for each event type
+       tested
+     - ``<output>.drimseq_<event>_A_v_B.tsv``, all four, always
      - An event type that called nothing, or whose events DRIMSeq found nothing
        significant in, leaves a file of only its header.
 

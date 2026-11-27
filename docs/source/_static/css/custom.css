@@ -5,6 +5,15 @@
     white-space: normal;
 }
 
+/* an option name is one word, though it contains hyphens and underscores a browser
+   breaks a line at: without this, a table column narrow enough leaves --max_dist_to_
+   at the end of one line and tss at the start of the next.  The spaces between the
+   words of a literal are outside these spans, so a cell still wraps between them */
+.wy-table-responsive table td code span.pre,
+.wy-table-responsive table th code span.pre {
+    white-space: nowrap;
+}
+
 /* a module's detail section, sized between the module heading and the Options and
    Notes subsections it sits with */
 .module-detail > h3 {

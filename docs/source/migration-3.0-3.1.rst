@@ -15,8 +15,8 @@ it, rather than as unrecognized: ``flair transcriptome --out_dir out`` reports
 from the aligned reads.  The old names are not accepted, and are not listed in any
 ``--help``.
 
-Everywhere
-----------
+All commands
+------------
 
 .. list-table::
    :header-rows: 1

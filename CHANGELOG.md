@@ -588,6 +588,14 @@
     chromosome.  In LRGASP WTC11 with spike-ins, single-exon ERCCs starting at 1
     shared ids (5 duplicated in PacBio, 4 in ONT).  The name now includes the
     chromosome, hashed so that names stay the same between runs.
+  * Two isoforms of one name stop the run rather than one of them being dropped
+    without a word.  An isoform's name is a hash of its chromosome and its exons,
+    so this reports a defect in flair, where FLAIR 3.0.1 named an end variant
+    after the column of the BED holding the exon count and lost the variants that
+    collided (BrooksLabUCSC/flair#732); flair transcriptome names end variants
+    apart, which `test/test_isoform_names.py` checks.  The names are also checked
+    where they are given their `FLT` ids, so no two isoforms of a run can be
+    written under one id.
   * About 3x faster: full WTC11 PacBio (3 million reads, GENCODE, 24 threads)
     went from 75 to 23 minutes and from 1,490 to 500 CPU minutes.  Setup before
     the partitions run is under 2 minutes (was 11); minimap2 threads stay within

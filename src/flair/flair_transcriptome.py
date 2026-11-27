@@ -670,6 +670,23 @@ def _write_unfiltered_ends(isoforms, fh):
     for iso_readrec in isoforms:
         convert_to_bed12(iso_readrec).write(fh)
 
+def store_by_name(isoforms, isoform, what):
+    """Store an isoform in a dict under its name, a name already there being an error.
+    An isoform's name is a hash of its chromosome and its exons, so two take one name
+    only when the code building them made two of one structure, or when their hashes
+    collide.  Either way the second replaces the first in the dict, and that isoform is
+    gone from the run with nothing said: FLAIR 3.0.1 lost end variants that way, which
+    is BrooksLabUCSC/flair#732."""
+    other = isoforms.get(isoform.name)
+    if other is not None:
+        raise FlairError(f'two {what} isoforms have the name {isoform.name}: '
+                         f'{isoform.chrom}:{isoform.start}-{isoform.end} with {len(isoform.juncs)} junctions '
+                         f'and {other.chrom}:{other.start}-{other.end} with {len(other.juncs)} junctions; '
+                         'the name is a hash of the chromosome and the exons, so this is a defect in '
+                         'flair rather than something the input can be changed to avoid: report it at '
+                         'https://github.com/BrooksLabUCSC/flair/issues with this message')
+    isoforms[isoform.name] = isoform
+
 class CandidateIsoforms:
     """Candidate isoforms before filtering, with junction and exon indices.
 
@@ -684,7 +701,7 @@ class CandidateIsoforms:
         self.exons = {}
 
     def add(self, isoform):
-        self.isoforms[isoform.name] = isoform
+        store_by_name(self.isoforms, isoform, 'candidate')
         strand_exons = self.exons.setdefault(isoform.strand, set())
         if isoform.juncs == ():
             strand_exons.add(Exon(isoform.start, isoform.end, isoform.name))
@@ -1341,7 +1358,7 @@ def assign_final_ends(firstpass, ends_path, map_path, *, normalize_ends, max_end
                 variants = [(_one_end_variant(isoform, reads), reads)]
             for i, (variant, variant_reads) in enumerate(variants):
                 variant.unpadded_ends = (variant.start, variant.end)
-                final[variant.name] = variant
+                store_by_name(final, variant, 'end variant')
                 names = [read.name for read in variant_reads] + (sorted(others) if i == 0 else [])
                 out_lines.extend([f[0], variant.name] + f[2:] for f in (line_by_read[n] for n in names))
     _rewrite_ends_and_map(out_lines, ends_path, map_path)
@@ -1717,10 +1734,14 @@ def get_new_ids(output):
     iso_count, gene_count, aaseq_count = 1, 1, 1
     with open_sorted_bed(compressed_path(output + '.isoforms.newids.bed')) as fh:
         for bed_rec in BedReader(output + '.isoforms.bed', bedClass=FlairBed):
-            if bed_rec.name not in iso_hash_to_id:
-                iso_id = f'FLT{iso_count:08d}'
-                iso_hash_to_id[bed_rec.name] = iso_id
-                iso_count += 1
+            if bed_rec.name in iso_hash_to_id:
+                # one id on two isoforms, which the counts matrix and the read map
+                # would carry as one; the names are hashes of the exons (store_by_name)
+                raise FlairError(f'two isoforms of {output}.isoforms.bed have the name {bed_rec.name}, '
+                                 f'the second at {bed_rec.chrom}:{bed_rec.chromStart}-{bed_rec.chromEnd}; '
+                                 'report it at https://github.com/BrooksLabUCSC/flair/issues with this message')
+            iso_hash_to_id[bed_rec.name] = f'FLT{iso_count:08d}'
+            iso_count += 1
             if bed_rec.gene_id not in gene_hash_to_id:
                 gene_id = f'FLG{gene_count:08d}'
                 gene_hash_to_id[bed_rec.gene_id] = gene_id

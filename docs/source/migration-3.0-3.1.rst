@@ -46,8 +46,8 @@ All commands
      - ``--log-level``, ``--log-stderr``, ``--log-conf``, ``--log-debug``
      - Logging is set by these global options.
 
-Commands that moved
--------------------
+Commands replaced or removed
+----------------------------
 
 .. list-table::
    :header-rows: 1
@@ -63,7 +63,7 @@ Commands that moved
    * - ``flair align``
      - gone
      - It ran minimap2 and filtered its output, which nothing else used.  Align the
-       reads yourself, below.
+       reads with the minimap2 command under this table.
    * - ``flair variants``
      - ``flair isoalleles``
      - Allele calling from reads is replaced by haplotyping with an upstream tool,
